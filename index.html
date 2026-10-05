@@ -2797,10 +2797,45 @@ class InputManager {
  * offset by the camera's world position.
  */
 
+// ---------------------------------------------------------------------
+// VISUAL SCALE SETTINGS — the only place you need to touch to tune how
+// big the world and the characters look. None of these affect gameplay:
+// speeds, ranges, collision radii, spawning and map coordinates all stay
+// in unzoomed world units.
+// ---------------------------------------------------------------------
+
+// Camera zoom: how large the WHOLE world (map, buildings, roads, zombies,
+// player, weapons, bullets, effects) is drawn relative to the screen.
+// 1.0 = original scale, >1 zooms in (sees less map), <1 zooms out.
+// Live tweak from the browser console:  game.camera.zoom = 1.5
+const CAMERA_ZOOM = 1.25;
+
+// Visual-only character scales, applied on top of the camera zoom.
+// They resize the drawn sprite (and the weapon the player holds); the
+// collision radius / hitbox is never touched.
+const PLAYER_SCALE = 0.90;
+const NORMAL_ZOMBIE_SCALE = 0.90; // 'walker'
+const FAST_ZOMBIE_SCALE = 0.85;   // 'runner'
+const BRUTE_ZOMBIE_SCALE = 1.35;  // 'brute'
+const BOSS_ZOMBIE_SCALE = 1.80;   // 'boss'
+
+const ZOMBIE_VISUAL_SCALE = {
+  walker: NORMAL_ZOMBIE_SCALE,
+  runner: FAST_ZOMBIE_SCALE,
+  brute: BRUTE_ZOMBIE_SCALE,
+  boss: BOSS_ZOMBIE_SCALE,
+};
+
+// On-screen (pre-camera-zoom) sprite size for a zombie type.
+function zombieVisualSize(type) {
+  return type.spriteDisplaySize * (ZOMBIE_VISUAL_SCALE[type.id] ?? 1);
+}
+
 class Camera {
   constructor() {
     this.x = 0; // world-space position the camera is centered on
     this.y = 0;
+    this.zoom = CAMERA_ZOOM; // see CAMERA_ZOOM above
   }
 
   follow(targetX, targetY) {
@@ -2808,6 +2843,17 @@ class Camera {
     this.y = targetY;
   }
 
+  // The zoom itself is applied by Game._render() as a canvas transform
+  // (ctx.scale(zoom, zoom)), so every draw call is zoomed consistently.
+  // Inside that transform the canvas looks `zoom` times smaller, which is
+  // what viewSize() returns — pass it to worldToScreen()/culling code in
+  // place of the real canvas.
+  viewSize(canvas) {
+    return { width: canvas.width / this.zoom, height: canvas.height / this.zoom };
+  }
+
+  // `canvas` here is the zoomed view size from viewSize(); the result is
+  // in the (pre-zoom) coordinates the scaled drawing context expects.
   worldToScreen(wx, wy, canvas) {
     return {
       x: wx - this.x + canvas.width / 2,
@@ -2815,10 +2861,12 @@ class Camera {
     };
   }
 
+  // Takes REAL screen pixels (e.g. the mouse position) and the real
+  // canvas, and undoes the zoom to give the true world position.
   screenToWorld(sx, sy, canvas) {
     return {
-      x: sx + this.x - canvas.width / 2,
-      y: sy + this.y - canvas.height / 2,
+      x: this.x + (sx - canvas.width / 2) / this.zoom,
+      y: this.y + (sy - canvas.height / 2) / this.zoom,
     };
   }
 
@@ -4470,14 +4518,15 @@ class Player extends Entity {
     this.y = Utils.clamp(this.y, this.radius, worldHeight - this.radius);
   }
 
-  handleAim(input, canvas) {
+  handleAim(input, canvas, zoom = 1) {
     // Player is always rendered at screen center, so aim angle is just
     // the angle from the canvas center to the mouse cursor.
     this.aimAngle = Utils.angleBetween(canvas.width / 2, canvas.height / 2, input.mouseX, input.mouseY);
     // The character sprite faces the cursor (8 directions), same as the weapon.
     this.facing = Utils.directionFromVector(Math.cos(this.aimAngle), Math.sin(this.aimAngle), this.facing);
     // Where the cursor is in the world (the camera is centred on the player).
-    this.aimTarget = { x: this.x + (input.mouseX - canvas.width / 2), y: this.y + (input.mouseY - canvas.height / 2) };
+    // (divided by the camera zoom: one screen pixel is 1/zoom world units)
+    this.aimTarget = { x: this.x + (input.mouseX - canvas.width / 2) / zoom, y: this.y + (input.mouseY - canvas.height / 2) / zoom };
   }
 
   // Shots leave from the weapon's NOZZLE (see WeaponMuzzle), not the middle
@@ -4486,7 +4535,7 @@ class Player extends Entity {
   tryShoot() {
     const dir = Utils.directionFromVector(Math.cos(this.aimAngle), Math.sin(this.aimAngle));
     const m = WeaponMuzzle.offset(this.currentWeapon.config.id, dir);
-    const ox = this.x + m.x, oy = this.y + m.y;
+    const ox = this.x + m.x * PLAYER_SCALE, oy = this.y + m.y * PLAYER_SCALE; // the held weapon is drawn at PLAYER_SCALE, so its nozzle is too
     let angle = this.aimAngle;
     if (this.aimTarget) {
       const dx = this.aimTarget.x - ox, dy = this.aimTarget.y - oy;
@@ -4581,7 +4630,7 @@ class Player extends Entity {
       ctx.translate(cx, cy);
       ctx.rotate(this.aimAngle);
       ctx.fillStyle = this.currentWeapon.config.color;
-      ctx.fillRect(0, -2, this.radius + 12, 4);
+      ctx.fillRect(0, -2 * PLAYER_SCALE, (this.radius + 12) * PLAYER_SCALE, 4 * PLAYER_SCALE);
       ctx.restore();
       this._drawCharacterSprite(ctx, cx, cy);
     } else {
@@ -4611,11 +4660,11 @@ class Player extends Entity {
   // — every weapon still renders as *something* rather than nothing.
   _drawWeaponSprite(ctx, cx, cy, weaponDir, attachment) {
     const weaponSprite = WEAPON_SPRITES[this.currentWeapon.config.id]?.[weaponDir];
-    const wx = cx + attachment.offsetX;
-    const wy = cy + attachment.offsetY;
+    const wx = cx + attachment.offsetX * PLAYER_SCALE;
+    const wy = cy + attachment.offsetY * PLAYER_SCALE;
 
     if (isSpriteReady(weaponSprite)) {
-      const wSize = this.currentWeapon.config.spriteDisplaySize;
+      const wSize = this.currentWeapon.config.spriteDisplaySize * PLAYER_SCALE;
       ctx.save();
       ctx.imageSmoothingEnabled = false; // keep the pixel art crisp when scaled
       ctx.translate(wx, wy);
@@ -4627,7 +4676,7 @@ class Player extends Entity {
       ctx.translate(wx, wy);
       ctx.rotate(this.aimAngle);
       ctx.fillStyle = '#333';
-      ctx.fillRect(0, -3, this.radius + 18, 6);
+      ctx.fillRect(0, -3 * PLAYER_SCALE, (this.radius + 18) * PLAYER_SCALE, 6 * PLAYER_SCALE);
       ctx.restore();
     }
   }
@@ -4639,7 +4688,7 @@ class Player extends Entity {
   _drawCharacterSprite(ctx, cx, cy) {
     const sprite = this._currentSpriteImage();
     if (isSpriteReady(sprite)) {
-      const size = spriteScaledSize(PLAYER_SPRITES, sprite, CONFIG.PLAYER.spriteDisplaySize);
+      const size = spriteScaledSize(PLAYER_SPRITES, sprite, CONFIG.PLAYER.spriteDisplaySize * PLAYER_SCALE);
       ctx.imageSmoothingEnabled = false; // keep the pixel art crisp when scaled
       ctx.drawImage(sprite, cx - size / 2, cy - size / 2, size, size);
 
@@ -4922,7 +4971,8 @@ class Zombie extends Entity {
 
     // Cull off-screen zombies cheaply. Margin accounts for sprite art
     // being visually larger than the collision radius.
-    const cullMargin = Math.max(50, this.type.spriteDisplaySize);
+    const visualSize = zombieVisualSize(this.type); // spriteDisplaySize x this type's *_ZOMBIE_SCALE (visual only)
+    const cullMargin = Math.max(50, visualSize);
     if (p.x < -cullMargin || p.x > canvas.width + cullMargin || p.y < -cullMargin || p.y > canvas.height + cullMargin) return;
 
     ctx.save();
@@ -4931,7 +4981,7 @@ class Zombie extends Entity {
     const sprite = pickSpriteFrame(spriteSet, this.facing, this.isMoving, this.animFrame);
 
     if (isSpriteReady(sprite)) {
-      const size = spriteScaledSize(spriteSet, sprite, this.type.spriteDisplaySize);
+      const size = spriteScaledSize(spriteSet, sprite, visualSize);
       ctx.imageSmoothingEnabled = false; // keep the pixel art crisp when scaled
       ctx.drawImage(sprite, p.x - size / 2, p.y - size / 2, size, size);
 
@@ -4963,7 +5013,7 @@ class Zombie extends Entity {
     const barW = this.radius * 2;
     const barH = this.type.isBoss ? 7 : 4;
     const barX = p.x - this.radius;
-    const barY = p.y - Math.max(this.radius, this.type.spriteDisplaySize / 2) - 10;
+    const barY = p.y - Math.max(this.radius, visualSize / 2) - 10;
     const pct = Utils.clamp(this.health / this.maxHealth, 0, 1);
 
     ctx.fillStyle = 'rgba(0,0,0,0.5)';
@@ -5758,7 +5808,7 @@ class Game {
 
     // --- Player ---
     this.player.handleMovement(this.input, dt, world.width, world.height, this.obstacles);
-    this.player.handleAim(this.input, this.canvas);
+    this.player.handleAim(this.input, this.canvas, this.camera.zoom);
     this.player.update(dt);
     this.camera.follow(this.player.x, this.player.y);
 
@@ -6335,9 +6385,20 @@ class Game {
 
   _render() {
     const ctx = this.ctx;
-    const canvas = this.canvas;
+    const realCanvas = this.canvas;
 
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, realCanvas.width, realCanvas.height);
+
+    // Camera zoom: draw the whole world through one scale transform, so
+    // buildings, roads, ground, zombies, player, weapons, bullets and
+    // effects all scale together. `canvas` below is the zoomed view size
+    // (real canvas / zoom): the player is still drawn at its center, which
+    // the transform maps to the real screen center.
+    const zoom = this.camera.zoom;
+    const canvas = this.camera.viewSize(realCanvas);
+    ctx.save();
+    ctx.scale(zoom, zoom);
     this._drawGround(ctx, canvas);
     for (const road of this.roads) road.draw(ctx, this.camera, canvas);
     this._drawWorldBounds(ctx, canvas);
@@ -6345,6 +6406,7 @@ class Game {
     this._drawGrenades(ctx, canvas);
     this._drawExplosions(ctx, canvas);
     this._drawFloatingTexts(ctx, canvas);
+    ctx.restore();
   }
 
   // Draws buildings together with the player, zombies and pickups in the
@@ -6381,7 +6443,8 @@ class Game {
 
     // A building turns see-through when the player, a zombie or a pickup (on
     // screen) is behind it. Each thing's depth is judged from its feet.
-    const feetX = player.x, feetY = player.y + cfg.playerFeetOffset;
+    const playerFeet = cfg.playerFeetOffset * PLAYER_SCALE; // feet move up with the (visually) smaller sprite
+    const feetX = player.x, feetY = player.y + playerFeet;
     const occludingSet = new Set();
     for (const o of obstacles) {
       if (o.extruded && o.occludesPoint(feetX, feetY)) occludingSet.add(o);
@@ -6390,7 +6453,7 @@ class Game {
       const zHalfW = canvas.width / 2 + 160, zHalfH = canvas.height / 2 + 160;
       for (const z of this.zombies) {
         if (Math.abs(z.x - cam.x) > zHalfW || Math.abs(z.y - cam.y) > zHalfH) continue;
-        const zy = z.y + (z.type && z.type.spriteDisplaySize ? z.type.spriteDisplaySize * 0.35 : 0);
+        const zy = z.y + (z.type && z.type.spriteDisplaySize ? zombieVisualSize(z.type) * 0.35 : 0);
         for (const o of obstacles) {
           if (o.extruded && o.occludesPoint(z.x, zy)) occludingSet.add(o);
         }
@@ -6434,8 +6497,8 @@ class Game {
       }
     };
     for (const e of this.pickups) consider(e, 0);
-    for (const e of this.zombies) consider(e, e.type && e.type.spriteDisplaySize ? e.type.spriteDisplaySize * 0.35 : 0);
-    consider(player, cfg.playerFeetOffset);
+    for (const e of this.zombies) consider(e, e.type && e.type.spriteDisplaySize ? zombieVisualSize(e.type) * 0.35 : 0);
+    consider(player, playerFeet);
 
     // --- 3. draw ---------------------------------------------------------
     for (let i = 0; i < obstacles.length; i++) {
