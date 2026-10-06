@@ -28,6 +28,44 @@ html, body {
   height: 100vh;
 }
 
+#world3dCanvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  display: none; /* shown only while a 3D run is active */
+}
+/* In a 3D run the game canvas is a transparent overlay on top of the WebGL view. */
+#gameContainer.world3d-active #gameCanvas { background: transparent; }
+#world3dAttribution {
+  position: absolute;
+  left: 50%;
+  bottom: 4px;
+  transform: translateX(-50%);
+  display: none;
+  max-width: 60%;
+  padding: 2px 8px;
+  font: 10px/1.3 sans-serif;
+  color: #fff;
+  background: rgba(0,0,0,0.45);
+  border-radius: 3px;
+  pointer-events: none;
+  z-index: 5;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+#world3dStatus {
+  position: absolute;
+  left: 8px;
+  bottom: 24px;
+  font: 10px monospace;
+  color: #bdf;
+  pointer-events: none;
+  z-index: 5;
+  display: none;
+}
 #gameCanvas {
   position: absolute;
   top: 0;
@@ -1362,11 +1400,42 @@ const EMBEDDED_ASSETS = {
      mapProvider.js is simply never invoked when no API key is configured. -->
 <link href="https://cdn.maptiler.com/maptiler-sdk-js/v2.2.0/maptiler-sdk.css" rel="stylesheet" />
 <script src="https://cdn.maptiler.com/maptiler-sdk-js/v2.2.0/maptiler-sdk.umd.min.js" defer></script>
+  <!-- ===== 3D WORLD CONFIG (Google Photorealistic 3D Tiles + Three.js) =====
+       Only used when WORLD_RENDER_MODE = '3D' (see the world3d section at the
+       bottom of this file). Versions are pinned to the 3DTD reference:
+       three 0.186.0, 3d-tiles-renderer 0.5.2. If the CDN is unreachable the
+       game simply falls back to the 2D map. -->
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.186.0/examples/jsm/",
+      "three/examples/jsm/": "https://cdn.jsdelivr.net/npm/three@0.186.0/examples/jsm/",
+      "3d-tiles-renderer": "https://esm.sh/3d-tiles-renderer@0.5.2?external=three",
+      "3d-tiles-renderer/plugins": "https://esm.sh/3d-tiles-renderer@0.5.2/plugins?external=three",
+      "3d-tiles-renderer/core/plugins": "https://esm.sh/3d-tiles-renderer@0.5.2/core/plugins?external=three"
+    }
+  }
+  </script>
+  <script>
+    // GOOGLE MAPS PLATFORM API KEY for Photorealistic 3D Tiles.
+    // Do NOT commit a real key. Either paste it here locally, or run this
+    // once in the browser console (nothing is stored in the file):
+    //   localStorage.setItem('operationPeanut.googleMapsApiKey', 'YOUR_KEY')
+    // Restrict the key in Google Cloud Console: Application restriction =
+    // HTTP referrers (e.g. http://localhost:*/*, https://your.domain/*),
+    // API restriction = "Map Tiles API". Serve the page over http(s) (e.g.
+    // `python3 -m http.server`); file:// pages send no referrer.
+    window.GOOGLE_MAPS_API_KEY = '';
+  </script>
 </head>
 <body>
 
   <div id="gameContainer">
+    <canvas id="world3dCanvas"></canvas>
     <canvas id="gameCanvas"></canvas>
+    <div id="world3dAttribution"></div>
+    <div id="world3dStatus"></div>
 
     <!-- ===================== HUD (DOM overlay) ===================== -->
     <div id="hud">
@@ -2836,6 +2905,7 @@ class Camera {
     this.x = 0; // world-space position the camera is centered on
     this.y = 0;
     this.zoom = CAMERA_ZOOM; // see CAMERA_ZOOM above
+    this.rig3d = null;       // set during a 3D run (see world3d section)
   }
 
   follow(targetX, targetY) {
@@ -2848,13 +2918,30 @@ class Camera {
   // Inside that transform the canvas looks `zoom` times smaller, which is
   // what viewSize() returns — pass it to worldToScreen()/culling code in
   // place of the real canvas.
+  // 3D runs only: scales the entity about its screen point by the perspective
+  // factor (things farther than the player draw smaller). No-op in 2D.
+  applyEntityScale(ctx, p) {
+    const s = p.depthScale;
+    if (s === undefined || Math.abs(s - 1) < 0.003) return;
+    ctx.translate(p.x, p.y);
+    ctx.scale(s, s);
+    ctx.translate(-p.x, -p.y);
+  }
+
   viewSize(canvas) {
     return { width: canvas.width / this.zoom, height: canvas.height / this.zoom };
   }
 
   // `canvas` here is the zoomed view size from viewSize(); the result is
   // in the (pre-zoom) coordinates the scaled drawing context expects.
+  // In a 3D run (rig3d set) the point is projected through the 3D camera at
+  // the ground height under it; `zoom` is then the per-frame pixel scale and
+  // the result also carries `depthScale` (perspective size vs. the player).
   worldToScreen(wx, wy, canvas) {
+    if (this.rig3d) {
+      const s = this.rig3d.project(wx, wy);
+      return { x: s.x / this.zoom, y: s.y / this.zoom, depthScale: s.scale };
+    }
     return {
       x: wx - this.x + canvas.width / 2,
       y: wy - this.y + canvas.height / 2,
@@ -2864,6 +2951,11 @@ class Camera {
   // Takes REAL screen pixels (e.g. the mouse position) and the real
   // canvas, and undoes the zoom to give the true world position.
   screenToWorld(sx, sy, canvas) {
+    if (this.rig3d) {
+      const w = this.rig3d.unproject(sx, sy);
+      if (w) return w;
+      return { x: this.x, y: this.y }; // cursor above the horizon: keep aiming at the player
+    }
     return {
       x: this.x + (sx - canvas.width / 2) / this.zoom,
       y: this.y + (sy - canvas.height / 2) / this.zoom,
@@ -4074,6 +4166,7 @@ class Bullet extends Entity {
     const p = camera.worldToScreen(this.x, this.y, canvas);
     if (this.flame) { this._drawFlame(ctx, p); return; }
     ctx.save();
+    camera.applyEntityScale(ctx, p);
     ctx.fillStyle = this.color;
     ctx.beginPath();
     ctx.arc(p.x, p.y, this.radius, 0, Math.PI * 2);
@@ -4144,6 +4237,7 @@ class Pickup extends Entity {
     const bob = Math.sin(this.bobPhase) * 3;
 
     ctx.save();
+    camera.applyEntityScale(ctx, p);
     ctx.translate(p.x, p.y + bob);
 
     // Simple placeholder crate icon with a glyph.
@@ -4518,7 +4612,16 @@ class Player extends Entity {
     this.y = Utils.clamp(this.y, this.radius, worldHeight - this.radius);
   }
 
-  handleAim(input, canvas, zoom = 1) {
+  handleAim(input, canvas, zoom = 1, camera = null) {
+    if (camera && camera.rig3d) {
+      // 3D run: the view is pitched, so screen angle != world angle. Find the
+      // world point under the cursor and aim at it (angle in world space).
+      const t = camera.screenToWorld(input.mouseX, input.mouseY, canvas);
+      this.aimTarget = t;
+      this.aimAngle = Math.atan2(t.y - this.y, t.x - this.x);
+      this.facing = Utils.directionFromVector(Math.cos(this.aimAngle), Math.sin(this.aimAngle), this.facing);
+      return;
+    }
     // Player is always rendered at screen center, so aim angle is just
     // the angle from the canvas center to the mouse cursor.
     this.aimAngle = Utils.angleBetween(canvas.width / 2, canvas.height / 2, input.mouseX, input.mouseY);
@@ -4616,11 +4719,14 @@ class Player extends Entity {
   }
 
   draw(ctx, camera, canvas) {
-    // Player is always screen-centered.
-    const cx = canvas.width / 2;
-    const cy = canvas.height / 2;
+    // In 2D the camera is centered on the player, so this is the screen
+    // center; in a 3D run it is the player's projected ground position.
+    const pp = camera.worldToScreen(this.x, this.y, canvas);
+    const cx = pp.x;
+    const cy = pp.y;
 
     ctx.save();
+    camera.applyEntityScale(ctx, pp);
 
     if (this.currentWeapon.config.melee && !this.currentWeapon.config.spriteFolder) {
       // The knife isn't part of the sprite-based attachment system below
@@ -4976,6 +5082,7 @@ class Zombie extends Entity {
     if (p.x < -cullMargin || p.x > canvas.width + cullMargin || p.y < -cullMargin || p.y > canvas.height + cullMargin) return;
 
     ctx.save();
+    camera.applyEntityScale(ctx, p);
 
     const spriteSet = ZOMBIE_SPRITES[this.type.id];
     const sprite = pickSpriteFrame(spriteSet, this.facing, this.isMoving, this.animFrame);
@@ -5406,6 +5513,7 @@ class Game {
   _resizeCanvas() {
     this.canvas.width = window.innerWidth;
     this.canvas.height = window.innerHeight;
+    if (this.world3d) this.world3d.resize(this.canvas.width, this.canvas.height);
   }
 
   _bindUI() {
@@ -5556,9 +5664,37 @@ class Game {
     this.hud.hideWeaponUnlockBanner();
     this.camera.follow(this.player.x, this.player.y);
 
+    // 3D world: CitySelectFlow hands over the prepared bridge (or null = the
+    // 2D map) just before start(). Restart keeps whatever the run had.
+    if (this._pendingWorld !== undefined) { this.world3d = this._pendingWorld; this._pendingWorld = undefined; }
+    this._attachWorld3d();
+
     this.state = 'playing';
     this._lastTimestamp = null;
     requestAnimationFrame((t) => this._loop(t));
+  }
+
+  // Wires the Camera to the 3D bridge (or detaches it) and shows/hides the
+  // WebGL canvas. Everything 3D-specific the unchanged game code reads goes
+  // through Camera, so the rest of the game does not know which mode runs.
+  _attachWorld3d() {
+    const container = document.getElementById('gameContainer');
+    if (this.world3d) {
+      this.world3d.setVisible(true);
+      this.world3d.resize(this.canvas.width, this.canvas.height);
+      const ss = this.world3d.geo.gameToScene(this.player.x, this.player.y);
+      const h = this.world3d.terrain.sampleNow(ss.x, ss.z);
+      this.world3d.rig.snapTo(this.player.x, this.player.y, h !== null ? h : this.world3d.terrain.fallbackHeight);
+      this.camera.rig3d = this.world3d;
+      container.classList.add('world3d-active');
+      const st = document.getElementById('world3dStatus');
+      st.style.display = /[?&]debug3d\b/.test(location.search) ? 'block' : 'none';
+    } else {
+      if (window.World3D) window.World3D.deactivate();
+      this.camera.rig3d = null;
+      this.camera.zoom = CAMERA_ZOOM;
+      container.classList.remove('world3d-active');
+    }
   }
 
   // FALLBACK synthetic obstacles — real buildings (MapGenerator, Phase
@@ -5717,6 +5853,7 @@ class Game {
       generated = { obstacles, roads, mapAreaData: null };
     }
     this.currentCityName = save.cityName || '';
+    this._pendingWorld = null; // saved runs carry no geographic origin: 2D map
     this.start(save.spawn, generated);
 
     // --- saved state on top of the fresh run ---
@@ -5791,6 +5928,7 @@ class Game {
 
     if (this.state === 'playing') {
       this._update(dt);
+      if (this.world3d) this.world3d.frame(this, dt); // moves the 3D camera, streams tiles, draws the WebGL view
       this._render();
     }
     // While paused, we simply skip _update/_render, which freezes the
@@ -5808,7 +5946,7 @@ class Game {
 
     // --- Player ---
     this.player.handleMovement(this.input, dt, world.width, world.height, this.obstacles);
-    this.player.handleAim(this.input, this.canvas, this.camera.zoom);
+    this.player.handleAim(this.input, this.canvas, this.camera.zoom, this.camera);
     this.player.update(dt);
     this.camera.follow(this.player.x, this.player.y);
 
@@ -6075,7 +6213,7 @@ class Game {
     this.spawner.update(dt, {
       player: this.player,
       camera: this.camera,
-      canvas: this.canvas,
+      canvas: this.world3d ? this.world3d.spawnViewCanvas() : this.canvas, // 3D: ring just outside the visible ground
       zombies: this.zombies,
       worldWidth: world.width,
       worldHeight: world.height,
@@ -6383,7 +6521,50 @@ class Game {
     this._refreshHomeStats();
   }
 
+  // 3D run: the world (buildings, roads, ground) is the WebGL view behind
+  // this canvas, so only the gameplay objects are drawn here, projected into
+  // that view. Same zoom transform as the 2D path, with zoom = pixel scale.
+  _render3D() {
+    const ctx = this.ctx;
+    const realCanvas = this.canvas;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, realCanvas.width, realCanvas.height);
+    const zoom = this.camera.zoom;
+    const canvas = this.camera.viewSize(realCanvas);
+    ctx.save();
+    ctx.scale(zoom, zoom);
+    this._drawWorldBounds3D(ctx, canvas);
+    // Painter's order by ground y (larger y = nearer the camera).
+    const sorted = [...this.pickups, ...this.zombies, this.player].sort((a, b) => a.y - b.y);
+    for (const e of sorted) e.draw(ctx, this.camera, canvas);
+    for (const e of this.bullets) e.draw(ctx, this.camera, canvas);
+    this._drawGrenades(ctx, canvas);
+    this._drawExplosions(ctx, canvas);
+    this._drawFloatingTexts(ctx, canvas);
+    ctx.restore();
+  }
+
+  // Play-area edge, projected onto the real ground (the invisible limit the
+  // player and zombies are clamped to).
+  _drawWorldBounds3D(ctx, canvas) {
+    const w = CONFIG.WORLD.width, h = CONFIG.WORLD.height, N = 16;
+    const pts = [];
+    for (let i = 0; i < N; i++) pts.push([w * i / N, 0]);
+    for (let i = 0; i < N; i++) pts.push([w, h * i / N]);
+    for (let i = 0; i < N; i++) pts.push([w - w * i / N, h]);
+    for (let i = 0; i < N; i++) pts.push([0, h - h * i / N]);
+    ctx.save();
+    ctx.strokeStyle = 'rgba(231,76,60,0.75)';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    pts.forEach(([x, y], i) => { const p = this.camera.worldToScreen(x, y, canvas); if (i === 0) ctx.moveTo(p.x, p.y); else ctx.lineTo(p.x, p.y); });
+    ctx.closePath();
+    ctx.stroke();
+    ctx.restore();
+  }
+
   _render() {
+    if (this.world3d) { this._render3D(); return; }
     const ctx = this.ctx;
     const realCanvas = this.canvas;
 
@@ -9118,12 +9299,22 @@ class CitySelectFlow {
       this._generateTimeout = setTimeout(resolve, 900);
     });
 
+    // 3D mode: the SELECTED point becomes the geographic origin of the whole
+    // run (world center = selected lat/lng), so the OSM data, the game world
+    // and the 3D tiles all share it. Otherwise: the city center, as before.
+    if (this.selectedLatLng && window.World3D && window.World3D.wanted()) {
+      this.coordinateConverter = new CoordinateConverter(this.selectedLatLng.lat, this.selectedLatLng.lng);
+    }
+    const genCenter = (this.selectedLatLng && window.World3D && window.World3D.wanted())
+      ? { lat: this.selectedLatLng.lat, lng: this.selectedLatLng.lng }
+      : { lat: this.selectedCity.lat, lng: this.selectedCity.lng };
+
     let generated = null;
     let failure = null;
     try {
       const [result] = await Promise.all([
         MapGenerator.generate(
-          { lat: this.selectedCity.lat, lng: this.selectedCity.lng },
+          genCenter,
           MAP_CONFIG.PLAYABLE_MAP_SIZE,
           window.mapDataService,
           this.coordinateConverter
@@ -9163,8 +9354,7 @@ class CitySelectFlow {
     this.mapGenFailedText.textContent = `Couldn't load real map data for ${this.cityName} (${reason}).`;
   }
 
-  _finish(generated) {
-    this.screens.generating.classList.add('hidden');
+  async _finish(generated) {
 
     // Real mode: proper latitude-corrected coordinate conversion (Phase 3).
     // Test mode: the placeholder grid's normalized-point math (unrelated
@@ -9174,6 +9364,22 @@ class CitySelectFlow {
       ? this.coordinateConverter.latLngToWorldPixels(this.selectedLatLng.lat, this.selectedLatLng.lng)
       : this._placeholderNormPointToWorld(this.selectedPoint.normX, this.selectedPoint.normY);
 
+    // 3D world (Google Photorealistic 3D Tiles): load the tiles around the
+    // spawn first, with the "Generating" screen still up. Any problem -> the
+    // existing 2D map, with the reason in the console.
+    let bridge = null;
+    if (this.selectedLatLng && window.World3D && window.World3D.wanted()) {
+      this.generatingText.textContent = `Loading the 3D city for ${this.cityName}…`;
+      bridge = await window.World3D.prepare({
+        origin: { lat: this.selectedLatLng.lat, lng: this.selectedLatLng.lng },
+        spawn: { x, y },
+        generated,
+        game: this.game,
+        onStatus: (t) => { this.generatingText.textContent = t; },
+      });
+    }
+    this.screens.generating.classList.add('hidden');
+    this.game._pendingWorld = bridge; // null = 2D map
     this.game.currentCityName = this.cityName || '';
     this.game.start({ x, y }, generated);
   }
@@ -9326,6 +9532,822 @@ window.addEventListener('DOMContentLoaded', () => {
   window.game.onChangeCityRequested = () => window.cityFlow.begin();
   window.mapDataService = mapDataProvider;
 });
+
+  </script>
+  <script>
+/**
+ * world3d.js — Phase 1 of the 3D city: Google Photorealistic 3D Tiles +
+ * Three.js as the VISUAL world, with the existing game (2D canvas, OSM
+ * data, collision, zombies, weapons, HUD) running unchanged on top.
+ *
+ *   REAL CITY -> Google Photorealistic 3D Tiles -> Three.js (WebGL canvas
+ *   #world3dCanvas, BEHIND the game canvas) -> Operation Peanut gameplay
+ *   (#gameCanvas, transparent overlay: peanut/zombies/bullets/effects are
+ *   projected into the 3D view as 2D sprites)
+ *
+ *   Google 3D Tiles = what the world LOOKS like.
+ *   OSM / Overpass  = gameplay semantics (collision footprints, roads, ...).
+ *
+ * Modules (all in this file, no dependencies between them except as shown):
+ *
+ *   GeoCoordinateSystem  lat/lng <-> local meters <-> game pixels <-> scene
+ *                        (Three.js) coordinates, plus the ECEF reorientation
+ *                        matrix that makes the tiles a local, Y-up world.
+ *                        Pure math. The single place conversions live; the
+ *                        pre-existing CoordinateConverter is its lat/lng core.
+ *   GameplayCamera3D     top-down / 3-4 follow camera: pose, smoothing,
+ *                        world->screen, screen->world. Pure math (no THREE),
+ *                        so the overlay and the WebGL view always agree.
+ *   TerrainService       getGroundHeight(): cached, budgeted height queries
+ *                        on top of a backend "probe" (raycast into the tiles).
+ *   Google3DWorld        the Three.js / 3d-tiles-renderer backend: renderer,
+ *                        lights, TilesRenderer + Google auth, reorientation,
+ *                        streaming budget, height probe, segment raycasts.
+ *   OcclusionService     camera -> player line-of-sight against the tiles.
+ *                        Hook only (no fade effect yet).
+ *   OSMGameplayData      read-only gameplay view over the OSM-generated map.
+ *   GameplayWorldBridge  glues all of the above to the existing Game.
+ *   World3D              facade: wanted() / prepare() used by CitySelectFlow.
+ *
+ * Nothing here runs unless WORLD_RENDER_MODE is '3D' AND a Google key is
+ * configured AND the libraries load AND tiles actually arrive. Any failure
+ * falls back to the existing 2D map with a console message.
+ */
+
+// ---------------------------------------------------------------------
+// SETTINGS — everything you tune lives here.
+// ---------------------------------------------------------------------
+
+// '3D'          Google Photorealistic 3D Tiles (falls back automatically)
+// '2D_FALLBACK' the existing OSM/2D map rendering, 3D never touched
+const WORLD_RENDER_MODE = '3D';
+
+// 3D gameplay camera. (CAMERA_ZOOM is the shared constant defined with the
+// 2D camera; here it divides the camera distance, so 1.25 = 25% closer.)
+const CAMERA_HEIGHT = 2;               // m: height above the ground of the point the camera looks at
+const CAMERA_DISTANCE = 250;           // m: camera-to-target distance at CAMERA_ZOOM 1
+const CAMERA_PITCH = 60;               // degrees below horizontal (90 = straight down)
+const CAMERA_FOLLOW_SMOOTHING = 8;     // 1/s, higher = snappier, 0 = rigidly locked to the player
+const CAMERA_FOV = 35;                 // vertical field of view, degrees
+const CAMERA_NEAR = 1;                 // m
+const CAMERA_FAR = 6000;               // m
+
+const WORLD3D_CONFIG = {
+  // Pinned to the versions the 3DTD reference uses. The matching import map
+  // is in <head>; change both together.
+  dracoDecoderPath: 'https://cdn.jsdelivr.net/npm/three@0.186.0/examples/jsm/libs/draco/gltf/',
+
+  // Tile streaming budget (same values and reasoning as 3DTD).
+  streaming: {
+    errorTarget: 20,                    // px of screen-space error before refining; higher = coarser
+    errorFalloff: 24,
+    errorFalloffDensity: 2.5e-4,
+    maxDownloads: 4,
+    maxParseJobs: 1,
+    lruMinBytes: 0.5 * 2 ** 30,
+    lruMaxBytes: 0.7 * 2 ** 30,
+    unloadDelayMs: 2000,
+    fade: true,
+  },
+
+  // Scene lights. Google's tiles are baked photo textures: light them softly
+  // so they read close to their native look (no effect on unlit materials).
+  lighting: { hemisphere: 0.9, directional: 0.5, skyColor: 0xffffff, groundColor: 0x8c97a3, background: 0x9db6c9 },
+
+  terrain: {
+    cellMeters: 3,                      // height cache granularity
+    probesPerFrame: 4,                  // background refinements per frame
+    maxProbeMsPerFrame: 3,
+    probeTopY: 9000,                    // ray start height (above any ellipsoidal ground)
+  },
+
+  occlusion: { enabled: true, intervalMs: 100, headHeightMeters: 1.5 },
+
+  // How long prepare() waits for the first tiles/ground at the spawn.
+  prepare: { timeoutMs: 30000, minSettleMs: 2500 },
+
+  // Spawn ring: farthest the visible-ground footprint is allowed to claim.
+  footprintMaxMeters: 260,
+
+  attributionRefreshMs: 1000,
+};
+
+// Google Maps Platform key. NEVER commit a real key. Provide it (any one):
+//   1. window.GOOGLE_MAPS_API_KEY = '...'   (small local script, see <head>)
+//   2. localStorage.setItem('operationPeanut.googleMapsApiKey', '...')
+// A browser key is visible to anyone running the page, so restrict it in
+// Google Cloud Console (APIs & Services -> Credentials): Application
+// restriction = HTTP referrers (your domains, e.g. http://localhost:*/*),
+// API restriction = "Map Tiles API" only. Referrer restrictions need the
+// page served over http(s) (python3 -m http.server); a file:// page sends no
+// referrer. Set a budget alert: 3D tiles are billed per tileset session.
+function getGoogleMapsApiKey() {
+  try {
+    const k = (typeof window !== 'undefined' && window.GOOGLE_MAPS_API_KEY) || localStorage.getItem('operationPeanut.googleMapsApiKey') || '';
+    return String(k).trim();
+  } catch (e) { return ''; }
+}
+
+// ---------------------------------------------------------------------
+// GeoCoordinateSystem
+// ---------------------------------------------------------------------
+
+// Axes: game pixels are x = east, y = SOUTH (screen-style, as before).
+// Scene (Three.js, Y-up) meters are X = east, Y = up, Z = SOUTH. So
+// scene (X, Z) = ((gx - W/2) / ppm, (gy - H/2) / ppm): the same layout as
+// the game, just in meters, and north is -Z. The origin (lat, lng) is the
+// center of the game world.
+class GeoCoordinateSystem {
+  constructor(originLat, originLng, originHeight = 0) {
+    this.originLat = originLat;
+    this.originLng = originLng;
+    this.originHeight = originHeight;            // ellipsoidal meters
+    this.converter = new CoordinateConverter(originLat, originLng); // lat/lng core, shared with the 2D map
+    const ppm = this.converter.pixelsPerMeter();
+    this.pxPerMeterX = ppm.x;
+    this.pxPerMeterY = ppm.y;
+    this.worldW = CONFIG.WORLD.width;
+    this.worldH = CONFIG.WORLD.height;
+  }
+
+  // ---- lat/lng <-> local meters (east, north) ----
+  latLngToMeters(lat, lng) { const m = this.converter.latLngToLocalMeters(lat, lng); return { east: m.xMeters, north: m.yMeters }; }
+  metersToLatLng(east, north) { return this.converter.localMetersToLatLng(east, north); }
+
+  // ---- game pixels <-> local meters ----
+  gameToMeters(gx, gy) {
+    return { east: (gx - this.worldW / 2) / this.pxPerMeterX, north: -(gy - this.worldH / 2) / this.pxPerMeterY };
+  }
+  metersToGame(east, north) {
+    return { x: this.worldW / 2 + east * this.pxPerMeterX, y: this.worldH / 2 - north * this.pxPerMeterY };
+  }
+
+  // ---- lat/lng <-> game pixels (unclamped) ----
+  latLngToGame(lat, lng) {
+    const m = this.latLngToMeters(lat, lng);
+    return this.metersToGame(m.east, m.north);
+  }
+  gameToLatLng(gx, gy) {
+    const m = this.gameToMeters(gx, gy);
+    return this.metersToLatLng(m.east, m.north);
+  }
+
+  // ---- game pixels <-> scene meters ----
+  gameToScene(gx, gy, height = 0) {
+    return { x: (gx - this.worldW / 2) / this.pxPerMeterX, y: height, z: (gy - this.worldH / 2) / this.pxPerMeterY };
+  }
+  sceneToGame(sx, sz) {
+    return { x: this.worldW / 2 + sx * this.pxPerMeterX, y: this.worldH / 2 + sz * this.pxPerMeterY };
+  }
+
+  // ---- lat/lng <-> scene meters ----
+  latLngToScene(lat, lng, height = 0) {
+    const m = this.latLngToMeters(lat, lng);
+    return { x: m.east, y: height, z: -m.north };
+  }
+  sceneToLatLng(sx, sz) { return this.metersToLatLng(sx, -sz); }
+
+  // ---- ECEF reorientation (used by Google3DWorld) ----
+  static geodeticToEcef(latDeg, lngDeg, h = 0) {
+    const a = 6378137.0, f = 1 / 298.257223563, e2 = f * (2 - f);
+    const lat = latDeg * Math.PI / 180, lng = lngDeg * Math.PI / 180;
+    const s = Math.sin(lat), c = Math.cos(lat);
+    const N = a / Math.sqrt(1 - e2 * s * s);
+    return [(N + h) * c * Math.cos(lng), (N + h) * c * Math.sin(lng), (N * (1 - e2) + h) * s];
+  }
+
+  // Row-major 4x4 taking ECEF coordinates (what the tiles are in) to scene
+  // coordinates: X = east, Y = up, Z = south, origin at (originLat,
+  // originLng, originHeight). Built here from first principles so it does
+  // not depend on any library plugin's axis conventions.
+  tilesGroupMatrix() {
+    const lat = this.originLat * Math.PI / 180, lng = this.originLng * Math.PI / 180;
+    const sl = Math.sin(lat), cl = Math.cos(lat), sg = Math.sin(lng), cg = Math.cos(lng);
+    const E = [-sg, cg, 0];
+    const N = [-sl * cg, -sl * sg, cl];
+    const U = [cl * cg, cl * sg, sl];
+    const p = GeoCoordinateSystem.geodeticToEcef(this.originLat, this.originLng, this.originHeight);
+    const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+    return [
+      E[0], E[1], E[2], -dot(E, p),
+      U[0], U[1], U[2], -dot(U, p),
+      -N[0], -N[1], -N[2], dot(N, p),
+      0, 0, 0, 1,
+    ];
+  }
+
+  // Same transform as a function, for tests and diagnostics.
+  ecefToScene(x, y, z) {
+    const m = this.tilesGroupMatrix();
+    return {
+      x: m[0] * x + m[1] * y + m[2] * z + m[3],
+      y: m[4] * x + m[5] * y + m[6] * z + m[7],
+      z: m[8] * x + m[9] * y + m[10] * z + m[11],
+    };
+  }
+}
+
+// ---------------------------------------------------------------------
+// GameplayCamera3D — pure math; the WebGL camera is slaved to pose().
+// ---------------------------------------------------------------------
+
+class GameplayCamera3D {
+  constructor(geo) {
+    this.geo = geo;
+    this.width = 1280;
+    this.height = 720;
+    this.fovDeg = CAMERA_FOV;
+    this.pitchDeg = CAMERA_PITCH;
+    this.zoom = CAMERA_ZOOM;
+    this.smoothing = CAMERA_FOLLOW_SMOOTHING;
+    // Smoothed look-at target: game pixels + ground height (scene Y, meters).
+    this.targetGX = 0; this.targetGY = 0; this.targetGround = 0;
+    this._primed = false;
+    this._basis();
+  }
+
+  get distance() { return CAMERA_DISTANCE / Math.max(0.05, this.zoom); }
+
+  setViewport(w, h) { this.width = w; this.height = h; }
+
+  snapTo(gx, gy, ground) {
+    this.targetGX = gx; this.targetGY = gy; this.targetGround = ground;
+    this._primed = true;
+    this._basis();
+  }
+
+  // dt seconds. Exponential smoothing (frame-rate independent).
+  update(dt, gx, gy, ground) {
+    if (!this._primed) { this.snapTo(gx, gy, ground); return; }
+    const a = this.smoothing > 0 ? 1 - Math.exp(-this.smoothing * dt) : 1;
+    this.targetGX += (gx - this.targetGX) * a;
+    this.targetGY += (gy - this.targetGY) * a;
+    this.targetGround += (ground - this.targetGround) * a;
+    this._basis();
+  }
+
+  _basis() {
+    const pitch = Math.min(89, Math.max(5, this.pitchDeg)) * Math.PI / 180;
+    const t = this.geo.gameToScene(this.targetGX, this.targetGY, this.targetGround + CAMERA_HEIGHT);
+    const d = this.distance;
+    // Camera sits south of the target (+Z) and above it, looking north (-Z).
+    this.tx = t.x; this.ty = t.y; this.tz = t.z;
+    this.px = t.x;
+    this.py = t.y + Math.sin(pitch) * d;
+    this.pz = t.z + Math.cos(pitch) * d;
+    // forward f (to target), right r = f x up, camera-up u = r x f.
+    let fx = this.tx - this.px, fy = this.ty - this.py, fz = this.tz - this.pz;
+    const fl = Math.hypot(fx, fy, fz); fx /= fl; fy /= fl; fz /= fl;
+    this.f = [fx, fy, fz];
+    let rx = fy * 0 - fz * 1, ry = fz * 0 - fx * 0, rz = fx * 1 - fy * 0; // f x (0,1,0)
+    const rl = Math.hypot(rx, ry, rz); rx /= rl; ry /= rl; rz /= rl;
+    this.r = [rx, ry, rz];
+    this.u = [ry * fz - rz * fy, rz * fx - rx * fz, rx * fy - ry * fx];
+    this.tanHalf = Math.tan(this.fovDeg * Math.PI / 360);
+  }
+
+  pose() {
+    return { px: this.px, py: this.py, pz: this.pz, tx: this.tx, ty: this.ty, tz: this.tz, fovDeg: this.fovDeg, near: CAMERA_NEAR, far: CAMERA_FAR, aspect: this.width / this.height };
+  }
+
+  // Screen px per game px at the target depth.
+  // Entities are drawn at game-pixel sizes, so this is the 2D context scale.
+  pixelScale() {
+    const pxPerMeter = this.height / (2 * this.distance * this.tanHalf);
+    return pxPerMeter / this.geo.pxPerMeterX;
+  }
+
+  // Scene point -> screen px (+ perspective scale relative to the target).
+  projectScene(x, y, z, out = {}) {
+    const dx = x - this.px, dy = y - this.py, dz = z - this.pz;
+    const depth = dx * this.f[0] + dy * this.f[1] + dz * this.f[2];
+    if (depth < 0.5) { out.x = -1e5; out.y = -1e5; out.scale = 1; out.visible = false; return out; }
+    const cx = dx * this.r[0] + dy * this.r[1] + dz * this.r[2];
+    const cy = dx * this.u[0] + dy * this.u[1] + dz * this.u[2];
+    const aspect = this.width / this.height;
+    out.x = (cx / (depth * this.tanHalf * aspect) + 1) / 2 * this.width;
+    out.y = (1 - cy / (depth * this.tanHalf)) / 2 * this.height;
+    out.scale = this.distance / depth;
+    out.visible = true;
+    return out;
+  }
+
+  // Screen px -> ray direction (unit-ish), origin = camera position.
+  rayFromScreen(sx, sy) {
+    const aspect = this.width / this.height;
+    const nx = (2 * sx / this.width - 1) * this.tanHalf * aspect;
+    const ny = (1 - 2 * sy / this.height) * this.tanHalf;
+    return [
+      this.f[0] + nx * this.r[0] + ny * this.u[0],
+      this.f[1] + nx * this.r[1] + ny * this.u[1],
+      this.f[2] + nx * this.r[2] + ny * this.u[2],
+    ];
+  }
+
+  // Intersect the screen ray with the horizontal plane Y = planeY.
+  groundPointAtScreen(sx, sy, planeY) {
+    const d = this.rayFromScreen(sx, sy);
+    if (d[1] >= -1e-4) return null; // at/above the horizon
+    const t = (planeY - this.py) / d[1];
+    if (t <= 0) return null;
+    return { x: this.px + d[0] * t, z: this.pz + d[2] * t };
+  }
+}
+
+// ---------------------------------------------------------------------
+// TerrainService
+// ---------------------------------------------------------------------
+
+// Ground height in SCENE meters (Y), from a backend probe (a downward ray
+// into the tiles) with a cell cache, so gameplay code just asks
+// getGroundHeight() and never touches raycasts. Misses return the best
+// known value immediately and are refined in the background, a few per
+// frame (the game stays responsive; entities settle onto the ground as
+// tiles arrive).
+class TerrainService {
+  constructor(probe, geo, cfg = WORLD3D_CONFIG.terrain) {
+    this.probe = probe;           // (x, z) -> height | null
+    this.geo = geo;
+    this.cfg = cfg;
+    this.cache = new Map();       // key -> { h, v }
+    this.queue = [];
+    this.queued = new Set();
+    this.version = 0;             // bumped when the loaded tile set changes
+    this.fallbackHeight = 0;      // last good sample near the player
+    this.hasData = false;
+  }
+
+  setGeo(geo) { this.geo = geo; this.clear(); }
+  clear() { this.cache.clear(); this.queue.length = 0; this.queued.clear(); this.hasData = false; this.fallbackHeight = 0; }
+  invalidate() { this.version++; }
+
+  _key(x, z) {
+    const c = this.cfg.cellMeters;
+    return (Math.round(x / c) + 32768) * 65536 + (Math.round(z / c) + 32768);
+  }
+  _center(i) { return i * this.cfg.cellMeters; }
+
+  // Synchronous probe (used for the player and for spawn). null = no tiles there yet.
+  sampleNow(x, z) {
+    const c = this.cfg.cellMeters;
+    const cx = Math.round(x / c) * c, cz = Math.round(z / c) * c;
+    const h = this.probe(cx, cz);
+    if (h === null || h === undefined || !isFinite(h)) return null;
+    this.cache.set(this._key(x, z), { h, v: this.version });
+    this.hasData = true;
+    return h;
+  }
+
+  // Scene meters. Cached; stale/missing entries refine in the background.
+  getGroundHeight(x, z) {
+    const key = this._key(x, z);
+    const e = this.cache.get(key);
+    if (e && e.v === this.version) return e.h;
+    if (!this.queued.has(key) && this.queue.length < 400) {
+      this.queued.add(key);
+      this.queue.push([x, z, key]);
+    }
+    return e ? e.h : this.fallbackHeight;
+  }
+
+  getGroundHeightGame(gx, gy) {
+    const s = this.geo.gameToScene(gx, gy);
+    return this.getGroundHeight(s.x, s.z);
+  }
+
+  getGroundHeightLatLng(lat, lng) {
+    const s = this.geo.latLngToScene(lat, lng);
+    return this.getGroundHeight(s.x, s.z);
+  }
+
+  // Called once per frame by the bridge.
+  processQueue() {
+    const t0 = performance.now();
+    let n = 0;
+    while (this.queue.length && n < this.cfg.probesPerFrame && performance.now() - t0 < this.cfg.maxProbeMsPerFrame) {
+      const [x, z, key] = this.queue.shift();
+      this.queued.delete(key);
+      const h = this.probe(Math.round(x / this.cfg.cellMeters) * this.cfg.cellMeters, Math.round(z / this.cfg.cellMeters) * this.cfg.cellMeters);
+      n++;
+      if (h !== null && h !== undefined && isFinite(h)) { this.cache.set(key, { h, v: this.version }); this.hasData = true; }
+    }
+  }
+}
+
+// ---------------------------------------------------------------------
+// Libraries (loaded on demand, only in 3D mode)
+// ---------------------------------------------------------------------
+
+let _world3dLibsPromise = null;
+function loadWorld3DLibs() {
+  if (!_world3dLibsPromise) {
+    _world3dLibsPromise = (async () => {
+      // Bare specifiers resolve through the import map in <head>.
+      const THREE = await import('three');
+      const tilesLib = await import('3d-tiles-renderer');
+      const plugins = await import('3d-tiles-renderer/plugins');
+      const corePlugins = await import('3d-tiles-renderer/core/plugins');
+      const draco = await import('three/addons/loaders/DRACOLoader.js');
+      return {
+        THREE,
+        TilesRenderer: tilesLib.TilesRenderer,
+        plugins,
+        GoogleCloudAuthPlugin: corePlugins.GoogleCloudAuthPlugin || plugins.GoogleCloudAuthPlugin,
+        DRACOLoader: draco.DRACOLoader,
+      };
+    })();
+    _world3dLibsPromise.catch(() => { _world3dLibsPromise = null; }); // allow a retry
+  }
+  return _world3dLibsPromise;
+}
+
+// ---------------------------------------------------------------------
+// Google3DWorld — Three.js + 3d-tiles-renderer backend
+// ---------------------------------------------------------------------
+
+class Google3DWorld {
+  constructor(canvas, libs, apiKey) {
+    this.canvas = canvas;
+    this.libs = libs;
+    this.apiKey = apiKey;
+    this.status = 'idle';          // idle | loading | ready | error
+    this.errorText = '';
+    this.loadedAny = false;
+    this.onTilesChanged = null;    // () => void, set by the bridge
+    this.tiles = null;
+    this._raycaster = new libs.THREE.Raycaster();
+    this._origin = new libs.THREE.Vector3();
+    this._down = new libs.THREE.Vector3(0, -1, 0);
+    this._dir = new libs.THREE.Vector3();
+  }
+
+  init() {
+    const { THREE, TilesRenderer, plugins, GoogleCloudAuthPlugin, DRACOLoader } = this.libs;
+    const L = WORLD3D_CONFIG.lighting, S = WORLD3D_CONFIG.streaming;
+
+    this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas, antialias: true, logarithmicDepthBuffer: true, powerPreference: 'high-performance' });
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    this.scene = new THREE.Scene();
+    this.scene.background = new THREE.Color(L.background);
+    this.scene.add(new THREE.HemisphereLight(L.skyColor, L.groundColor, L.hemisphere));
+    const sun = new THREE.DirectionalLight(0xffffff, L.directional);
+    sun.position.set(-200, 500, 300);
+    this.scene.add(sun);
+
+    this.camera = new THREE.PerspectiveCamera(CAMERA_FOV, window.innerWidth / window.innerHeight, CAMERA_NEAR, CAMERA_FAR);
+    this.resize(window.innerWidth, window.innerHeight);
+
+    // --- tiles (same plugin set as 3DTD, minus its game-specific ones) ---
+    const tiles = new TilesRenderer();
+    this.tiles = tiles;
+    tiles.registerPlugin(new GoogleCloudAuthPlugin({ apiToken: this.apiKey, autoRefreshToken: true }));
+    if (plugins.TileCompressionPlugin) tiles.registerPlugin(new plugins.TileCompressionPlugin());
+    if (plugins.UpdateOnChangePlugin) tiles.registerPlugin(new plugins.UpdateOnChangePlugin());
+    if (plugins.UnloadTilesPlugin) tiles.registerPlugin(new plugins.UnloadTilesPlugin({ delay: S.unloadDelayMs }));
+    if (S.fade && plugins.TilesFadePlugin) tiles.registerPlugin(new plugins.TilesFadePlugin());
+    if (plugins.GLTFExtensionsPlugin) {
+      tiles.registerPlugin(new plugins.GLTFExtensionsPlugin({ dracoLoader: new DRACOLoader().setDecoderPath(WORLD3D_CONFIG.dracoDecoderPath) }));
+    }
+    // Streaming budget.
+    tiles.errorTarget = S.errorTarget;
+    tiles.errorFalloff = S.errorFalloff;
+    tiles.errorFalloffDensity = S.errorFalloffDensity;
+    if (tiles.downloadQueue) tiles.downloadQueue.maxJobsPerOrigin = S.maxDownloads;
+    if (tiles.parseQueue) tiles.parseQueue.maxJobs = S.maxParseJobs;
+    if (tiles.lruCache) { tiles.lruCache.minBytesSize = S.lruMinBytes; tiles.lruCache.maxBytesSize = S.lruMaxBytes; }
+    tiles.autoDisableRendererCulling = false;
+
+    this.scene.add(tiles.group);
+    tiles.setCamera(this.camera);
+    tiles.setResolutionFromRenderer(this.camera, this.renderer);
+
+    this.status = 'loading';
+    tiles.addEventListener('load-tile-set', () => { this.loadedAny = true; });
+    tiles.addEventListener('load-model', () => { this.loadedAny = true; if (this.onTilesChanged) this.onTilesChanged(); });
+    tiles.addEventListener('tiles-load-end', () => { if (this.status === 'loading') this.status = 'ready'; if (this.onTilesChanged) this.onTilesChanged(); });
+    tiles.addEventListener('load-error', (e) => {
+      const msg = String((e && (e.error && e.error.message || e.message)) || 'tile load error');
+      if (!this.loadedAny) { this.status = 'error'; this.errorText = msg; }
+      console.warn('[Google3DWorld] load-error:', msg);
+    });
+  }
+
+  // Re-orient the (ECEF) tiles so the geo origin is the scene origin, Y up.
+  setOrigin(geo) {
+    this.geo = geo;
+    const g = this.tiles.group;
+    g.matrixAutoUpdate = false;
+    g.matrix.set(...geo.tilesGroupMatrix());
+    g.matrixWorldNeedsUpdate = true;
+    g.updateMatrixWorld(true);
+    if (this.onTilesChanged) this.onTilesChanged();
+  }
+
+  resize(w, h) {
+    if (!this.renderer) return;
+    this.renderer.setSize(w, h, false);
+    this.camera.aspect = w / h;
+    this.camera.updateProjectionMatrix();
+    if (this.tiles) this.tiles.setResolutionFromRenderer(this.camera, this.renderer);
+  }
+
+  render(pose) {
+    const c = this.camera;
+    c.position.set(pose.px, pose.py, pose.pz);
+    c.up.set(0, 1, 0);
+    c.lookAt(pose.tx, pose.ty, pose.tz);
+    c.fov = pose.fovDeg; c.near = pose.near; c.far = pose.far; c.aspect = pose.aspect;
+    c.updateProjectionMatrix();
+    c.updateMatrixWorld();
+    this.tiles.update();
+    this.renderer.render(this.scene, c);
+  }
+
+  _visibleHits(hits) {
+    const group = this.tiles.group, out = [];
+    for (const h of hits) {
+      let o = h.object, vis = true;
+      while (o && o !== group) { if (!o.visible) { vis = false; break; } o = o.parent; }
+      if (vis) out.push(h);
+    }
+    return out;
+  }
+
+  // Lowest surface in the vertical column at scene (x, z): the street/ground
+  // (roofs and canopies are higher hits). null when no tile covers it yet.
+  probeHeight(x, z) {
+    if (!this.tiles) return null;
+    this._origin.set(x, WORLD3D_CONFIG.terrain.probeTopY, z);
+    this._raycaster.set(this._origin, this._down);
+    this._raycaster.near = 0; this._raycaster.far = 2 * WORLD3D_CONFIG.terrain.probeTopY;
+    const hits = this._visibleHits(this._raycaster.intersectObject(this.tiles.group, true));
+    if (!hits.length) return null;
+    return hits[hits.length - 1].point.y;
+  }
+
+  // Everything the segment a -> b ({x,y,z}) passes through, nearest first.
+  raycastSegment(a, b) {
+    if (!this.tiles) return [];
+    this._origin.set(a.x, a.y, a.z);
+    this._dir.set(b.x - a.x, b.y - a.y, b.z - a.z);
+    const len = this._dir.length();
+    if (len < 1e-3) return [];
+    this._dir.divideScalar(len);
+    this._raycaster.set(this._origin, this._dir);
+    this._raycaster.near = 0; this._raycaster.far = len;
+    return this._visibleHits(this._raycaster.intersectObject(this.tiles.group, true)).map((h) => ({ object: h.object, distance: h.distance, point: h.point }));
+  }
+
+  get loadProgress() { return this.tiles && typeof this.tiles.loadProgress === 'number' ? this.tiles.loadProgress : 0; }
+
+  getAttributionText() {
+    try {
+      const attr = this.tiles.getAttributions() || [];
+      const s = attr.filter((a) => a.type === 'string').map((a) => a.value);
+      return s.join('; ');
+    } catch (e) { return ''; }
+  }
+
+  dispose() {
+    try { this.tiles.dispose(); } catch (e) { /* ignore */ }
+    try { this.renderer.dispose(); } catch (e) { /* ignore */ }
+    this.status = 'idle';
+  }
+}
+
+// ---------------------------------------------------------------------
+// OcclusionService — HOOK ONLY (no visual effect yet).
+// ---------------------------------------------------------------------
+
+// Every ~100 ms casts the camera -> player(head) segment into the tiles and
+// records which tile meshes are in the way. A future building fade/x-ray
+// effect subscribes with onChange() and reads occluders. Note the game
+// sprites are drawn on a separate 2D canvas, so today they always draw on
+// top; true per-pixel occlusion would render them as billboards inside the
+// Three.js scene (depth-tested) and can reuse this same data.
+class OcclusionService {
+  constructor(backend, rig, geo) {
+    this.backend = backend; this.rig = rig; this.geo = geo;
+    this.occluded = false;
+    this.occluders = [];            // [{ object, distance, point }]
+    this.listeners = new Set();
+    this._last = 0;
+  }
+  onChange(fn) { this.listeners.add(fn); return () => this.listeners.delete(fn); }
+  update(nowMs, playerScene) {
+    const cfg = WORLD3D_CONFIG.occlusion;
+    if (!cfg.enabled || nowMs - this._last < cfg.intervalMs) return;
+    this._last = nowMs;
+    const head = { x: playerScene.x, y: playerScene.y + cfg.headHeightMeters, z: playerScene.z };
+    const hits = this.backend.raycastSegment({ x: this.rig.px, y: this.rig.py, z: this.rig.pz }, head);
+    const was = this.occluded;
+    const objs = new Set(hits.map((h) => h.object));
+    const changed = was !== (hits.length > 0) || objs.size !== this.occluders.length;
+    this.occluded = hits.length > 0;
+    this.occluders = hits;
+    if (changed) for (const fn of this.listeners) fn({ occluded: this.occluded, occluders: this.occluders });
+  }
+}
+
+// ---------------------------------------------------------------------
+// OSMGameplayData — OSM stays the source of gameplay information.
+// ---------------------------------------------------------------------
+
+class OSMGameplayData {
+  constructor(generated) {
+    this.generated = generated || null;
+    const area = (generated && generated.mapAreaData) || {};
+    this.buildings = (generated && generated.obstacles) || [];  // Obstacle[] (collision footprints)
+    this.roads = (generated && generated.roads) || [];          // Road[]
+    this.water = area.water || [];                              // raw OSM ways
+    this.parks = area.parks || [];
+  }
+  get available() { return !!this.generated; }
+}
+
+// ---------------------------------------------------------------------
+// GameplayWorldBridge — connects the existing Game to the 3D world.
+// ---------------------------------------------------------------------
+
+class GameplayWorldBridge {
+  constructor({ geo, backend, canvas3d, attributionEl, statusEl }) {
+    this.geo = geo;
+    this.backend = backend;
+    this.canvas3d = canvas3d;
+    this.attributionEl = attributionEl;
+    this.statusEl = statusEl;
+    this.rig = new GameplayCamera3D(geo);
+    this.terrain = new TerrainService((x, z) => backend.probeHeight(x, z), geo);
+    this.occlusion = new OcclusionService(backend, this.rig, geo);
+    this.osm = null;
+    this.active = false;
+    this._attrAt = 0;
+    this._footprintPx = 600;
+    this._tmp = {};
+    backend.onTilesChanged = () => this.terrain.invalidate();
+  }
+
+  setOSM(generated) { this.osm = new OSMGameplayData(generated); }
+
+  setVisible(v) { this.canvas3d.style.display = v ? 'block' : 'none'; this.active = v; if (this.attributionEl) this.attributionEl.style.display = v ? 'block' : 'none'; }
+
+  resize(w, h) { this.rig.setViewport(w, h); this.backend.resize(w, h); }
+
+  // ---- queries used by the game ----
+  groundHeightGame(gx, gy) { return this.terrain.getGroundHeightGame(gx, gy); }
+
+  // Camera hooks (Camera delegates to these in 3D mode).
+  project(gx, gy) {
+    const s = this.geo.gameToScene(gx, gy);
+    const y = this.terrain.getGroundHeight(s.x, s.z);
+    return this.rig.projectScene(s.x, y, s.z, this._tmp);
+  }
+  unproject(sx, sy) {
+    let planeY = this.rig.targetGround, hit = null;
+    for (let i = 0; i < 2; i++) { // second pass re-intersects at the height found under the first hit
+      hit = this.rig.groundPointAtScreen(sx, sy, planeY);
+      if (!hit) return null;
+      planeY = this.terrain.getGroundHeight(hit.x, hit.z);
+    }
+    return this.geo.sceneToGame(hit.x, hit.z);
+  }
+
+  // A canvas-sized object the spawner can use in place of the real canvas:
+  // sized so its half-diagonal equals the farthest visible-ground distance
+  // from the player, so zombies still spawn just outside the VISIBLE area.
+  spawnViewCanvas() {
+    const side = this._footprintPx * Math.SQRT2;
+    return { width: side, height: side };
+  }
+  _updateFootprint() {
+    const r = this.rig, W = r.width, H = r.height, maxM = WORLD3D_CONFIG.footprintMaxMeters;
+    let best = 0;
+    for (const [sx, sy] of [[0, 0], [W, 0], [0, H], [W, H]]) {
+      const p = r.groundPointAtScreen(sx, sy, r.targetGround);
+      const d = p ? Math.min(maxM, Math.hypot(p.x - r.tx, p.z - r.tz)) : maxM;
+      if (d > best) best = d;
+    }
+    this._footprintPx = best * this.geo.pxPerMeterX;
+  }
+
+  // Called by Game each frame BEFORE it draws the 2D overlay.
+  frame(game, dt) {
+    const p = game.player;
+    const cvs = game.canvas;
+    if (cvs.width !== this.rig.width || cvs.height !== this.rig.height) this.resize(cvs.width, cvs.height);
+
+    // Player ground height (synchronous probe, cached in the same grid).
+    const ps = this.geo.gameToScene(p.x, p.y);
+    const h = this.terrain.sampleNow(ps.x, ps.z);
+    if (h !== null) this.terrain.fallbackHeight = h;
+    const ground = h !== null ? h : this.terrain.fallbackHeight;
+    this.rig.zoom = CAMERA_ZOOM;
+    this.rig.update(dt, p.x, p.y, ground);
+
+    // Hand the 2D camera what the unchanged game code reads.
+    const cam = game.camera;
+    cam.x = this.rig.targetGX; cam.y = this.rig.targetGY;
+    cam.zoom = this.rig.pixelScale();
+
+    this.backend.render(this.rig.pose());
+    this.terrain.processQueue();
+    this._updateFootprint();
+    this.occlusion.update(performance.now(), { x: ps.x, y: ground, z: ps.z });
+    this._updateOverlayText(ground);
+  }
+
+  _updateOverlayText(ground) {
+    const now = performance.now();
+    if (now - this._attrAt < WORLD3D_CONFIG.attributionRefreshMs) return;
+    this._attrAt = now;
+    if (this.attributionEl && this.backend.getAttributionText) {
+      const t = this.backend.getAttributionText();
+      this.attributionEl.textContent = 'Google' + (t ? ' · ' + t : '');
+    }
+    if (this.statusEl) {
+      this.statusEl.textContent = `3D ${this.backend.status} · tiles ${(this.backend.loadProgress * 100).toFixed(0)}% · ground ${ground.toFixed(1)} m` + (this.occlusion.occluded ? ' · player occluded' : '');
+    }
+  }
+
+  // Wait (with a timeout) until there are tiles and a ground height at the
+  // spawn, rendering the view meanwhile so streaming actually progresses.
+  warmUp(game, spawnGame, onStatus) {
+    const cfg = WORLD3D_CONFIG.prepare;
+    const t0 = performance.now();
+    const ss = this.geo.gameToScene(spawnGame.x, spawnGame.y);
+    this.rig.setViewport(window.innerWidth, window.innerHeight);
+    this.backend.resize(window.innerWidth, window.innerHeight);
+    this.setVisible(true);
+    return new Promise((resolve) => {
+      const tick = () => {
+        const el = performance.now() - t0;
+        const h = this.terrain.sampleNow(ss.x, ss.z);
+        if (h !== null) { this.terrain.fallbackHeight = h; }
+        this.rig.snapTo(spawnGame.x, spawnGame.y, h !== null ? h : this.terrain.fallbackHeight);
+        try { this.backend.render(this.rig.pose()); } catch (e) { return resolve({ ok: false, reason: 'render error: ' + e.message }); }
+        if (this.backend.status === 'error') return resolve({ ok: false, reason: 'Google tiles error: ' + this.backend.errorText });
+        if (onStatus) onStatus(`Loading 3D city… ${(this.backend.loadProgress * 100).toFixed(0)}%`);
+        const settled = this.backend.loadProgress >= 1 || el > cfg.minSettleMs + 8000;
+        if (h !== null && settled && el > cfg.minSettleMs) return resolve({ ok: true, ground: h });
+        if (el > cfg.timeoutMs) return resolve({ ok: false, reason: h === null ? 'no 3D tiles at the spawn within ' + cfg.timeoutMs / 1000 + ' s' : 'timeout' });
+        requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+    });
+  }
+}
+
+// ---------------------------------------------------------------------
+// World3D facade
+// ---------------------------------------------------------------------
+
+// (a top-level const is not a window property; the rest of the game reads window.World3D)
+const World3D = {
+  bridge: null,
+  _backendFactory: null,   // tests inject a stand-in backend here
+
+  wanted() {
+    if (WORLD_RENDER_MODE !== '3D') return false;
+    return !!this._backendFactory || !!getGoogleMapsApiKey();
+  },
+
+  // origin / spawn: { lat, lng } / { x, y } game px. Returns the active
+  // bridge, or null (and logs why) so the caller falls back to the 2D map.
+  async prepare({ origin, spawn, generated, game, onStatus }) {
+    const fail = (why) => { console.warn('[World3D] falling back to the 2D map:', why); return null; };
+    try {
+      const geo = new GeoCoordinateSystem(origin.lat, origin.lng);
+      let bridge = this.bridge;
+      if (!bridge) {
+        const canvas3d = document.getElementById('world3dCanvas');
+        let backend;
+        if (this._backendFactory) {
+          backend = this._backendFactory(canvas3d);
+        } else {
+          if (onStatus) onStatus('Loading 3D engine…');
+          const libs = await loadWorld3DLibs();
+          backend = new Google3DWorld(canvas3d, libs, getGoogleMapsApiKey());
+          backend.init();
+        }
+        bridge = new GameplayWorldBridge({ geo, backend, canvas3d, attributionEl: document.getElementById('world3dAttribution'), statusEl: document.getElementById('world3dStatus') });
+        this.bridge = bridge;
+      } else {
+        bridge.geo = geo; bridge.rig.geo = geo; bridge.terrain.setGeo(geo); bridge.occlusion.geo = geo;
+      }
+      bridge.backend.setOrigin(geo);
+      bridge.setOSM(generated);
+      const res = await bridge.warmUp(game, spawn, onStatus);
+      if (!res.ok) { bridge.setVisible(false); return fail(res.reason); }
+      return bridge;
+    } catch (err) {
+      if (this.bridge) this.bridge.setVisible(false);
+      return fail((err && err.message) || String(err));
+    }
+  },
+
+  deactivate() { if (this.bridge) this.bridge.setVisible(false); },
+};
+window.World3D = World3D;
 
   </script>
 </body>
