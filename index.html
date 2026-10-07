@@ -28,6 +28,17 @@ html, body {
   height: 100vh;
 }
 
+/* 3D world run: the MapTiler map sits behind the (now transparent) game canvas. */
+#world3dMap {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 0;
+  display: none;
+}
+#gameContainer.world3d-active #gameCanvas { background: transparent; }
 #gameCanvas {
   position: absolute;
   top: 0;
@@ -1377,6 +1388,7 @@ const EMBEDDED_ASSETS = {
 <body>
 
   <div id="gameContainer">
+    <div id="world3dMap"></div>
     <canvas id="gameCanvas"></canvas>
 
     <!-- ===================== HUD (DOM overlay) ===================== -->
@@ -2866,6 +2878,7 @@ class Camera {
     this.x = 0; // world-space position the camera is centered on
     this.y = 0;
     this.zoom = CAMERA_ZOOM; // see CAMERA_ZOOM above
+    this.rig3d = null;       // the MapTilerGameWorld during a 3D run, else null
   }
 
   follow(targetX, targetY) {
@@ -2885,6 +2898,12 @@ class Camera {
   // `canvas` here is the zoomed view size from viewSize(); the result is
   // in the (pre-zoom) coordinates the scaled drawing context expects.
   worldToScreen(wx, wy, canvas) {
+    if (this.rig3d) {
+      // 3D run: project through the map camera at the terrain height under the
+      // point. `zoom` is then the per-frame art scale (screen px per game px).
+      const s = this.rig3d.project(wx, wy, {});
+      return { x: s.x / this.zoom, y: s.y / this.zoom };
+    }
     return {
       x: wx - this.x + canvas.width / 2,
       y: wy - this.y + canvas.height / 2,
@@ -2894,6 +2913,10 @@ class Camera {
   // Takes REAL screen pixels (e.g. the mouse position) and the real
   // canvas, and undoes the zoom to give the true world position.
   screenToWorld(sx, sy, canvas) {
+    if (this.rig3d) {
+      const w = this.rig3d.unproject(sx, sy);
+      return w || { x: this.x, y: this.y }; // cursor above the horizon: keep the last aim point
+    }
     return {
       x: this.x + (sx - canvas.width / 2) / this.zoom,
       y: this.y + (sy - canvas.height / 2) / this.zoom,
@@ -4548,7 +4571,16 @@ class Player extends Entity {
     this.y = Utils.clamp(this.y, this.radius, worldHeight - this.radius);
   }
 
-  handleAim(input, canvas, zoom = 1) {
+  handleAim(input, canvas, zoom = 1, camera = null) {
+    if (camera && camera.rig3d) {
+      // 3D run: the view is pitched, so screen angle != world angle. Aim at the
+      // world point under the cursor instead (same facing logic afterwards).
+      const t = camera.screenToWorld(input.mouseX, input.mouseY, canvas);
+      this.aimTarget = t;
+      this.aimAngle = Math.atan2(t.y - this.y, t.x - this.x);
+      this.facing = Utils.directionFromVector(Math.cos(this.aimAngle), Math.sin(this.aimAngle), this.facing);
+      return;
+    }
     // Player is always rendered at screen center, so aim angle is just
     // the angle from the canvas center to the mouse cursor.
     this.aimAngle = Utils.angleBetween(canvas.width / 2, canvas.height / 2, input.mouseX, input.mouseY);
@@ -4646,9 +4678,12 @@ class Player extends Entity {
   }
 
   draw(ctx, camera, canvas) {
-    // Player is always screen-centered.
-    const cx = canvas.width / 2;
-    const cy = canvas.height / 2;
+    // 2D: the camera is centred on the player, so this is the screen centre.
+    // 3D run: it is the player's projected position on the terrain, and the
+    // sprite is lifted so its FEET (not its centre) stand on that ground point.
+    const pp = camera.worldToScreen(this.x, this.y, canvas);
+    const cx = pp.x;
+    const cy = pp.y - (camera.rig3d && GAME3D.feetAnchor ? BUILDING_OCCLUSION_CONFIG.playerFeetOffset * PLAYER_SCALE : 0);
 
     ctx.save();
 
@@ -5436,6 +5471,7 @@ class Game {
   _resizeCanvas() {
     this.canvas.width = window.innerWidth;
     this.canvas.height = window.innerHeight;
+    if (this.world3d) this.world3d.resize();
   }
 
   _bindUI() {
@@ -5586,9 +5622,84 @@ class Game {
     this.hud.hideWeaponUnlockBanner();
     this.camera.follow(this.player.x, this.player.y);
 
+    // 3D world: CitySelectFlow hands over the entered MapTilerGameWorld (or
+    // null = the 2D map) just before start(). A restart keeps the current one.
+    if (this._pendingWorld !== undefined) {
+      if (this.world3d && this.world3d !== this._pendingWorld) this.world3d.exit();
+      this.world3d = this._pendingWorld;
+      this._pendingWorld = undefined;
+    }
+    this._attachWorld3d();
+
     this.state = 'playing';
     this._lastTimestamp = null;
     requestAnimationFrame((t) => this._loop(t));
+  }
+
+  // ---- 3D MapTiler world (stage 2: player, movement, camera, collision only) ----
+  _attachWorld3d() {
+    const container = document.getElementById('gameContainer');
+    const quitBtn = document.getElementById('pauseSaveQuitBtn');
+    if (this._saveQuitLabel === undefined) this._saveQuitLabel = quitBtn.innerHTML;
+    if (this.world3d) {
+      this.world3d.game = this;
+      this.world3d.snapCamera(this.player.x, this.player.y);
+      this.camera.rig3d = this.world3d;
+      container.classList.add('world3d-active');
+      quitBtn.textContent = 'Quit to Menu'; // a 3D run can't be saved/resumed yet
+    } else {
+      this.camera.rig3d = null;
+      this.camera.zoom = CAMERA_ZOOM;
+      container.classList.remove('world3d-active');
+      quitBtn.innerHTML = this._saveQuitLabel;
+    }
+  }
+
+  _leaveWorld3d() {
+    if (!this.world3d) return;
+    this.world3d.exit();
+    this.world3d = null;
+    this._attachWorld3d();
+    this.ctx.setTransform(1, 0, 0, 1, 0, 0);
+    this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+  }
+
+  // Per-frame update in a 3D run: ONLY the player (existing movement, sprint,
+  // stamina and existing building collision). Zombies, spawning, weapons,
+  // shooting and pickups are intentionally not run in this stage.
+  _updateWorld3D(dt) {
+    const world = CONFIG.WORLD;
+    this.survivalTime += dt;
+    this.player.handleMovement(this.input, dt, world.width, world.height, this.obstacles);
+    this.player.handleAim(this.input, this.canvas, this.camera.zoom, this.camera);
+    this.player.update(dt);
+    this.camera.follow(this.player.x, this.player.y);
+    if (this.input.wasPressed(GAME3D.collisionDebugKey)) this.world3d.toggleCollisionDebug();
+    this.hud.update({ player: this.player, zombies: this.zombies, survivalTime: this.survivalTime });
+  }
+
+  // Gameplay layer for a 3D run. Called by the map from inside its own render
+  // callback, with the matrix that frame was drawn with (see MapTilerGameWorld).
+  _renderWorld3D() {
+    const w = this.world3d, ctx = this.ctx, rc = this.canvas;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, rc.width, rc.height);
+    if (!w || !this.player || !w.hasMatrix() || !w.snapshot) return;
+    const snap = w.snapshot;
+    const k = w.pixelScaleAt(snap.px, snap.py); // art scale at the player
+    this.camera.zoom = k;
+    const view = this.camera.viewSize(rc);
+    ctx.save();
+    ctx.scale(k, k);
+    w.drawBoundary(ctx, this.camera, view);
+    w.drawCollisionDebug(ctx, this.camera, view, this.obstacles);
+    // Draw the player where it was when this camera frame was set (not where
+    // the next game tick will move it), so sprite and map never disagree.
+    const sx = this.player.x, sy = this.player.y;
+    this.player.x = snap.px; this.player.y = snap.py;
+    this.player.draw(ctx, this.camera, view);
+    this.player.x = sx; this.player.y = sy;
+    ctx.restore();
   }
 
   // FALLBACK synthetic obstacles — real buildings (MapGenerator, Phase
@@ -5665,6 +5776,16 @@ class Game {
   _saveAndQuit() {
     if (this.state !== 'paused') return;
     Sound.uiClick();
+    if (this.world3d) {
+      // A 3D run has no saved form yet (the geographic world is not part of
+      // the save), so this just returns to the menu.
+      this._leaveWorld3d();
+      this.hud.hideWeaponUnlockBanner();
+      this.state = 'gameover'; // also what stops the frame loop (see _loop)
+      document.getElementById('pauseScreen').classList.add('hidden');
+      document.getElementById('startScreen').classList.remove('hidden');
+      return;
+    }
     const msg = document.getElementById('pauseMessage');
     let ok = false;
     try { ok = SavedRun.save(this._serializeRun()); } catch (e) { ok = false; }
@@ -5747,6 +5868,7 @@ class Game {
       generated = { obstacles, roads, mapAreaData: null };
     }
     this.currentCityName = save.cityName || '';
+    this._pendingWorld = null; // saved runs carry no geographic origin: the 2D map
     this.start(save.spawn, generated);
 
     // --- saved state on top of the fresh run ---
@@ -5820,8 +5942,13 @@ class Game {
     }
 
     if (this.state === 'playing') {
-      this._update(dt);
-      this._render();
+      if (this.world3d) {
+        this._updateWorld3D(dt);
+        this.world3d.frame(dt); // moves the map camera; the overlay is drawn from the map's render callback
+      } else {
+        this._update(dt);
+        this._render();
+      }
     }
     // While paused, we simply skip _update/_render, which freezes the
     // last drawn frame in place (weapon cooldowns, reload timers, zombie
@@ -9168,12 +9295,19 @@ class CitySelectFlow {
       this._generateTimeout = setTimeout(resolve, 900);
     });
 
+    // 3D world: the SELECTED spawn point becomes the geographic origin of the
+    // run (world centre = spawn), so the OSM collision data, the game world and
+    // the MapTiler map all share it. Otherwise: the city centre, as before.
+    const sel3d = this.selectedLatLng && game3dWanted() ? this.selectedLatLng : null;
+    if (sel3d) this.coordinateConverter = new CoordinateConverter(sel3d.lat, sel3d.lng);
+    const genCenter = sel3d ? { lat: sel3d.lat, lng: sel3d.lng } : { lat: this.selectedCity.lat, lng: this.selectedCity.lng };
+
     let generated = null;
     let failure = null;
     try {
       const [result] = await Promise.all([
         MapGenerator.generate(
-          { lat: this.selectedCity.lat, lng: this.selectedCity.lng },
+          genCenter,
           MAP_CONFIG.PLAYABLE_MAP_SIZE,
           window.mapDataService,
           this.coordinateConverter
@@ -9213,8 +9347,7 @@ class CitySelectFlow {
     this.mapGenFailedText.textContent = `Couldn't load real map data for ${this.cityName} (${reason}).`;
   }
 
-  _finish(generated) {
-    this.screens.generating.classList.add('hidden');
+  async _finish(generated) {
 
     // Real mode: proper latitude-corrected coordinate conversion (Phase 3).
     // Test mode: the placeholder grid's normalized-point math (unrelated
@@ -9224,6 +9357,24 @@ class CitySelectFlow {
       ? this.coordinateConverter.latLngToWorldPixels(this.selectedLatLng.lat, this.selectedLatLng.lng)
       : this._placeholderNormPointToWorld(this.selectedPoint.normX, this.selectedPoint.normY);
 
+    // 3D world (MapTiler terrain + buildings): create the map at the selected
+    // point and wait for it first, with the "Generating" screen still up. Any
+    // problem -> the existing 2D map, with the reason in the console.
+    let world = null;
+    if (this.selectedLatLng && game3dWanted()) {
+      this.generatingText.textContent = `Loading the 3D map of ${this.cityName}…`;
+      if (this.game.world3d) { this.game.world3d.exit(); this.game.world3d = null; } // never two maps in one container
+      const w = new MapTilerGameWorld(this.game);
+      const r = await w.enter(this.selectedLatLng);
+      if (r.ok) {
+        world = w;
+        if (!generated) generated = { obstacles: [], roads: [] }; // no real collision data: don't invent synthetic blocks in a real city
+      } else {
+        console.warn('[3D world] falling back to the 2D map:', r.reason);
+      }
+    }
+    this.screens.generating.classList.add('hidden');
+    this.game._pendingWorld = world; // null = 2D map
     this.game.currentCityName = this.cityName || '';
     this.game.start({ x, y }, generated);
   }
@@ -9420,6 +9571,56 @@ const PROTO3D = {
 };
 
 // ---------------------------------------------------------------------
+// Shared MapTiler world setup — used by BOTH this prototype and the game's
+// 3D world (gameworld3d.js), so they show exactly the same terrain/buildings.
+// ---------------------------------------------------------------------
+
+function mapTilerFirstSymbolLayerId(map) {
+  const l = map.getStyle().layers.find((x) => x.type === 'symbol');
+  return l ? l.id : undefined;
+}
+
+// MapTiler terrain-rgb-v2 DEM tiles (raster-dem). Each pixel's RGB encodes
+// elevation: height_m = -10000 + (R*65536 + G*256 + B) * 0.1. MapLibre
+// decodes them on the GPU and displaces a mesh with them.
+function mapTilerAddTerrain(map, key, exaggeration) {
+  map.addSource('proto-dem', { type: 'raster-dem', url: PROTO3D.demTilesUrl(key), tileSize: 256 });
+  map.addLayer({ id: 'proto-hillshade', type: 'hillshade', source: 'proto-dem', paint: { 'hillshade-exaggeration': 0.35 } }, mapTilerFirstSymbolLayerId(map));
+  map.setTerrain({ source: 'proto-dem', exaggeration });
+}
+
+// 3D buildings: the style's vector source (OpenMapTiles schema) has a
+// `building` layer whose features carry render_height / render_min_height
+// in meters. The flat building fills are hidden and a fill-extrusion layer
+// draws the same polygons at those heights. Returns { vectorSource, hiddenFlatLayers }.
+function mapTilerAddBuildings(map) {
+  const style = map.getStyle();
+  const srcLayer = style.layers.find((l) => l['source-layer'] === 'building' && l.source);
+  if (!srcLayer) throw new Error("no 'building' layer found in the style");
+  const vectorSource = srcLayer.source;
+  const hiddenFlatLayers = [];
+  for (const l of style.layers) {
+    if (l['source-layer'] === 'building' && l.id !== 'proto-3d-buildings') { map.setLayoutProperty(l.id, 'visibility', 'none'); hiddenFlatLayers.push(l.id); }
+  }
+  map.addLayer({
+    id: 'proto-3d-buildings',
+    type: 'fill-extrusion',
+    source: vectorSource,
+    'source-layer': 'building',
+    minzoom: PROTO3D.buildingMinZoom,
+    filter: ['!=', ['get', 'hide_3d'], true], // parents that are drawn as separate building:parts
+    paint: {
+      'fill-extrusion-color': PROTO3D.buildingColor,
+      'fill-extrusion-height': ['coalesce', ['to-number', ['get', 'render_height']], 0],
+      'fill-extrusion-base': ['coalesce', ['to-number', ['get', 'render_min_height']], 0],
+      'fill-extrusion-opacity': 1,
+      'fill-extrusion-vertical-gradient': true,
+    },
+  }, mapTilerFirstSymbolLayerId(map));
+  return { vectorSource, hiddenFlatLayers };
+}
+
+// ---------------------------------------------------------------------
 // Web-Mercator math (identical formulas to MapLibre's MercatorCoordinate,
 // including its 6371008.8 m "earth radius" for meter-scale), so scene meters
 // and the map's meters are the same meters.
@@ -9582,53 +9783,21 @@ class MapTiler3DPrototype {
     this._render();
   }
 
-  _firstSymbolLayerId() {
-    const l = this.map.getStyle().layers.find((x) => x.type === 'symbol');
-    return l ? l.id : undefined;
-  }
+  _firstSymbolLayerId() { return mapTilerFirstSymbolLayerId(this.map); }
 
-  // TERRAIN: MapTiler's terrain-rgb-v2 DEM tiles (raster-dem). Each pixel's
-  // RGB encodes elevation: height_m = -10000 + (R*65536 + G*256 + B) * 0.1.
-  // MapLibre decodes the tiles on the GPU and displaces a mesh with them.
+  // TERRAIN + BUILDINGS: see mapTilerAddTerrain / mapTilerAddBuildings above.
   _setupTerrain() {
     try {
-      const key = MAP_CONFIG.maptilerApiKey;
-      this.map.addSource('proto-dem', { type: 'raster-dem', url: PROTO3D.demTilesUrl(key), tileSize: 256 });
-      this.map.addLayer({ id: 'proto-hillshade', type: 'hillshade', source: 'proto-dem', paint: { 'hillshade-exaggeration': 0.35 } }, this._firstSymbolLayerId());
-      this.map.setTerrain({ source: 'proto-dem', exaggeration: this.exaggeration });
+      mapTilerAddTerrain(this.map, MAP_CONFIG.maptilerApiKey, this.exaggeration);
       this.status.terrain = 'on (terrain-rgb-v2)';
     } catch (err) { this.status.terrain = 'FAILED: ' + err.message; }
   }
 
-  // BUILDINGS: the style's vector source (OpenMapTiler schema) has a
-  // `building` layer; each feature carries render_height and
-  // render_min_height in meters. The flat building fills are hidden and a
-  // fill-extrusion layer draws the same polygons at those heights.
   _setupBuildings() {
     try {
-      const style = this.map.getStyle();
-      const srcLayer = style.layers.find((l) => l['source-layer'] === 'building' && l.source);
-      if (!srcLayer) throw new Error("no 'building' layer found in the style");
-      this.vectorSource = srcLayer.source;
-      this.hiddenFlatLayers = [];
-      for (const l of style.layers) {
-        if (l['source-layer'] === 'building' && l.id !== 'proto-3d-buildings') { this.map.setLayoutProperty(l.id, 'visibility', 'none'); this.hiddenFlatLayers.push(l.id); }
-      }
-      this.map.addLayer({
-        id: 'proto-3d-buildings',
-        type: 'fill-extrusion',
-        source: this.vectorSource,
-        'source-layer': 'building',
-        minzoom: PROTO3D.buildingMinZoom,
-        filter: ['!=', ['get', 'hide_3d'], true], // parents that are drawn as separate building:parts
-        paint: {
-          'fill-extrusion-color': PROTO3D.buildingColor,
-          'fill-extrusion-height': ['coalesce', ['to-number', ['get', 'render_height']], 0],
-          'fill-extrusion-base': ['coalesce', ['to-number', ['get', 'render_min_height']], 0],
-          'fill-extrusion-opacity': 1,
-          'fill-extrusion-vertical-gradient': true,
-        },
-      }, this._firstSymbolLayerId());
+      const r = mapTilerAddBuildings(this.map);
+      this.vectorSource = r.vectorSource;
+      this.hiddenFlatLayers = r.hiddenFlatLayers;
       this.status.buildings = `on (source "${this.vectorSource}", layer "building")`;
     } catch (err) { this.status.buildings = 'FAILED: ' + err.message; }
   }
@@ -9916,6 +10085,384 @@ class MapTiler3DPrototype {
 function BigRound(v) { return Math.round(v * 10) / 10; }
 
 window.addEventListener('DOMContentLoaded', () => { window.proto3d = new MapTiler3DPrototype(); });
+
+  </script>
+  <script>
+/**
+ * gameworld3d.js — STAGE 2: the real game world on the 3D MapTiler map.
+ *
+ * Scope (and only this): city/spawn selection -> 3D world, the peanut as a
+ * 2D sprite standing on the terrain, existing movement controls, a 3/4
+ * follow camera, ground placement, and the EXISTING building collision.
+ * No zombies, weapons, shooting or visual restyling are connected here.
+ *
+ *   MapTiler SDK map (#world3dMap, behind, non-interactive)   <- the world
+ *        terrain-rgb-v2 DEM + building extrusions (same helpers as the prototype)
+ *   #gameCanvas (transparent, in front)                       <- the gameplay layer
+ *        the peanut sprite, projected onto the terrain
+ *
+ * How the two stay locked together: a MapLibre "custom layer" is added on
+ * top of the map. MapLibre calls its render() every frame with the exact
+ * matrix it renders its own 3D content with (Mercator coords incl. altitude
+ * -> clip space). We project the player with that matrix and draw the
+ * overlay inside that same callback, so the sprite and the map always
+ * belong to the same camera frame. The game drives the camera: each frame
+ * it jumpTo()s the map to follow the peanut.
+ *
+ * Coordinates (all conversions go through MapTilerCoordinateBridge):
+ *   gameplay (game px, 3600 x 3600 = 800 m, y grows south)  <- movement,
+ *        collision and the existing obstacles live here, unchanged
+ *   <-> local meters (east, north) <-> lat/lng              (CoordinateConverter)
+ *   <-> Mercator (+ terrain altitude in meters)             -> screen via the map matrix
+ * The origin (world center, game px 1800,1800) is the location selected.
+ */
+
+const GAME3D = {
+  // Master switch. Also: add ?mode=2d to the URL to force the original 2D map.
+  enabled: true,
+  pitch: 60,                // degrees from straight down; 3/4 action-game angle
+  bearing: 0,               // north is up the screen, like the game's own axes
+  maxPitch: 85,
+  followSmoothing: 10,      // 1/s; higher = tighter, 0 = rigidly locked to the player
+  terrainExaggeration: 1,   // true scale
+  tileSizePx: 512,          // MapLibre's world size at zoom z is tileSizePx * 2^z
+  feetAnchor: true,         // stand the sprite's feet on the ground point (not its centre)
+  enterTimeoutMs: 25000,    // how long to wait for the map + terrain before falling back to 2D
+  boundaryColor: 'rgba(231, 76, 60, 0.8)',
+  collisionDebugKey: 'F2',  // toggles collision rectangles + footprints (debug)
+};
+
+// Is the 3D world usable right now? (SDK loaded, real MapTiler key, a real
+// geographic location — never in Test Mode, which has no lat/lng.)
+function game3dWanted() {
+  if (!GAME3D.enabled) return false;
+  if (/[?&]mode=2d\b/.test(location.search)) return false;
+  if (typeof maptilersdk === 'undefined') return false;
+  if (!MAP_CONFIG.maptilerApiKey) return false;
+  if (MAP_CONFIG.resolveTestMode && MAP_CONFIG.resolveTestMode()) return false;
+  return true;
+}
+
+// ---- tiny column-major 4x4 helpers (MapLibre's matrix layout) ----
+const GW_M4 = {
+  // clip = M * [x, y, z, 1]
+  apply(m, x, y, z) {
+    return [
+      m[0] * x + m[4] * y + m[8] * z + m[12],
+      m[1] * x + m[5] * y + m[9] * z + m[13],
+      m[2] * x + m[6] * y + m[10] * z + m[14],
+      m[3] * x + m[7] * y + m[11] * z + m[15],
+    ];
+  },
+  invert(m) {
+    const a = m, o = new Array(16);
+    const b00 = a[0] * a[5] - a[1] * a[4], b01 = a[0] * a[6] - a[2] * a[4], b02 = a[0] * a[7] - a[3] * a[4];
+    const b03 = a[1] * a[6] - a[2] * a[5], b04 = a[1] * a[7] - a[3] * a[5], b05 = a[2] * a[7] - a[3] * a[6];
+    const b06 = a[8] * a[13] - a[9] * a[12], b07 = a[8] * a[14] - a[10] * a[12], b08 = a[8] * a[15] - a[11] * a[12];
+    const b09 = a[9] * a[14] - a[10] * a[13], b10 = a[9] * a[15] - a[11] * a[13], b11 = a[10] * a[15] - a[11] * a[14];
+    let det = b00 * b11 - b01 * b10 + b02 * b09 + b03 * b08 - b04 * b07 + b05 * b06;
+    if (!det) return null;
+    det = 1 / det;
+    o[0] = (a[5] * b11 - a[6] * b10 + a[7] * b09) * det; o[1] = (a[2] * b10 - a[1] * b11 - a[3] * b09) * det;
+    o[2] = (a[13] * b05 - a[14] * b04 + a[15] * b03) * det; o[3] = (a[10] * b04 - a[9] * b05 - a[11] * b03) * det;
+    o[4] = (a[6] * b08 - a[4] * b11 - a[7] * b07) * det; o[5] = (a[0] * b11 - a[2] * b08 + a[3] * b07) * det;
+    o[6] = (a[14] * b02 - a[12] * b05 - a[15] * b01) * det; o[7] = (a[8] * b05 - a[10] * b02 + a[11] * b01) * det;
+    o[8] = (a[4] * b10 - a[5] * b08 + a[7] * b06) * det; o[9] = (a[1] * b08 - a[0] * b10 - a[3] * b06) * det;
+    o[10] = (a[12] * b04 - a[13] * b02 + a[15] * b00) * det; o[11] = (a[9] * b02 - a[8] * b04 - a[11] * b00) * det;
+    o[12] = (a[5] * b07 - a[4] * b09 - a[6] * b06) * det; o[13] = (a[0] * b09 - a[1] * b07 + a[2] * b06) * det;
+    o[14] = (a[13] * b01 - a[12] * b03 - a[14] * b00) * det; o[15] = (a[8] * b03 - a[9] * b01 + a[10] * b00) * det;
+    return o;
+  },
+};
+
+class MapTilerGameWorld {
+  constructor(game) {
+    this.game = game;
+    this.container = document.getElementById('world3dMap');
+    this.map = null;
+    this.bridge = null;
+    this.matrix = null;          // latest MapLibre custom-layer matrix (Mercator+altitude -> clip)
+    this._inv = null;
+    this.snapshot = null;        // camera + player state the current map frame belongs to
+    this.camX = 0; this.camY = 0; // smoothed camera target, game px
+    this.lastGround = 0;         // last good terrain elevation under the player (displayed meters)
+    this.centerErr = { x: 0, y: 0 };
+    this.terrainOk = false;
+    this.buildingsOk = false;
+    this.showCollision = /[?&]debugCollision\b/.test(location.search);
+    this.boundary = null;
+    this.boundaryDirty = true;
+  }
+
+  // ---- lifecycle -----------------------------------------------------------
+  // Creates the map at the selected location and waits until it (and its
+  // terrain) are usable. Resolves { ok, reason }.
+  enter({ lat, lng }) {
+    return new Promise((resolve) => {
+      let done = false;
+      const finish = (r) => { if (done) return; done = true; clearInterval(poll); clearTimeout(timer); resolve(r); };
+      this.bridge = new MapTilerCoordinateBridge(lat, lng);
+      this.camX = this.bridge.worldW / 2; this.camY = this.bridge.worldH / 2;
+      this.container.style.display = 'block';
+      try {
+        maptilersdk.config.apiKey = MAP_CONFIG.maptilerApiKey;
+        this.map = new maptilersdk.Map({
+          container: this.container,
+          style: maptilersdk.MapStyle.STREETS,
+          center: [lng, lat],
+          zoom: this.targetZoom(),
+          pitch: GAME3D.pitch,
+          bearing: GAME3D.bearing,
+          maxPitch: GAME3D.maxPitch,
+          interactive: false, // the game owns the camera
+        });
+      } catch (err) { this.exit(); return resolve({ ok: false, reason: 'map creation failed: ' + err.message }); }
+
+      this.map.on('error', (e) => console.warn('[GameWorld3D] map error:', e && e.error && e.error.message));
+      this.map.on('sourcedata', (e) => { if (e.sourceId === 'proto-dem' && e.isSourceLoaded) this.boundaryDirty = true; });
+      this.map.on('load', () => {
+        try { mapTilerAddTerrain(this.map, MAP_CONFIG.maptilerApiKey, GAME3D.terrainExaggeration); this.terrainOk = true; } catch (err) { console.warn('[GameWorld3D] terrain failed:', err.message); }
+        try { mapTilerAddBuildings(this.map); this.buildingsOk = true; } catch (err) { console.warn('[GameWorld3D] buildings failed:', err.message); }
+        this.map.addLayer(this._projectionLayer());
+        this.loaded = true;
+      });
+      // Ready = loaded + the DEM tile under the spawn is in (so the very first
+      // frame already puts the peanut on the ground), or terrain is unavailable.
+      const poll = setInterval(() => {
+        if (!this.loaded) return;
+        const e = this.elevationAtGame(this.camX, this.camY);
+        if (e !== null) { this.lastGround = e; return finish({ ok: true, terrain: true }); }
+        if (!this.terrainOk && this.map.loaded()) return finish({ ok: true, terrain: false });
+      }, 200);
+      const timer = setTimeout(() => {
+        if (this.loaded) finish({ ok: true, terrain: false, note: 'terrain tiles did not arrive in time; standing on flat ground' });
+        else { this.exit(); finish({ ok: false, reason: 'the MapTiler map did not load in time' }); }
+      }, GAME3D.enterTimeoutMs);
+    });
+  }
+
+  exit() {
+    if (this.map) { try { this.map.remove(); } catch (e) { /* ignore */ } this.map = null; }
+    this.loaded = false; this.matrix = null; this._inv = null;
+    this.container.style.display = 'none';
+  }
+
+  resize() { if (this.map) this.map.resize(); }
+
+  // ---- camera ----------------------------------------------------------------
+  // The zoom at which one game pixel is drawn CAMERA_ZOOM screen pixels wide:
+  // the game's existing look. MapLibre: world size = tileSize*2^z px per
+  // Mercator unit, so screen px per meter at the centre = tileSize*2^z*unitsPerMeter.
+  targetZoom() {
+    const b = this.bridge;
+    const pxPerMeterGame = b.pxPerMeterX;                   // game px per meter (4.5)
+    const desired = pxPerMeterGame * CAMERA_ZOOM;           // screen px per meter
+    return Math.log2(desired / (GAME3D.tileSizePx * Mercator.unitsPerMeter(b.originLat)));
+  }
+
+  // Called once per game frame, after the game has updated the player.
+  frame(dt) {
+    if (!this.map || !this.game.player) return;
+    const p = this.game.player;
+    const a = GAME3D.followSmoothing > 0 ? 1 - Math.exp(-GAME3D.followSmoothing * dt) : 1;
+    this.camX += (p.x - this.camX) * a;
+    this.camY += (p.y - this.camY) * a;
+    this.snapshot = { px: p.x, py: p.y, camX: this.camX, camY: this.camY };
+    const ll = this.bridge.gamePxToLatLng(this.camX, this.camY);
+    this.map.jumpTo({ center: [ll.lng, ll.lat], zoom: this.targetZoom(), pitch: GAME3D.pitch, bearing: GAME3D.bearing });
+    this.game.camera.x = this.camX; this.game.camera.y = this.camY;
+    this.map.triggerRepaint();
+  }
+
+  snapCamera(x, y) { this.camX = x; this.camY = y; }
+
+  // ---- terrain ------------------------------------------------------------------
+  // Displayed elevation in meters (true meters x exaggeration), or null when
+  // the DEM tile there has not loaded.
+  elevationAtLatLng(lat, lng) {
+    if (!this.map || !this.terrainOk) return null;
+    try { const e = this.map.queryTerrainElevation({ lng, lat }); return (e === null || e === undefined || !isFinite(e)) ? null : e; } catch (err) { return null; }
+  }
+  elevationAtGame(x, y) { const ll = this.bridge.gamePxToLatLng(x, y); return this.elevationAtLatLng(ll.lat, ll.lng); }
+
+  // ---- projection: game px (+ ground height) <-> screen px --------------------
+  _projectionLayer() {
+    const self = this;
+    return {
+      id: 'game-projection',
+      type: 'custom',
+      renderingMode: '3d',
+      onAdd() {},
+      render(gl, arg) {
+        // MapLibre 4.x passes the matrix; newer versions pass an options object.
+        const m = (arg && arg.length === 16) ? arg : (arg && (arg.modelViewProjectionMatrix || (arg.defaultProjectionData && arg.defaultProjectionData.mainMatrix)));
+        if (!m) return;
+        self.matrix = Array.from(m); self._inv = null;
+        self._measureCenterError();
+        self.game._renderWorld3D(); // the overlay is drawn from the very matrix this frame was rendered with
+      },
+    };
+  }
+
+  hasMatrix() { return !!this.matrix; }
+
+  // Mercator point (x,y) + altitude meters at latitude `lat` -> screen px (CSS px).
+  _projectMerc(mx, my, altMeters, lat, out) {
+    const m = this.matrix, W = this.game.canvas.width, H = this.game.canvas.height;
+    const c = GW_M4.apply(m, mx, my, altMeters * Mercator.unitsPerMeter(lat));
+    if (c[3] <= 1e-9) { out.x = -1e5; out.y = -1e5; out.visible = false; return out; }
+    out.x = (c[0] / c[3] + 1) / 2 * W - this.centerErr.x;
+    out.y = (1 - c[1] / c[3]) / 2 * H - this.centerErr.y;
+    out.visible = true;
+    return out;
+  }
+
+  // The map centre (lat/lng + terrain height) must land on the screen centre.
+  // Any residual (from a matrix-convention difference) is measured here and
+  // removed from every projection; it is exposed for diagnostics.
+  _measureCenterError() {
+    if (!this.map) return;
+    const c = this.map.getCenter();
+    const e = this.elevationAtLatLng(c.lat, c.lng) ?? this.lastGround;
+    const saved = this.centerErr; this.centerErr = { x: 0, y: 0 };
+    const mc = Mercator.fromLngLat(c.lng, c.lat);
+    const o = {}; this._projectMerc(mc.x, mc.y, e, c.lat, o);
+    this.centerErr = saved;
+    if (!o.visible) return;
+    this.centerErr = { x: o.x - this.game.canvas.width / 2, y: o.y - this.game.canvas.height / 2 };
+  }
+
+  // Game px -> screen px at the terrain height under that point. `lift` is extra meters.
+  project(gx, gy, out = {}) {
+    const ll = this.bridge.gamePxToLatLng(gx, gy);
+    let e = this.elevationAtLatLng(ll.lat, ll.lng);
+    if (e === null) e = this.lastGround;
+    const m = Mercator.fromLngLat(ll.lng, ll.lat);
+    return this._projectMerc(m.x, m.y, e, ll.lat, out);
+  }
+
+  // Screen px -> game px on the terrain. The cursor ray is marched down
+  // through the terrain heights (coarse steps to bracket the first crossing,
+  // then bisection). A flat-plane shortcut is not good enough: at the
+  // grazing angles near the top of a 60-degree view a slope moves the hit by
+  // many pixels.
+  unproject(sx, sy) {
+    if (!this.matrix) return null;
+    if (!this._inv) this._inv = GW_M4.invert(this.matrix);
+    if (!this._inv) return null;
+    const W = this.game.canvas.width, H = this.game.canvas.height;
+    const ndcX = 2 * (sx + this.centerErr.x) / W - 1, ndcY = 1 - 2 * (sy + this.centerErr.y) / H;
+    const un = (z) => { const v = GW_M4.apply(this._inv, ndcX, ndcY, z); return [v[0] / v[3], v[1] / v[3], v[2] / v[3]]; };
+    const n = un(-1), f = un(1);
+    const d = [f[0] - n[0], f[1] - n[1], f[2] - n[2]];
+    if (d[2] > -1e-18) return null; // ray points up or along the horizon
+    const upm = Mercator.unitsPerMeter(this.bridge.originLat);
+    let ref = this.snapshot ? this.elevationAtGame(this.snapshot.px, this.snapshot.py) : null;
+    if (ref === null) ref = this.lastGround;
+
+    const tAt = (altM) => (altM * upm - n[2]) / d[2];             // ray parameter at an altitude
+    const pt = (t) => { const x = n[0] + d[0] * t, y = n[1] + d[1] * t; return { x, y, ll: Mercator.toLngLat(x, y) }; };
+    const above = (t) => {                                          // ray altitude minus terrain, meters
+      const q = pt(t), e = this.elevationAtLatLng(q.ll.lat, q.ll.lng);
+      return (n[2] + d[2] * t) / upm - (e === null ? ref : e);
+    };
+    let tHi = Math.max(0, tAt(ref + 400)), tLo = tAt(ref - 300);
+    if (!(tLo > tHi)) return null;
+    // Coarse march: first sample at/below the ground.
+    const STEPS = 64;
+    let a = tHi, b = null;
+    for (let i = 1; i <= STEPS; i++) {
+      const t = tHi + (tLo - tHi) * i / STEPS;
+      if (above(t) <= 0) { b = t; break; }
+      a = t;
+    }
+    let t;
+    if (b === null) t = tAt(ref);                                   // never crossed: plain plane at the player's height
+    else { for (let i = 0; i < 14; i++) { const m = (a + b) / 2; if (above(m) > 0) a = m; else b = m; } t = (a + b) / 2; }
+    const hit = pt(t);
+    return this.bridge.latLngToGamePx(hit.ll.lat, hit.ll.lng);
+  }
+
+  // Screen pixels per game pixel at a point: how big the 2D art is drawn so it
+  // keeps the same relationship to the world it always had (4.5 game px per meter).
+  pixelScaleAt(gx, gy) {
+    const a = this.project(gx, gy, {}), b = this.project(gx + this.bridge.pxPerMeterX, gy, {});
+    if (!a.visible || !b.visible) return this.game.camera.zoom;
+    return Math.hypot(b.x - a.x, b.y - a.y) / this.bridge.pxPerMeterX;
+  }
+
+  // ---- overlay extras ---------------------------------------------------------------
+  // The playable-area edge (800 m square), draped on the terrain.
+  drawBoundary(ctx, camera, view) {
+    const b = this.bridge, W = b.worldW, H = b.worldH, N = 24;
+    const pts = [];
+    for (let i = 0; i < N; i++) pts.push([W * i / N, 0]);
+    for (let i = 0; i < N; i++) pts.push([W, H * i / N]);
+    for (let i = 0; i < N; i++) pts.push([W - W * i / N, H]);
+    for (let i = 0; i < N; i++) pts.push([0, H - H * i / N]);
+    ctx.save();
+    ctx.strokeStyle = GAME3D.boundaryColor;
+    ctx.lineWidth = 3 / camera.zoom;
+    ctx.beginPath();
+    let moved = false;
+    for (const [x, y] of pts) {
+      const p = camera.worldToScreen(x, y, view);
+      if (p.x < -5e4) { moved = false; continue; }
+      if (!moved) { ctx.moveTo(p.x, p.y); moved = true; } else ctx.lineTo(p.x, p.y);
+    }
+    ctx.closePath();
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // Debug (F2 / ?debugCollision): the collision rectangles the player really
+  // collides with (red) and the real building footprints they were fitted
+  // to (yellow), on the terrain, to compare against the MapTiler buildings.
+  drawCollisionDebug(ctx, camera, view, obstacles) {
+    if (!this.showCollision || !obstacles) return;
+    const px = this.snapshot.px, py = this.snapshot.py, R = 90 * this.bridge.pxPerMeterX; // within ~90 m
+    ctx.save();
+    ctx.lineWidth = 1.5 / camera.zoom;
+    for (const o of obstacles) {
+      if (Math.abs(o.x - px) > R || Math.abs(o.y - py) > R) continue;
+      const c = Math.cos(o.rotation || 0), s = Math.sin(o.rotation || 0);
+      const corners = [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([sx, sy]) => {
+        const lx = sx * o.halfWidth, ly = sy * o.halfHeight;
+        return [o.x + lx * c - ly * s, o.y + lx * s + ly * c];
+      });
+      ctx.strokeStyle = 'rgba(255,60,60,0.95)';
+      ctx.beginPath();
+      corners.forEach(([x, y], i) => { const p = camera.worldToScreen(x, y, view); if (i) ctx.lineTo(p.x, p.y); else ctx.moveTo(p.x, p.y); });
+      ctx.closePath(); ctx.stroke();
+      if (o.footprint && o.footprint.length > 2) {
+        ctx.strokeStyle = 'rgba(255,220,60,0.95)';
+        ctx.beginPath();
+        o.footprint.forEach((q, i) => { const p = camera.worldToScreen(q.x, q.y, view); if (i) ctx.lineTo(p.x, p.y); else ctx.moveTo(p.x, p.y); });
+        ctx.closePath(); ctx.stroke();
+      }
+    }
+    ctx.restore();
+  }
+
+  toggleCollisionDebug() { this.showCollision = !this.showCollision; }
+
+  // For the report / debugging: where things stand.
+  diagnostics() {
+    const g = this.game, p = g.player, b = this.bridge;
+    const ll = p ? b.gamePxToLatLng(p.x, p.y) : null;
+    return {
+      playerGamePx: p ? { x: p.x, y: p.y } : null,
+      playerLatLng: ll,
+      playerGroundElevationM: p ? this.elevationAtLatLng(ll.lat, ll.lng) : null,
+      origin: { lat: b.originLat, lng: b.originLng },
+      mapZoom: this.map ? this.map.getZoom() : null,
+      pixelsPerGamePixel: p ? this.pixelScaleAt(p.x, p.y) : null,
+      expectedPixelsPerGamePixel: CAMERA_ZOOM,
+      centerErrorPx: this.centerErr,
+      terrainOk: this.terrainOk, buildingsOk: this.buildingsOk,
+    };
+  }
+}
 
   </script>
 </body>
