@@ -5601,7 +5601,9 @@ class Game {
     // instead of just bumping into them. See navGrid.js's own header for
     // why a coarse uniform grid + capped-search A* is the right level of
     // effort here rather than a full navmesh.
-    this.navGrid = new NavGrid(world.width, world.height, this.obstacles, NAV_AGENT_RADIUS);
+    // Zombie pathfinding grid: not used in a 3D run (no zombies in this stage), so don't build it.
+    const will3d = this._pendingWorld !== undefined ? !!this._pendingWorld : !!this.world3d;
+    this.navGrid = will3d ? null : new NavGrid(world.width, world.height, this.obstacles, NAV_AGENT_RADIUS);
     this.survivalTime = 0;
     this.weaponUnlockBannerTimer = 0;
 
@@ -5644,6 +5646,7 @@ class Game {
     if (this.world3d) {
       this.world3d.game = this;
       this.world3d.snapCamera(this.player.x, this.player.y);
+      this.world3d.attachRun(this.obstacles); // collision module: only nearby buildings are used per frame
       this.camera.rig3d = this.world3d;
       container.classList.add('world3d-active');
       quitBtn.textContent = 'Quit to Menu'; // a 3D run can't be saved/resumed yet
@@ -5670,11 +5673,13 @@ class Game {
   _updateWorld3D(dt) {
     const world = CONFIG.WORLD;
     this.survivalTime += dt;
-    this.player.handleMovement(this.input, dt, world.width, world.height, this.obstacles);
+    // Existing movement + collision code, fed only the buildings near the peanut.
+    this.player.handleMovement(this.input, dt, world.width, world.height, this.world3d.nearbyObstacles(this.player.x, this.player.y));
     this.player.handleAim(this.input, this.canvas, this.camera.zoom, this.camera);
     this.player.update(dt);
     this.camera.follow(this.player.x, this.player.y);
     if (this.input.wasPressed(GAME3D.collisionDebugKey)) this.world3d.toggleCollisionDebug();
+    if (this.input.wasPressed(GAME3D.readoutKey)) this.world3d.toggleReadout();
     this.hud.update({ player: this.player, zombies: this.zombies, survivalTime: this.survivalTime });
   }
 
@@ -5692,7 +5697,7 @@ class Game {
     ctx.save();
     ctx.scale(k, k);
     w.drawBoundary(ctx, this.camera, view);
-    w.drawCollisionDebug(ctx, this.camera, view, this.obstacles);
+    w.drawCollisionDebug(ctx, this.camera, view);
     // Draw the player where it was when this camera frame was set (not where
     // the next game tick will move it), so sprite and map never disagree.
     const sx = this.player.x, sy = this.player.y;
@@ -5700,6 +5705,7 @@ class Game {
     this.player.draw(ctx, this.camera, view);
     this.player.x = sx; this.player.y = sy;
     ctx.restore();
+    w.drawReadout(ctx); // F3: lat/lng, ground height, active collision (screen space)
   }
 
   // FALLBACK synthetic obstacles — real buildings (MapGenerator, Phase
@@ -10130,6 +10136,9 @@ const GAME3D = {
   enterTimeoutMs: 25000,    // how long to wait for the map + terrain before falling back to 2D
   boundaryColor: 'rgba(231, 76, 60, 0.8)',
   collisionDebugKey: 'F2',  // toggles collision rectangles + footprints (debug)
+  readoutKey: 'F3',         // toggles the geographic position readout (also on with ?debug3d)
+  collisionRadiusMeters: 120, // only buildings within this distance of the peanut take part in collision
+  controls: false,          // no MapTiler widgets (zoom buttons, geolocate, ...): this is a game, not a web map
 };
 
 // Is the 3D world usable right now? (SDK loaded, real MapTiler key, a real
@@ -10175,140 +10184,137 @@ const GW_M4 = {
   },
 };
 
-class MapTilerGameWorld {
-  constructor(game) {
-    this.game = game;
-    this.container = document.getElementById('world3dMap');
+
+// =============================================================================
+// Modules (each knows only about the ones above it):
+//
+//   MapTilerWorldRenderer   MapTiler map: terrain + building extrusions, the
+//                           render matrix, camera placement. No gameplay.
+//   TerrainSampler3D        ground height under any lat/lng or game point.
+//   GameplayCamera3D        follow camera + game px <-> screen px.
+//   NearbyCollision         the small set of buildings the player can hit now.
+//   WorldOverlay3D          boundary / collision debug / position readout.
+//   MapTilerGameWorld       facade the Game talks to; wires the above together.
+//
+// The player itself (movement, sprites, collision resolution) is the
+// existing Player class; it knows nothing about MapTiler.
+// =============================================================================
+
+// ---- 1. MapTiler 3D rendering ------------------------------------------------
+class MapTilerWorldRenderer {
+  constructor(container) {
+    this.container = container;
     this.map = null;
-    this.bridge = null;
-    this.matrix = null;          // latest MapLibre custom-layer matrix (Mercator+altitude -> clip)
+    this.matrix = null;       // latest MapLibre custom-layer matrix: Mercator + altitude -> clip
     this._inv = null;
-    this.snapshot = null;        // camera + player state the current map frame belongs to
-    this.camX = 0; this.camY = 0; // smoothed camera target, game px
-    this.lastGround = 0;         // last good terrain elevation under the player (displayed meters)
-    this.centerErr = { x: 0, y: 0 };
+    this.loaded = false;
     this.terrainOk = false;
     this.buildingsOk = false;
-    this.showCollision = /[?&]debugCollision\b/.test(location.search);
-    this.boundary = null;
-    this.boundaryDirty = true;
+    this.onFrame = null;      // called inside the map's render callback, with this.matrix current
+    this.onDemUpdate = null;
   }
 
-  // ---- lifecycle -----------------------------------------------------------
-  // Creates the map at the selected location and waits until it (and its
-  // terrain) are usable. Resolves { ok, reason }.
-  enter({ lat, lng }) {
-    return new Promise((resolve) => {
-      let done = false;
-      const finish = (r) => { if (done) return; done = true; clearInterval(poll); clearTimeout(timer); resolve(r); };
-      this.bridge = new MapTilerCoordinateBridge(lat, lng);
-      this.camX = this.bridge.worldW / 2; this.camY = this.bridge.worldH / 2;
-      this.container.style.display = 'block';
-      try {
-        maptilersdk.config.apiKey = MAP_CONFIG.maptilerApiKey;
-        this.map = new maptilersdk.Map({
-          container: this.container,
-          style: maptilersdk.MapStyle.STREETS,
-          center: [lng, lat],
-          zoom: this.targetZoom(),
-          pitch: GAME3D.pitch,
-          bearing: GAME3D.bearing,
-          maxPitch: GAME3D.maxPitch,
-          interactive: false, // the game owns the camera
-        });
-      } catch (err) { this.exit(); return resolve({ ok: false, reason: 'map creation failed: ' + err.message }); }
-
-      this.map.on('error', (e) => console.warn('[GameWorld3D] map error:', e && e.error && e.error.message));
-      this.map.on('sourcedata', (e) => { if (e.sourceId === 'proto-dem' && e.isSourceLoaded) this.boundaryDirty = true; });
-      this.map.on('load', () => {
-        try { mapTilerAddTerrain(this.map, MAP_CONFIG.maptilerApiKey, GAME3D.terrainExaggeration); this.terrainOk = true; } catch (err) { console.warn('[GameWorld3D] terrain failed:', err.message); }
-        try { mapTilerAddBuildings(this.map); this.buildingsOk = true; } catch (err) { console.warn('[GameWorld3D] buildings failed:', err.message); }
-        this.map.addLayer(this._projectionLayer());
-        this.loaded = true;
-      });
-      // Ready = loaded + the DEM tile under the spawn is in (so the very first
-      // frame already puts the peanut on the ground), or terrain is unavailable.
-      const poll = setInterval(() => {
-        if (!this.loaded) return;
-        const e = this.elevationAtGame(this.camX, this.camY);
-        if (e !== null) { this.lastGround = e; return finish({ ok: true, terrain: true }); }
-        if (!this.terrainOk && this.map.loaded()) return finish({ ok: true, terrain: false });
-      }, 200);
-      const timer = setTimeout(() => {
-        if (this.loaded) finish({ ok: true, terrain: false, note: 'terrain tiles did not arrive in time; standing on flat ground' });
-        else { this.exit(); finish({ ok: false, reason: 'the MapTiler map did not load in time' }); }
-      }, GAME3D.enterTimeoutMs);
+  create({ lat, lng, zoom, pitch, bearing, maxPitch }) {
+    this.container.style.display = 'block';
+    maptilersdk.config.apiKey = MAP_CONFIG.maptilerApiKey;
+    const opts = {
+      container: this.container, style: maptilersdk.MapStyle.STREETS,
+      center: [lng, lat], zoom, pitch, bearing, maxPitch,
+      interactive: false, // the game owns the camera: no drag / scroll / keyboard map controls
+    };
+    if (!GAME3D.controls) Object.assign(opts, { navigationControl: false, geolocateControl: false, scaleControl: false, fullscreenControl: false, terrainControl: false });
+    this.map = new maptilersdk.Map(opts);
+    this.map.on('error', (e) => console.warn('[GameWorld3D] map error:', e && e.error && e.error.message));
+    this.map.on('sourcedata', (e) => { if (e.sourceId === 'proto-dem' && e.isSourceLoaded && this.onDemUpdate) this.onDemUpdate(); });
+    this.map.on('load', () => {
+      // Same terrain + building setup as the prototype (shared helpers).
+      try { mapTilerAddTerrain(this.map, MAP_CONFIG.maptilerApiKey, GAME3D.terrainExaggeration); this.terrainOk = true; } catch (err) { console.warn('[GameWorld3D] terrain failed:', err.message); }
+      try { mapTilerAddBuildings(this.map); this.buildingsOk = true; } catch (err) { console.warn('[GameWorld3D] buildings failed:', err.message); }
+      this.map.addLayer(this._projectionLayer());
+      this.loaded = true;
     });
   }
 
-  exit() {
-    if (this.map) { try { this.map.remove(); } catch (e) { /* ignore */ } this.map = null; }
-    this.loaded = false; this.matrix = null; this._inv = null;
-    this.container.style.display = 'none';
-  }
-
-  resize() { if (this.map) this.map.resize(); }
-
-  // ---- camera ----------------------------------------------------------------
-  // The zoom at which one game pixel is drawn CAMERA_ZOOM screen pixels wide:
-  // the game's existing look. MapLibre: world size = tileSize*2^z px per
-  // Mercator unit, so screen px per meter at the centre = tileSize*2^z*unitsPerMeter.
-  targetZoom() {
-    const b = this.bridge;
-    const pxPerMeterGame = b.pxPerMeterX;                   // game px per meter (4.5)
-    const desired = pxPerMeterGame * CAMERA_ZOOM;           // screen px per meter
-    return Math.log2(desired / (GAME3D.tileSizePx * Mercator.unitsPerMeter(b.originLat)));
-  }
-
-  // Called once per game frame, after the game has updated the player.
-  frame(dt) {
-    if (!this.map || !this.game.player) return;
-    const p = this.game.player;
-    const a = GAME3D.followSmoothing > 0 ? 1 - Math.exp(-GAME3D.followSmoothing * dt) : 1;
-    this.camX += (p.x - this.camX) * a;
-    this.camY += (p.y - this.camY) * a;
-    this.snapshot = { px: p.x, py: p.y, camX: this.camX, camY: this.camY };
-    const ll = this.bridge.gamePxToLatLng(this.camX, this.camY);
-    this.map.jumpTo({ center: [ll.lng, ll.lat], zoom: this.targetZoom(), pitch: GAME3D.pitch, bearing: GAME3D.bearing });
-    this.game.camera.x = this.camX; this.game.camera.y = this.camY;
-    this.map.triggerRepaint();
-  }
-
-  snapCamera(x, y) { this.camX = x; this.camY = y; }
-
-  // ---- terrain ------------------------------------------------------------------
-  // Displayed elevation in meters (true meters x exaggeration), or null when
-  // the DEM tile there has not loaded.
-  elevationAtLatLng(lat, lng) {
-    if (!this.map || !this.terrainOk) return null;
-    try { const e = this.map.queryTerrainElevation({ lng, lat }); return (e === null || e === undefined || !isFinite(e)) ? null : e; } catch (err) { return null; }
-  }
-  elevationAtGame(x, y) { const ll = this.bridge.gamePxToLatLng(x, y); return this.elevationAtLatLng(ll.lat, ll.lng); }
-
-  // ---- projection: game px (+ ground height) <-> screen px --------------------
   _projectionLayer() {
     const self = this;
     return {
-      id: 'game-projection',
-      type: 'custom',
-      renderingMode: '3d',
+      id: 'game-projection', type: 'custom', renderingMode: '3d',
       onAdd() {},
       render(gl, arg) {
         // MapLibre 4.x passes the matrix; newer versions pass an options object.
         const m = (arg && arg.length === 16) ? arg : (arg && (arg.modelViewProjectionMatrix || (arg.defaultProjectionData && arg.defaultProjectionData.mainMatrix)));
         if (!m) return;
         self.matrix = Array.from(m); self._inv = null;
-        self._measureCenterError();
-        self.game._renderWorld3D(); // the overlay is drawn from the very matrix this frame was rendered with
+        if (self.onFrame) self.onFrame();
       },
     };
   }
 
-  hasMatrix() { return !!this.matrix; }
+  inverseMatrix() { if (!this._inv && this.matrix) this._inv = GW_M4.invert(this.matrix); return this._inv; }
+  setCamera({ lat, lng, zoom, pitch, bearing }) { this.map.jumpTo({ center: [lng, lat], zoom, pitch, bearing }); this.map.triggerRepaint(); }
+  getCenter() { return this.map.getCenter(); }
+  resize() { if (this.map) this.map.resize(); }
+  isIdle() { return this.map && this.map.loaded(); }
+  destroy() {
+    if (this.map) { try { this.map.remove(); } catch (e) { /* ignore */ } this.map = null; }
+    this.loaded = false; this.matrix = null; this._inv = null;
+    this.container.style.display = 'none';
+  }
+}
 
-  // Mercator point (x,y) + altitude meters at latitude `lat` -> screen px (CSS px).
+// ---- 2. Terrain ----------------------------------------------------------------
+// Ground height = the elevation of the terrain mesh MapLibre actually draws
+// (MapTiler DEM x exaggeration), so a sprite placed with it sits on the
+// visible ground, never above or below it.
+class TerrainSampler3D {
+  constructor(renderer, bridge) {
+    this.renderer = renderer; this.bridge = bridge;
+    this.lastGround = 0; // last good height, used while a DEM tile is still loading
+  }
+  atLatLng(lat, lng) {
+    const r = this.renderer;
+    if (!r.map || !r.terrainOk) return null;
+    try { const e = r.map.queryTerrainElevation({ lng, lat }); return (e === null || e === undefined || !isFinite(e)) ? null : e; } catch (err) { return null; }
+  }
+  atGame(x, y) { const ll = this.bridge.gamePxToLatLng(x, y); return this.atLatLng(ll.lat, ll.lng); }
+  // Never null: falls back to the last known ground height.
+  atGameOrLast(x, y) { const e = this.atGame(x, y); if (e !== null) this.lastGround = e; return e !== null ? e : this.lastGround; }
+}
+
+// ---- 3. Gameplay camera ----------------------------------------------------------
+// Smooth follow + the mapping between gameplay coordinates (game px) and the
+// screen, through the matrix the map rendered this frame.
+class GameplayCamera3D {
+  constructor({ renderer, terrain, bridge, canvas }) {
+    this.renderer = renderer; this.terrain = terrain; this.bridge = bridge; this.canvas = canvas;
+    this.x = bridge.worldW / 2; this.y = bridge.worldH / 2; // smoothed camera target, game px
+    this.snapshot = null;                                    // what the current map frame was set up with
+    this.centerErr = { x: 0, y: 0 };
+  }
+
+  // The zoom at which one game pixel is drawn CAMERA_ZOOM screen pixels wide
+  // (the game's existing look). MapLibre: world size = tileSize*2^z px per
+  // Mercator unit, so screen px per meter at the centre = tileSize*2^z*unitsPerMeter.
+  targetZoom() {
+    const b = this.bridge;
+    return Math.log2((b.pxPerMeterX * CAMERA_ZOOM) / (GAME3D.tileSizePx * Mercator.unitsPerMeter(b.originLat)));
+  }
+
+  snapTo(x, y) { this.x = x; this.y = y; }
+
+  // Called once per game frame after the player has moved.
+  follow(dt, tx, ty) {
+    const a = GAME3D.followSmoothing > 0 ? 1 - Math.exp(-GAME3D.followSmoothing * dt) : 1;
+    this.x += (tx - this.x) * a;
+    this.y += (ty - this.y) * a;
+    this.snapshot = { px: tx, py: ty, camX: this.x, camY: this.y };
+    const ll = this.bridge.gamePxToLatLng(this.x, this.y);
+    this.renderer.setCamera({ lat: ll.lat, lng: ll.lng, zoom: this.targetZoom(), pitch: GAME3D.pitch, bearing: GAME3D.bearing });
+  }
+
+  // Mercator point + altitude (meters) -> CSS px. Residual centre error removed.
   _projectMerc(mx, my, altMeters, lat, out) {
-    const m = this.matrix, W = this.game.canvas.width, H = this.game.canvas.height;
+    const m = this.renderer.matrix, W = this.canvas.width, H = this.canvas.height;
     const c = GW_M4.apply(m, mx, my, altMeters * Mercator.unitsPerMeter(lat));
     if (c[3] <= 1e-9) { out.x = -1e5; out.y = -1e5; out.visible = false; return out; }
     out.x = (c[0] / c[3] + 1) / 2 * W - this.centerErr.x;
@@ -10318,83 +10324,101 @@ class MapTilerGameWorld {
   }
 
   // The map centre (lat/lng + terrain height) must land on the screen centre.
-  // Any residual (from a matrix-convention difference) is measured here and
-  // removed from every projection; it is exposed for diagnostics.
-  _measureCenterError() {
-    if (!this.map) return;
-    const c = this.map.getCenter();
-    const e = this.elevationAtLatLng(c.lat, c.lng) ?? this.lastGround;
+  // A constant residual (a matrix-convention difference) is measured and
+  // removed from every projection; it is exposed in diagnostics().
+  measureCenterError() {
+    const r = this.renderer;
+    if (!r.map || !r.matrix) return;
+    const c = r.getCenter();
+    const e = this.terrain.atLatLng(c.lat, c.lng) ?? this.terrain.lastGround;
     const saved = this.centerErr; this.centerErr = { x: 0, y: 0 };
-    const mc = Mercator.fromLngLat(c.lng, c.lat);
-    const o = {}; this._projectMerc(mc.x, mc.y, e, c.lat, o);
+    const mc = Mercator.fromLngLat(c.lng, c.lat), o = {};
+    this._projectMerc(mc.x, mc.y, e, c.lat, o);
     this.centerErr = saved;
-    if (!o.visible) return;
-    this.centerErr = { x: o.x - this.game.canvas.width / 2, y: o.y - this.game.canvas.height / 2 };
+    if (o.visible) this.centerErr = { x: o.x - this.canvas.width / 2, y: o.y - this.canvas.height / 2 };
   }
 
-  // Game px -> screen px at the terrain height under that point. `lift` is extra meters.
+  // Game px -> screen px, at the terrain height under that point.
   project(gx, gy, out = {}) {
     const ll = this.bridge.gamePxToLatLng(gx, gy);
-    let e = this.elevationAtLatLng(ll.lat, ll.lng);
-    if (e === null) e = this.lastGround;
+    const e = this.terrain.atLatLng(ll.lat, ll.lng) ?? this.terrain.lastGround;
     const m = Mercator.fromLngLat(ll.lng, ll.lat);
     return this._projectMerc(m.x, m.y, e, ll.lat, out);
   }
 
-  // Screen px -> game px on the terrain. The cursor ray is marched down
-  // through the terrain heights (coarse steps to bracket the first crossing,
-  // then bisection). A flat-plane shortcut is not good enough: at the
-  // grazing angles near the top of a 60-degree view a slope moves the hit by
-  // many pixels.
+  // Screen px -> game px on the terrain. The cursor ray is marched down through
+  // the terrain heights (coarse steps to bracket the first crossing, then
+  // bisection). A flat-plane shortcut is not good enough: at the grazing
+  // angles near the top of a 60-degree view a slope moves the hit by many px.
   unproject(sx, sy) {
-    if (!this.matrix) return null;
-    if (!this._inv) this._inv = GW_M4.invert(this.matrix);
-    if (!this._inv) return null;
-    const W = this.game.canvas.width, H = this.game.canvas.height;
+    const inv = this.renderer.inverseMatrix();
+    if (!inv) return null;
+    const W = this.canvas.width, H = this.canvas.height;
     const ndcX = 2 * (sx + this.centerErr.x) / W - 1, ndcY = 1 - 2 * (sy + this.centerErr.y) / H;
-    const un = (z) => { const v = GW_M4.apply(this._inv, ndcX, ndcY, z); return [v[0] / v[3], v[1] / v[3], v[2] / v[3]]; };
+    const un = (z) => { const v = GW_M4.apply(inv, ndcX, ndcY, z); return [v[0] / v[3], v[1] / v[3], v[2] / v[3]]; };
     const n = un(-1), f = un(1);
     const d = [f[0] - n[0], f[1] - n[1], f[2] - n[2]];
     if (d[2] > -1e-18) return null; // ray points up or along the horizon
     const upm = Mercator.unitsPerMeter(this.bridge.originLat);
-    let ref = this.snapshot ? this.elevationAtGame(this.snapshot.px, this.snapshot.py) : null;
-    if (ref === null) ref = this.lastGround;
-
-    const tAt = (altM) => (altM * upm - n[2]) / d[2];             // ray parameter at an altitude
+    const ref = this.snapshot ? this.terrain.atGameOrLast(this.snapshot.px, this.snapshot.py) : this.terrain.lastGround;
+    const tAt = (altM) => (altM * upm - n[2]) / d[2];
     const pt = (t) => { const x = n[0] + d[0] * t, y = n[1] + d[1] * t; return { x, y, ll: Mercator.toLngLat(x, y) }; };
-    const above = (t) => {                                          // ray altitude minus terrain, meters
-      const q = pt(t), e = this.elevationAtLatLng(q.ll.lat, q.ll.lng);
-      return (n[2] + d[2] * t) / upm - (e === null ? ref : e);
-    };
-    let tHi = Math.max(0, tAt(ref + 400)), tLo = tAt(ref - 300);
+    const above = (t) => { const q = pt(t), e = this.terrain.atLatLng(q.ll.lat, q.ll.lng); return (n[2] + d[2] * t) / upm - (e === null ? ref : e); };
+    const tHi = Math.max(0, tAt(ref + 400)), tLo = tAt(ref - 300);
     if (!(tLo > tHi)) return null;
-    // Coarse march: first sample at/below the ground.
     const STEPS = 64;
     let a = tHi, b = null;
-    for (let i = 1; i <= STEPS; i++) {
-      const t = tHi + (tLo - tHi) * i / STEPS;
-      if (above(t) <= 0) { b = t; break; }
-      a = t;
-    }
+    for (let i = 1; i <= STEPS; i++) { const t = tHi + (tLo - tHi) * i / STEPS; if (above(t) <= 0) { b = t; break; } a = t; }
     let t;
-    if (b === null) t = tAt(ref);                                   // never crossed: plain plane at the player's height
+    if (b === null) t = tAt(ref);
     else { for (let i = 0; i < 14; i++) { const m = (a + b) / 2; if (above(m) > 0) a = m; else b = m; } t = (a + b) / 2; }
     const hit = pt(t);
     return this.bridge.latLngToGamePx(hit.ll.lat, hit.ll.lng);
   }
 
-  // Screen pixels per game pixel at a point: how big the 2D art is drawn so it
-  // keeps the same relationship to the world it always had (4.5 game px per meter).
-  pixelScaleAt(gx, gy) {
+  // Screen px per game px at a point: how big the 2D art is drawn so it keeps
+  // the relationship to the world it always had (4.5 game px per meter).
+  pixelScaleAt(gx, gy, fallback) {
     const a = this.project(gx, gy, {}), b = this.project(gx + this.bridge.pxPerMeterX, gy, {});
-    if (!a.visible || !b.visible) return this.game.camera.zoom;
+    if (!a.visible || !b.visible) return fallback;
     return Math.hypot(b.x - a.x, b.y - a.y) / this.bridge.pxPerMeterX;
   }
+}
 
-  // ---- overlay extras ---------------------------------------------------------------
+// ---- 4. Collision ----------------------------------------------------------------
+// Visual buildings (MapTiler's extrusions) and gameplay collision are separate
+// systems. Collision is the game's existing simplified geometry (a rectangle
+// fitted to each OSM footprint). Only buildings within `radius` of the peanut
+// are handed to the movement code; the list is rebuilt when the peanut has
+// moved a quarter of that radius, so a building that can reach the peanut is
+// never missing from it.
+class NearbyCollision {
+  constructor(bridge, radiusMeters) {
+    this.radiusPx = radiusMeters * bridge.pxPerMeterX;
+    this.all = []; this.active = []; this.cx = null; this.cy = null; this.rebuilds = 0;
+  }
+  setObstacles(list) { this.all = list || []; this.cx = null; this.active = []; }
+  near(px, py) {
+    if (this.cx === null || Math.hypot(px - this.cx, py - this.cy) > this.radiusPx * 0.25) {
+      this.cx = px; this.cy = py; this.rebuilds++;
+      const R = this.radiusPx;
+      this.active = this.all.filter((o) => Math.hypot(o.x - px, o.y - py) - Math.hypot(o.halfWidth, o.halfHeight) <= R);
+    }
+    return this.active;
+  }
+}
+
+// ---- 5. Overlay (everything drawn on the gameplay canvas besides the player) -----------
+class WorldOverlay3D {
+  constructor(world) {
+    this.world = world;
+    this.showCollision = /[?&]debugCollision\b/.test(location.search);
+    this.showReadout = /[?&]debug3d\b/.test(location.search);
+  }
+
   // The playable-area edge (800 m square), draped on the terrain.
   drawBoundary(ctx, camera, view) {
-    const b = this.bridge, W = b.worldW, H = b.worldH, N = 24;
+    const b = this.world.bridge, W = b.worldW, H = b.worldH, N = 24;
     const pts = [];
     for (let i = 0; i < N; i++) pts.push([W * i / N, 0]);
     for (let i = 0; i < N; i++) pts.push([W, H * i / N]);
@@ -10415,16 +10439,13 @@ class MapTilerGameWorld {
     ctx.restore();
   }
 
-  // Debug (F2 / ?debugCollision): the collision rectangles the player really
-  // collides with (red) and the real building footprints they were fitted
-  // to (yellow), on the terrain, to compare against the MapTiler buildings.
+  // Debug (F2 / ?debugCollision): the ACTIVE collision rectangles (red) and the
+  // real footprints they were fitted to (yellow), on the terrain.
   drawCollisionDebug(ctx, camera, view, obstacles) {
     if (!this.showCollision || !obstacles) return;
-    const px = this.snapshot.px, py = this.snapshot.py, R = 90 * this.bridge.pxPerMeterX; // within ~90 m
     ctx.save();
     ctx.lineWidth = 1.5 / camera.zoom;
     for (const o of obstacles) {
-      if (Math.abs(o.x - px) > R || Math.abs(o.y - py) > R) continue;
       const c = Math.cos(o.rotation || 0), s = Math.sin(o.rotation || 0);
       const corners = [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([sx, sy]) => {
         const lx = sx * o.halfWidth, ly = sy * o.halfHeight;
@@ -10444,22 +10465,112 @@ class MapTilerGameWorld {
     ctx.restore();
   }
 
-  toggleCollisionDebug() { this.showCollision = !this.showCollision; }
+  // Debug (F3 / ?debug3d): where the peanut really is. Screen space (unscaled).
+  drawReadout(ctx) {
+    if (!this.showReadout) return;
+    const w = this.world, d = w.diagnostics();
+    if (!d.playerLatLng) return;
+    const lines = [
+      `lat ${d.playerLatLng.lat.toFixed(6)}   lng ${d.playerLatLng.lng.toFixed(6)}`,
+      `ground ${d.playerGroundElevationM === null ? '—' : d.playerGroundElevationM.toFixed(1)} m   game px ${d.playerGamePx.x.toFixed(0)}, ${d.playerGamePx.y.toFixed(0)}`,
+      `collision: ${d.collision.active}/${d.collision.total} buildings active   map zoom ${d.mapZoom.toFixed(2)}`,
+    ];
+    ctx.save();
+    ctx.font = '12px monospace';
+    ctx.fillStyle = 'rgba(0,0,0,0.6)';
+    ctx.fillRect(84, ctx.canvas.height - 62, 420, 52);
+    ctx.fillStyle = '#bde';
+    lines.forEach((t, i) => ctx.fillText(t, 92, ctx.canvas.height - 44 + i * 16));
+    ctx.restore();
+  }
+}
 
-  // For the report / debugging: where things stand.
+// ---- Facade -----------------------------------------------------------------------------
+class MapTilerGameWorld {
+  constructor(game) {
+    this.game = game;
+    this.renderer = new MapTilerWorldRenderer(document.getElementById('world3dMap'));
+    this.bridge = null; this.terrain = null; this.camera = null; this.collision = null;
+    this.overlay = new WorldOverlay3D(this);
+  }
+
+  // Creates the map at the selected location and waits until it (and its
+  // terrain) are usable. Resolves { ok, reason }.
+  enter({ lat, lng }) {
+    return new Promise((resolve) => {
+      let done = false;
+      const finish = (r) => { if (done) return; done = true; clearInterval(poll); clearTimeout(timer); resolve(r); };
+      this.bridge = new MapTilerCoordinateBridge(lat, lng);
+      this.terrain = new TerrainSampler3D(this.renderer, this.bridge);
+      this.camera = new GameplayCamera3D({ renderer: this.renderer, terrain: this.terrain, bridge: this.bridge, canvas: this.game.canvas });
+      this.collision = new NearbyCollision(this.bridge, GAME3D.collisionRadiusMeters);
+      this.renderer.onFrame = () => { this.camera.measureCenterError(); this.game._renderWorld3D(); }; // overlay is drawn from the very matrix this frame used
+      try {
+        this.renderer.create({ lat, lng, zoom: this.camera.targetZoom(), pitch: GAME3D.pitch, bearing: GAME3D.bearing, maxPitch: GAME3D.maxPitch });
+      } catch (err) { this.exit(); return resolve({ ok: false, reason: 'map creation failed: ' + err.message }); }
+
+      // Ready = loaded + the DEM tile under the spawn is in (so the very first
+      // frame already stands the peanut on the ground), or terrain is unavailable.
+      const poll = setInterval(() => {
+        if (!this.renderer.loaded) return;
+        const e = this.terrain.atGame(this.camera.x, this.camera.y);
+        if (e !== null) { this.terrain.lastGround = e; return finish({ ok: true, terrain: true }); }
+        if (!this.renderer.terrainOk && this.renderer.isIdle()) return finish({ ok: true, terrain: false });
+      }, 200);
+      const timer = setTimeout(() => {
+        if (this.renderer.loaded) finish({ ok: true, terrain: false, note: 'terrain tiles did not arrive in time; standing on flat ground' });
+        else { this.exit(); finish({ ok: false, reason: 'the MapTiler map did not load in time' }); }
+      }, GAME3D.enterTimeoutMs);
+    });
+  }
+
+  exit() { this.renderer.destroy(); }
+  resize() { this.renderer.resize(); }
+
+  // Game hooks ---------------------------------------------------------------------------
+  attachRun(obstacles) { this.collision.setObstacles(obstacles); }
+  snapCamera(x, y) { this.camera.snapTo(x, y); }
+  nearbyObstacles(px, py) { return this.collision.near(px, py); }
+  frame(dt) {
+    const p = this.game.player;
+    if (!this.renderer.map || !p) return;
+    this.camera.follow(dt, p.x, p.y);
+    this.game.camera.x = this.camera.x; this.game.camera.y = this.camera.y;
+  }
+  hasMatrix() { return !!this.renderer.matrix; }
+  get snapshot() { return this.camera && this.camera.snapshot; }
+  project(gx, gy, out) { return this.camera.project(gx, gy, out); }
+  unproject(sx, sy) { return this.camera.unproject(sx, sy); }
+  pixelScaleAt(gx, gy) { return this.camera.pixelScaleAt(gx, gy, this.game.camera.zoom); }
+  drawBoundary(ctx, camera, view) { this.overlay.drawBoundary(ctx, camera, view); }
+  drawCollisionDebug(ctx, camera, view) { this.overlay.drawCollisionDebug(ctx, camera, view, this.collision.active); }
+  drawReadout(ctx) { this.overlay.drawReadout(ctx); }
+  toggleCollisionDebug() { this.overlay.showCollision = !this.overlay.showCollision; }
+  toggleReadout() { this.overlay.showReadout = !this.overlay.showReadout; }
+
+  // Compatibility accessors (tests / console).
+  get map() { return this.renderer.map; }
+  get camX() { return this.camera.x; } get camY() { return this.camera.y; }
+  get terrainOk() { return this.renderer.terrainOk; } set terrainOk(v) { this.renderer.terrainOk = v; }
+  get lastGround() { return this.terrain.lastGround; } set lastGround(v) { this.terrain.lastGround = v; }
+  get showCollision() { return this.overlay.showCollision; }
+  elevationAtGame(x, y) { return this.terrain.atGame(x, y); }
+
+  // Where things stand — also what the F3 readout shows.
   diagnostics() {
-    const g = this.game, p = g.player, b = this.bridge;
+    const p = this.game.player, b = this.bridge;
     const ll = p ? b.gamePxToLatLng(p.x, p.y) : null;
     return {
       playerGamePx: p ? { x: p.x, y: p.y } : null,
       playerLatLng: ll,
-      playerGroundElevationM: p ? this.elevationAtLatLng(ll.lat, ll.lng) : null,
+      playerGroundElevationM: p ? this.terrain.atLatLng(ll.lat, ll.lng) : null,
       origin: { lat: b.originLat, lng: b.originLng },
       mapZoom: this.map ? this.map.getZoom() : null,
-      pixelsPerGamePixel: p ? this.pixelScaleAt(p.x, p.y) : null,
+      pixelsPerGamePixel: p ? this.camera.pixelScaleAt(p.x, p.y, null) : null,
       expectedPixelsPerGamePixel: CAMERA_ZOOM,
-      centerErrorPx: this.centerErr,
-      terrainOk: this.terrainOk, buildingsOk: this.buildingsOk,
+      centerErrorPx: this.camera.centerErr,
+      terrainOk: this.renderer.terrainOk, buildingsOk: this.renderer.buildingsOk,
+      collision: { total: this.collision.all.length, active: this.collision.active.length, rebuilds: this.collision.rebuilds },
     };
   }
 }
