@@ -29,6 +29,9 @@ html, body {
 }
 
 /* 3D world run: the MapTiler map sits behind the (now transparent) game canvas. */
+#difficultyRow { display: flex; flex-direction: column; align-items: center; gap: 8px; margin-top: 14px; color: #c9d1d9; font: 11px 'Courier New', monospace; text-align: center; }
+#difficultyRow .diffButtons { display: flex; justify-content: center; gap: 8px; }
+#difficultyRow .diffBtn { min-width: 0; padding: 6px 12px; }
 #world3dMap {
   position: absolute;
   top: 0;
@@ -1373,17 +1376,6 @@ const EMBEDDED_ASSETS = {
      mapProvider.js is simply never invoked when no API key is configured. -->
 <link href="https://cdn.maptiler.com/maptiler-sdk-js/v2.2.0/maptiler-sdk.css" rel="stylesheet" />
 <script src="https://cdn.maptiler.com/maptiler-sdk-js/v2.2.0/maptiler-sdk.umd.min.js" defer></script>
-  <style>
-/* ===== 3D MapTiler prototype (separate from the game) ===== */
-#proto3dScreen { position: fixed; inset: 0; z-index: 1000; display: none; background: #111; }
-#proto3dMap { position: absolute; inset: 0; }
-#proto3dPanel { position: absolute; top: 8px; left: 8px; width: 380px; max-height: calc(100% - 16px); overflow: auto; background: rgba(0,0,0,0.72); color: #dfe6ee; border-radius: 6px; padding: 8px 10px; z-index: 2; }
-#proto3dPanel b { color: #fff; }
-#proto3dInfo { margin: 6px 0 0; font: 11px/1.4 ui-monospace, Menlo, Consolas, monospace; white-space: pre-wrap; }
-#proto3dControls { position: absolute; top: 8px; right: 8px; display: flex; flex-direction: column; gap: 6px; z-index: 2; }
-#proto3dControls button { font: 12px sans-serif; padding: 6px 10px; cursor: pointer; border: 1px solid #666; background: rgba(20,20,20,0.85); color: #fff; border-radius: 4px; }
-#proto3dControls button:hover { background: rgba(60,60,60,0.95); }
-  </style>
 </head>
 <body>
 
@@ -1428,24 +1420,6 @@ const EMBEDDED_ASSETS = {
     </div>
 
     <!-- ===================== Start overlay (home page) ===================== -->
-    <!-- ===================== 3D MAPTILER PROTOTYPE (separate from the game) ===================== -->
-    <div id="proto3dScreen">
-      <div id="proto3dMap"></div>
-      <div id="proto3dPanel"><b>3D MapTiler Prototype</b><pre id="proto3dInfo"></pre></div>
-      <div id="proto3dControls">
-        <button id="proto3dBack">Back to menu</button>
-        <button id="proto3dRecenter">Re-center</button>
-        <button id="proto3dPitch30">Pitch 30°</button>
-        <button id="proto3dPitch60">Pitch 60°</button>
-        <button id="proto3dPitch80">Pitch 80°</button>
-        <button id="proto3dExag">Terrain exaggeration</button>
-        <button id="proto3dTerrain">Toggle terrain</button>
-        <button id="proto3dBuildings">Toggle buildings</button>
-        <button id="proto3dOverlay">Toggle Three.js overlay</button>
-        <button id="proto3dCopy">Copy diagnostics</button>
-      </div>
-    </div>
-
     <div id="startScreen" class="overlay homePage">
       <div id="homeSidebar" class="homeSidebar">
         <div class="homeSidebarTitle">Your Stats</div>
@@ -1464,7 +1438,7 @@ const EMBEDDED_ASSETS = {
         <button id="startBtn" class="bigButton" disabled>Loading…</button>
         <button id="testModeBtn" class="testModeButton">Test Mode</button>
         <button id="howToPlayBtn" class="testModeButton">How to Play</button>
-        <button id="proto3dBtn" class="testModeButton">3D Map Prototype (MapTiler)</button>
+        <div id="difficultyRow" class="difficultyRow"><span class="diffLabel">Difficulty</span><div class="diffButtons"><button class="testModeButton diffBtn" data-diff="easy">Easy</button><button class="testModeButton diffBtn" data-diff="normal">Normal</button><button class="testModeButton diffBtn" data-diff="hard">Hard</button></div></div>
       </div>
     </div>
 
@@ -2891,6 +2865,16 @@ class Camera {
   // Inside that transform the canvas looks `zoom` times smaller, which is
   // what viewSize() returns — pass it to worldToScreen()/culling code in
   // place of the real canvas.
+  // 3D runs only: things farther from the camera than the peanut draw smaller
+  // (and nearer ones larger), like everything else in the perspective view.
+  applyEntityScale(ctx, p) {
+    const s = p.depthScale;
+    if (s === undefined || Math.abs(s - 1) < 0.003) return;
+    ctx.translate(p.x, p.y);
+    ctx.scale(s, s);
+    ctx.translate(-p.x, -p.y);
+  }
+
   viewSize(canvas) {
     return { width: canvas.width / this.zoom, height: canvas.height / this.zoom };
   }
@@ -2902,7 +2886,7 @@ class Camera {
       // 3D run: project through the map camera at the terrain height under the
       // point. `zoom` is then the per-frame art scale (screen px per game px).
       const s = this.rig3d.project(wx, wy, {});
-      return { x: s.x / this.zoom, y: s.y / this.zoom };
+      return { x: s.x / this.zoom, y: s.y / this.zoom, depthScale: s.scale };
     }
     return {
       x: wx - this.x + canvas.width / 2,
@@ -3770,6 +3754,19 @@ const TEST_MODE = {
  * attachment offset plus the tip's offset scaled to the weapon's display
  * size — and cached.
  */
+// The weapon art is 8 pre-rotated images. With WEAPON_ROTATE_360 the nearest
+// image is drawn and then rotated by the leftover angle (up to +-22.5 deg), so
+// the weapon follows the mouse through a full 360 degrees. The nozzle (where
+// bullets leave) is rotated the same way. false = the original 8-way snapping.
+let WEAPON_ROTATE_360 = true; // (let, so it can be flipped at runtime to compare with the original 8-way snapping)
+const WEAPON_DIR_ANGLE = { 'east': 0, 'south-east': Math.PI / 4, 'south': Math.PI / 2, 'south-west': 3 * Math.PI / 4, 'west': Math.PI, 'north-west': -3 * Math.PI / 4, 'north': -Math.PI / 2, 'north-east': -Math.PI / 4 };
+function weaponAimResidual(aimAngle, dir) {
+  let d = aimAngle - WEAPON_DIR_ANGLE[dir];
+  while (d > Math.PI) d -= 2 * Math.PI;
+  while (d < -Math.PI) d += 2 * Math.PI;
+  return d;
+}
+
 const WeaponMuzzle = {
   _cache: {},
   _scratch: null,
@@ -4125,8 +4122,10 @@ class Bullet extends Entity {
 
   draw(ctx, camera, canvas) {
     const p = camera.worldToScreen(this.x, this.y, canvas);
-    if (this.flame) { this._drawFlame(ctx, p); return; }
+    if (camera.rig3d) p.y -= GAME3D.projectileLiftPx; // 3D: projectiles fly at weapon height, not along the ground
+    if (this.flame) { ctx.save(); camera.applyEntityScale(ctx, p); this._drawFlame(ctx, p); ctx.restore(); return; }
     ctx.save();
+    camera.applyEntityScale(ctx, p);
     ctx.fillStyle = this.color;
     ctx.beginPath();
     ctx.arc(p.x, p.y, this.radius, 0, Math.PI * 2);
@@ -4197,6 +4196,7 @@ class Pickup extends Entity {
     const bob = Math.sin(this.bobPhase) * 3;
 
     ctx.save();
+    camera.applyEntityScale(ctx, p);
     ctx.translate(p.x, p.y + bob);
 
     // Simple placeholder crate icon with a glyph.
@@ -4596,7 +4596,14 @@ class Player extends Entity {
   // through the crosshair instead of running parallel to it.
   tryShoot() {
     const dir = Utils.directionFromVector(Math.cos(this.aimAngle), Math.sin(this.aimAngle));
-    const m = WeaponMuzzle.offset(this.currentWeapon.config.id, dir);
+    const m0 = WeaponMuzzle.offset(this.currentWeapon.config.id, dir);
+    let m = m0;
+    const att = WEAPON_ATTACHMENTS[dir];
+    if (WEAPON_ROTATE_360 && att) { // the drawn weapon is rotated by the residual about its centre: so is its nozzle
+      const r = weaponAimResidual(this.aimAngle, dir), c = Math.cos(r), sn = Math.sin(r);
+      const rx = m0.x - att.offsetX, ry = m0.y - att.offsetY;
+      m = { x: att.offsetX + rx * c - ry * sn, y: att.offsetY + rx * sn + ry * c };
+    }
     const ox = this.x + m.x * PLAYER_SCALE, oy = this.y + m.y * PLAYER_SCALE; // the held weapon is drawn at PLAYER_SCALE, so its nozzle is too
     let angle = this.aimAngle;
     if (this.aimTarget) {
@@ -4733,6 +4740,7 @@ class Player extends Entity {
       ctx.save();
       ctx.imageSmoothingEnabled = false; // keep the pixel art crisp when scaled
       ctx.translate(wx, wy);
+      if (WEAPON_ROTATE_360) ctx.rotate(weaponAimResidual(this.aimAngle, weaponDir));
       if (attachment.rotation) ctx.rotate(attachment.rotation);
       ctx.drawImage(weaponSprite, -wSize / 2, -wSize / 2, wSize, wSize);
       ctx.restore();
@@ -5038,9 +5046,11 @@ class Zombie extends Entity {
     // being visually larger than the collision radius.
     const visualSize = zombieVisualSize(this.type); // spriteDisplaySize x this type's *_ZOMBIE_SCALE (visual only)
     const cullMargin = Math.max(50, visualSize);
+    if (camera.rig3d && GAME3D.feetAnchor) p.y -= visualSize * 0.35; // 3D: stand the feet on the ground point
     if (p.x < -cullMargin || p.x > canvas.width + cullMargin || p.y < -cullMargin || p.y > canvas.height + cullMargin) return;
 
     ctx.save();
+    camera.applyEntityScale(ctx, p);
 
     const spriteSet = ZOMBIE_SPRITES[this.type.id];
     const sprite = pickSpriteFrame(spriteSet, this.facing, this.isMoving, this.animFrame);
@@ -5506,10 +5516,12 @@ class Game {
     });
     document.getElementById('changeCityBtn').addEventListener('click', () => {
       Sound.uiClick();
+      this._leaveWorld3d();
       if (this.onChangeCityRequested) this.onChangeCityRequested();
     });
     document.getElementById('mainMenuBtn').addEventListener('click', () => {
       Sound.uiClick();
+      this._leaveWorld3d();
       document.getElementById('gameOverScreen').classList.add('hidden');
       document.getElementById('startScreen').classList.remove('hidden');
     });
@@ -5591,9 +5603,13 @@ class Game {
     this.pickups = [];
     this.floatingTexts = [];
     this.explosions = [];
-    this.obstacles = generated ? generated.obstacles : this._generateTestObstacles(spawnX, spawnY);
+    // 3D run: no map-generated / synthetic obstacles and no old extruded-block system —
+    // collision comes from the MapTiler buildings (see NearbyCollision); this list is
+    // filled in place by it. 2D fallback: exactly as before.
+    const will3d = this._pendingWorld !== undefined ? !!this._pendingWorld : !!this.world3d;
+    this.obstacles = will3d ? [] : (generated ? generated.obstacles : this._generateTestObstacles(spawnX, spawnY));
     this.roads = generated ? generated.roads : [];
-    applyBuildingExtrusion(this.obstacles, spawnX, spawnY);
+    if (!will3d) applyBuildingExtrusion(this.obstacles, spawnX, spawnY);
     this._fadingBuildings = new Set(); // building see-through state belongs to this map's obstacles
     this._occLastTime = 0;
     // Phase 5: rebuilt fresh per level (obstacles are 100% static once a
@@ -5601,8 +5617,7 @@ class Game {
     // instead of just bumping into them. See navGrid.js's own header for
     // why a coarse uniform grid + capped-search A* is the right level of
     // effort here rather than a full navmesh.
-    // Zombie pathfinding grid: not used in a 3D run (no zombies in this stage), so don't build it.
-    const will3d = this._pendingWorld !== undefined ? !!this._pendingWorld : !!this.world3d;
+    // (3D run: the grid is built from the MapTiler-derived buildings in _attachWorld3d, below.)
     this.navGrid = will3d ? null : new NavGrid(world.width, world.height, this.obstacles, NAV_AGENT_RADIUS);
     this.survivalTime = 0;
     this.weaponUnlockBannerTimer = 0;
@@ -5646,12 +5661,17 @@ class Game {
     if (this.world3d) {
       this.world3d.game = this;
       this.world3d.snapCamera(this.player.x, this.player.y);
-      this.world3d.attachRun(this.obstacles); // collision module: only nearby buildings are used per frame
+      this.world3d.attachRun(this.obstacles); // Game.obstacles = the active (nearby) collision list, refreshed in place
+      this.obstaclesAll = this.world3d.collision.all;
+      this.world3d.syncCollision(this.player.x, this.player.y);
+      this._rebuildNavGrid();
+      this.world3d.onBuildingsAdded = () => { this._navDirty = true; }; // buildings from newly streamed tiles
       this.camera.rig3d = this.world3d;
       container.classList.add('world3d-active');
       quitBtn.textContent = 'Quit to Menu'; // a 3D run can't be saved/resumed yet
     } else {
       this.camera.rig3d = null;
+      this.obstaclesAll = null;
       this.camera.zoom = CAMERA_ZOOM;
       container.classList.remove('world3d-active');
       quitBtn.innerHTML = this._saveQuitLabel;
@@ -5667,30 +5687,31 @@ class Game {
     this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
   }
 
-  // Per-frame update in a 3D run: ONLY the player (existing movement, sprint,
-  // stamina and existing building collision). Zombies, spawning, weapons,
-  // shooting and pickups are intentionally not run in this stage.
-  _updateWorld3D(dt) {
-    const world = CONFIG.WORLD;
-    this.survivalTime += dt;
-    // Existing movement + collision code, fed only the buildings near the peanut.
-    this.player.handleMovement(this.input, dt, world.width, world.height, this.world3d.nearbyObstacles(this.player.x, this.player.y));
-    this.player.handleAim(this.input, this.canvas, this.camera.zoom, this.camera);
-    this.player.update(dt);
-    this.camera.follow(this.player.x, this.player.y);
-    if (this.input.wasPressed(GAME3D.collisionDebugKey)) this.world3d.toggleCollisionDebug();
-    if (this.input.wasPressed(GAME3D.readoutKey)) this.world3d.toggleReadout();
-    this.hud.update({ player: this.player, zombies: this.zombies, survivalTime: this.survivalTime });
+  // Zombie pathfinding grid from ALL known MapTiler buildings (coarse 48 px cells).
+  _rebuildNavGrid() {
+    this.navGrid = new NavGrid(CONFIG.WORLD.width, CONFIG.WORLD.height, this.world3d.collision.all, NAV_AGENT_RADIUS);
+    this._navDirty = false;
+    this._navBuiltAt = performance.now();
   }
 
-  // Gameplay layer for a 3D run. Called by the map from inside its own render
-  // callback, with the matrix that frame was drawn with (see MapTilerGameWorld).
+  // Top of the original update() in a 3D run: keep the collision list current.
+  _world3dPreUpdate() {
+    this.world3d.syncCollision(this.player.x, this.player.y);
+    if (this._navDirty && performance.now() - this._navBuiltAt > 2000) this._rebuildNavGrid(); // at most every 2 s
+    if (this.input.wasPressed(GAME3D.collisionDebugKey)) this.world3d.toggleCollisionDebug();
+    if (this.input.wasPressed(GAME3D.readoutKey)) this.world3d.toggleReadout();
+  }
+
+  // Gameplay layer for a 3D run: the player, zombies, pickups, projectiles and
+  // effects, projected onto the MapTiler terrain. Called by the map from inside
+  // its own render callback, with the matrix that frame was drawn with.
   _renderWorld3D() {
     const w = this.world3d, ctx = this.ctx, rc = this.canvas;
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, rc.width, rc.height);
     if (!w || !this.player || !w.hasMatrix() || !w.snapshot) return;
     const snap = w.snapshot;
+    w.camera.refW = 0; w.camera.refW = w.camera.project(snap.px, snap.py, {}).w; // perspective reference = the peanut
     const k = w.pixelScaleAt(snap.px, snap.py); // art scale at the player
     this.camera.zoom = k;
     const view = this.camera.viewSize(rc);
@@ -5698,12 +5719,19 @@ class Game {
     ctx.scale(k, k);
     w.drawBoundary(ctx, this.camera, view);
     w.drawCollisionDebug(ctx, this.camera, view);
-    // Draw the player where it was when this camera frame was set (not where
-    // the next game tick will move it), so sprite and map never disagree.
-    const sx = this.player.x, sy = this.player.y;
-    this.player.x = snap.px; this.player.y = snap.py;
-    this.player.draw(ctx, this.camera, view);
-    this.player.x = sx; this.player.y = sy;
+    // Painter's order by ground y (larger y = nearer the camera). The player is
+    // drawn where it was when this camera frame was set, not where the next game
+    // tick will move it, so sprite and map never disagree.
+    const player = this.player, px = player.x, py = player.y;
+    const items = [...this.pickups, ...this.zombies, player].sort((a, b) => (a === player ? snap.py : a.y) - (b === player ? snap.py : b.y));
+    for (const e of items) {
+      if (e === player) { player.x = snap.px; player.y = snap.py; player.draw(ctx, this.camera, view); player.x = px; player.y = py; }
+      else e.draw(ctx, this.camera, view);
+    }
+    for (const e of this.bullets) e.draw(ctx, this.camera, view);
+    this._drawGrenades(ctx, view);
+    this._drawExplosions(ctx, view);
+    this._drawFloatingTexts(ctx, view);
     ctx.restore();
     w.drawReadout(ctx); // F3: lat/lng, ground height, active collision (screen space)
   }
@@ -5948,13 +5976,9 @@ class Game {
     }
 
     if (this.state === 'playing') {
-      if (this.world3d) {
-        this._updateWorld3D(dt);
-        this.world3d.frame(dt); // moves the map camera; the overlay is drawn from the map's render callback
-      } else {
-        this._update(dt);
-        this._render();
-      }
+      this._update(dt); // the full, original gameplay update — identical in 2D and 3D
+      if (this.world3d) this.world3d.frame(dt); // moves the map camera; the overlay is drawn from the map's render callback
+      else this._render();
     }
     // While paused, we simply skip _update/_render, which freezes the
     // last drawn frame in place (weapon cooldowns, reload timers, zombie
@@ -5967,11 +5991,12 @@ class Game {
 
   _update(dt) {
     const world = CONFIG.WORLD;
+    if (this.world3d) this._world3dPreUpdate(); // 3D run: refresh the nearby-building collision list + debug keys
     this.survivalTime += dt;
 
     // --- Player ---
     this.player.handleMovement(this.input, dt, world.width, world.height, this.obstacles);
-    this.player.handleAim(this.input, this.canvas, this.camera.zoom);
+    this.player.handleAim(this.input, this.canvas, this.camera.zoom, this.camera);
     this.player.update(dt);
     this.camera.follow(this.player.x, this.player.y);
 
@@ -6191,7 +6216,7 @@ class Game {
       worldWidth: world.width,
       worldHeight: world.height,
       pickups: this.pickups,
-      obstacles: this.obstacles,
+      obstacles: this.obstaclesAll || this.obstacles, // 3D: place unlock pickups outside ALL buildings, not just nearby ones
     });
     const newlyUnlocked = this.weaponUnlocks.consumeAnnouncements();
     if (newlyUnlocked.length === 1) {
@@ -6238,11 +6263,11 @@ class Game {
     this.spawner.update(dt, {
       player: this.player,
       camera: this.camera,
-      canvas: this.canvas,
+      canvas: this.world3d ? this.world3d.spawnViewCanvas() : this.canvas, // 3D: the ring sits just outside the VISIBLE ground
       zombies: this.zombies,
       worldWidth: world.width,
       worldHeight: world.height,
-      obstacles: this.obstacles,
+      obstacles: this.obstaclesAll || this.obstacles, // 3D: validate spawn spots against EVERY building, not just the nearby ones
     });
 
     if (this.spawner.consumeBossSpawned()) {
@@ -8975,8 +9000,6 @@ class CitySelectFlow {
       else this.begin();
     });
 
-    document.getElementById('proto3dBtn').addEventListener('click', () => this.begin({ proto3d: true }));
-
     document.getElementById('findCityBtn').addEventListener('click', () => this._tryFindCity());
     this.cityInput.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') this._tryFindCity();
@@ -9004,7 +9027,7 @@ class CitySelectFlow {
     this.spawnAreaContinueBtn.addEventListener('click', () => this._showConfirmSpawn());
 
     document.getElementById('confirmSpawnBackBtn').addEventListener('click', () => this._showSpawnArea(false));
-    document.getElementById('confirmSpawnBtn').addEventListener('click', () => (this.proto3d ? this._openProto3D() : this._showGenerating()));
+    document.getElementById('confirmSpawnBtn').addEventListener('click', () => this._showGenerating());
 
     document.getElementById('mapGenRetryBtn').addEventListener('click', () => this._showGenerating());
     document.getElementById('mapGenContinueBtn').addEventListener('click', () => this._finish(null));
@@ -9013,8 +9036,7 @@ class CitySelectFlow {
 
   // Entry point — called when the home page's Play button is clicked,
   // and again if the player picks "Change City" after a run.
-  begin(opts) {
-    this.proto3d = !!(opts && opts.proto3d); // 3D MapTiler prototype entry (see proto3d section)
+  begin() {
     this.cityName = '';
     this.selectedCity = null;
     this.searchResults = [];
@@ -9217,22 +9239,6 @@ class CitySelectFlow {
     // through the same path a direct click would use.
   }
 
-  // 3D MapTiler prototype: opens the separate prototype screen at the
-  // selected real-world point. The game itself is not started.
-  _openProto3D() {
-    if (!this.selectedLatLng) {
-      this.confirmAreaText.textContent = 'The 3D prototype needs a real MapTiler map location (no API key / test mode).';
-      return;
-    }
-    const { lat, lng } = this.selectedLatLng;
-    this._destroyMapProvider(); // never keep two live WebGL maps
-    this._hideAllScreens();
-    window.proto3d.open({
-      cityName: this.cityName, lat, lng,
-      onClose: () => document.getElementById('startScreen').classList.remove('hidden'),
-    });
-  }
-
   _destroyMapProvider() {
     if (this.mapProvider) {
       this.mapProvider.destroy();
@@ -9280,7 +9286,6 @@ class CitySelectFlow {
     this._hideAllScreens();
     this.screens.confirmSpawn.classList.remove('hidden');
     this.confirmCityText.textContent = `City: ${this.cityName}`;
-    document.getElementById('confirmSpawnBtn').textContent = this.proto3d ? 'Open 3D Prototype' : 'Generate Game';
     this.confirmAreaText.textContent = this.selectedLatLng
       ? `Location: ${this._selectionSummaryText()}`
       : `Area: ${this._selectionSummaryText()}`;
@@ -9307,6 +9312,15 @@ class CitySelectFlow {
     const sel3d = this.selectedLatLng && game3dWanted() ? this.selectedLatLng : null;
     if (sel3d) this.coordinateConverter = new CoordinateConverter(sel3d.lat, sel3d.lng);
     const genCenter = sel3d ? { lat: sel3d.lat, lng: sel3d.lng } : { lat: this.selectedCity.lat, lng: this.selectedCity.lng };
+
+    // 3D world first. The MapTiler buildings ARE the collision source (see
+    // NearbyCollision), so the old OSM map generation below only runs when the 3D
+    // world can't be entered — the 2D fallback.
+    if (sel3d) {
+      this.generatingText.textContent = `Loading the 3D map of ${this.cityName}…`;
+      const world = await this._enter3DWorld();
+      if (world) { await minDelay; this._finish(null, world); return; }
+    }
 
     let generated = null;
     let failure = null;
@@ -9353,7 +9367,18 @@ class CitySelectFlow {
     this.mapGenFailedText.textContent = `Couldn't load real map data for ${this.cityName} (${reason}).`;
   }
 
-  async _finish(generated) {
+  // Creates the MapTiler world at the selected point; null (with the reason logged) -> 2D fallback.
+  async _enter3DWorld() {
+    if (this.game.world3d) { this.game.world3d.exit(); this.game.world3d = null; } // never two maps in one container
+    const w = new MapTilerGameWorld(this.game);
+    const r = await w.enter(this.selectedLatLng);
+    if (!r.ok) { console.warn('[3D world] falling back to the 2D map:', r.reason); return null; }
+    console.log('[3D world] ready' + (r.terrain ? '' : ' (no terrain)') + ', buildings for collision:', r.buildings);
+    return w;
+  }
+
+  // presetWorld: the entered MapTiler world (3D run), or undefined/null -> the 2D map.
+  async _finish(generated, presetWorld) {
 
     // Real mode: proper latitude-corrected coordinate conversion (Phase 3).
     // Test mode: the placeholder grid's normalized-point math (unrelated
@@ -9363,22 +9388,8 @@ class CitySelectFlow {
       ? this.coordinateConverter.latLngToWorldPixels(this.selectedLatLng.lat, this.selectedLatLng.lng)
       : this._placeholderNormPointToWorld(this.selectedPoint.normX, this.selectedPoint.normY);
 
-    // 3D world (MapTiler terrain + buildings): create the map at the selected
-    // point and wait for it first, with the "Generating" screen still up. Any
-    // problem -> the existing 2D map, with the reason in the console.
-    let world = null;
-    if (this.selectedLatLng && game3dWanted()) {
-      this.generatingText.textContent = `Loading the 3D map of ${this.cityName}…`;
-      if (this.game.world3d) { this.game.world3d.exit(); this.game.world3d = null; } // never two maps in one container
-      const w = new MapTilerGameWorld(this.game);
-      const r = await w.enter(this.selectedLatLng);
-      if (r.ok) {
-        world = w;
-        if (!generated) generated = { obstacles: [], roads: [] }; // no real collision data: don't invent synthetic blocks in a real city
-      } else {
-        console.warn('[3D world] falling back to the 2D map:', r.reason);
-      }
-    }
+    const world = presetWorld || null;
+    if (world && !generated) generated = { obstacles: [], roads: [] }; // 3D: collision comes from the MapTiler buildings
     this.screens.generating.classList.add('hidden');
     this.game._pendingWorld = world; // null = 2D map
     this.game.currentCityName = this.cityName || '';
@@ -9537,48 +9548,21 @@ window.addEventListener('DOMContentLoaded', () => {
   </script>
   <script>
 /**
- * proto3d.js — STAGE 1 PROTOTYPE: a real location rendered as a 3D MapTiler
- * environment (terrain + building heights), with a Three.js overlay.
- *
- * Fully separate from the game: it has its own screen (#proto3dScreen), its
- * own map instance, and touches no player / zombie / weapon / collision /
- * game-loop code. Entry: home page -> "3D MapTiler Prototype" -> the normal
- * city search -> the normal spawn-point pick -> "Open 3D Prototype".
- *
- * What renders what:
- *   - MapTiler SDK (the MapLibre GL wrapper the game already loads) draws the
- *     base map, the 3D terrain mesh and the 3D building extrusions, all from
- *     MapTiler's own data (terrain-rgb-v2 DEM tiles + the OpenMapTiles vector
- *     tiles' `building` layer with render_height / render_min_height).
- *   - Three.js draws a small custom layer on top of the SAME WebGL context
- *     and camera: a pole at the selected point, a 1.75 m "person" marker, an
- *     east/north/up axis triad and the 800 m x 800 m game-world boundary,
- *     all placed on the terrain. It exists to prove the coordinate bridge and
- *     terrain height are correct, and is where game objects will later live.
- *
- * Conversions are centralized in MapTilerCoordinateBridge (below).
+ * Shared MapTiler 3D building blocks used by the game's 3D world (gameworld3d.js):
+ *   - mapTilerAddTerrain / mapTilerAddBuildings: the MapTiler terrain (terrain-rgb-v2 DEM)
+ *     and building-extrusion setup;
+ *   - Mercator + MapTilerCoordinateBridge: lat/lng <-> local meters <-> game pixels <-> Mercator.
+ * (This began life as the standalone 3D prototype screen, which has been removed.)
  */
 
-const PROTO3D = {
+const MAPTILER3D = {
   demTilesUrl: (key) => `https://api.maptiler.com/tiles/terrain-rgb-v2/tiles.json?key=${key}`,
-  start: { zoom: 16.8, pitch: 60, bearing: 0 },
-  maxPitch: 85,
-  terrainExaggeration: 1,           // 1 = true scale
-  exaggerationChoices: [1, 1.5, 2, 3],
   buildingColor: '#c9c3b8',         // neutral, deliberately not stylized
   buildingMinZoom: 13,
-  threeModuleUrl: 'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js',
-  boundarySamplesPerSide: 40,
-  poleHeightMeters: 60,
-  personHeightMeters: 1.75,
-  axisLengthMeters: 40,
-  statsIntervalMs: 600,
-  loadThree: null,                  // test hook: () => Promise<THREE>
 };
 
 // ---------------------------------------------------------------------
-// Shared MapTiler world setup — used by BOTH this prototype and the game's
-// 3D world (gameworld3d.js), so they show exactly the same terrain/buildings.
+// MapTiler world setup used by the game's 3D world (gameworld3d.js).
 // ---------------------------------------------------------------------
 
 function mapTilerFirstSymbolLayerId(map) {
@@ -9590,9 +9574,9 @@ function mapTilerFirstSymbolLayerId(map) {
 // elevation: height_m = -10000 + (R*65536 + G*256 + B) * 0.1. MapLibre
 // decodes them on the GPU and displaces a mesh with them.
 function mapTilerAddTerrain(map, key, exaggeration) {
-  map.addSource('proto-dem', { type: 'raster-dem', url: PROTO3D.demTilesUrl(key), tileSize: 256 });
-  map.addLayer({ id: 'proto-hillshade', type: 'hillshade', source: 'proto-dem', paint: { 'hillshade-exaggeration': 0.35 } }, mapTilerFirstSymbolLayerId(map));
-  map.setTerrain({ source: 'proto-dem', exaggeration });
+  map.addSource('maptiler-dem', { type: 'raster-dem', url: MAPTILER3D.demTilesUrl(key), tileSize: 256 });
+  map.addLayer({ id: 'maptiler-hillshade', type: 'hillshade', source: 'maptiler-dem', paint: { 'hillshade-exaggeration': 0.35 } }, mapTilerFirstSymbolLayerId(map));
+  map.setTerrain({ source: 'maptiler-dem', exaggeration });
 }
 
 // 3D buildings: the style's vector source (OpenMapTiles schema) has a
@@ -9606,17 +9590,17 @@ function mapTilerAddBuildings(map) {
   const vectorSource = srcLayer.source;
   const hiddenFlatLayers = [];
   for (const l of style.layers) {
-    if (l['source-layer'] === 'building' && l.id !== 'proto-3d-buildings') { map.setLayoutProperty(l.id, 'visibility', 'none'); hiddenFlatLayers.push(l.id); }
+    if (l['source-layer'] === 'building' && l.id !== 'maptiler-3d-buildings') { map.setLayoutProperty(l.id, 'visibility', 'none'); hiddenFlatLayers.push(l.id); }
   }
   map.addLayer({
-    id: 'proto-3d-buildings',
+    id: 'maptiler-3d-buildings',
     type: 'fill-extrusion',
     source: vectorSource,
     'source-layer': 'building',
-    minzoom: PROTO3D.buildingMinZoom,
+    minzoom: MAPTILER3D.buildingMinZoom,
     filter: ['!=', ['get', 'hide_3d'], true], // parents that are drawn as separate building:parts
     paint: {
-      'fill-extrusion-color': PROTO3D.buildingColor,
+      'fill-extrusion-color': MAPTILER3D.buildingColor,
       'fill-extrusion-height': ['coalesce', ['to-number', ['get', 'render_height']], 0],
       'fill-extrusion-base': ['coalesce', ['to-number', ['get', 'render_min_height']], 0],
       'fill-extrusion-opacity': 1,
@@ -9708,389 +9692,6 @@ class MapTilerCoordinateBridge {
   }
 }
 
-// ---------------------------------------------------------------------
-// MapTiler3DPrototype
-// ---------------------------------------------------------------------
-class MapTiler3DPrototype {
-  constructor() {
-    this.screen = document.getElementById('proto3dScreen');
-    this.mapEl = document.getElementById('proto3dMap');
-    this.infoEl = document.getElementById('proto3dInfo');
-    this.map = null;
-    this.bridge = null;
-    this.open_ = false;
-    this._bindControls();
-  }
-
-  _bindControls() {
-    const $ = (id) => document.getElementById(id);
-    $('proto3dBack').addEventListener('click', () => this.close());
-    $('proto3dRecenter').addEventListener('click', () => this.map && this.map.easeTo({ center: [this.bridge.originLng, this.bridge.originLat], zoom: PROTO3D.start.zoom, pitch: PROTO3D.start.pitch, bearing: PROTO3D.start.bearing }));
-    for (const p of [30, 60, 80]) $('proto3dPitch' + p).addEventListener('click', () => this.map && this.map.easeTo({ pitch: p }));
-    $('proto3dExag').addEventListener('click', () => this._cycleExaggeration());
-    $('proto3dTerrain').addEventListener('click', () => this._toggleTerrain());
-    $('proto3dBuildings').addEventListener('click', () => this._toggleBuildings());
-    $('proto3dOverlay').addEventListener('click', () => this._toggleOverlay());
-    $('proto3dCopy').addEventListener('click', () => this._copyDiagnostics());
-  }
-
-  // ---- lifecycle -----------------------------------------------------
-  open({ cityName, lat, lng, onClose }) {
-    this.onClose = onClose;
-    this.cityName = cityName || '';
-    this.screen.style.display = 'block';
-    this.open_ = true;
-    this.status = { map: 'loading…', terrain: 'pending', buildings: 'pending', three: 'pending' };
-    this.exaggeration = PROTO3D.terrainExaggeration;
-    this.terrainOn = true; this.buildingsOn = true; this.overlayOn = true;
-    this.cursor = null; this.clicked = null; this.stats = null;
-    this.boundaryDirty = true; this._boundaryTries = 0;
-    this.lastError = '';
-
-    if (typeof maptilersdk === 'undefined') { this.status.map = 'MapTiler SDK not loaded (offline?)'; this._render(); return; }
-    const key = MAP_CONFIG.maptilerApiKey;
-    if (!key) { this.status.map = 'no MapTiler API key configured'; this._render(); return; }
-
-    this.bridge = new MapTilerCoordinateBridge(lat, lng);
-    maptilersdk.config.apiKey = key;
-    this.map = new maptilersdk.Map({
-      container: this.mapEl,
-      style: maptilersdk.MapStyle.STREETS,
-      center: [lng, lat],
-      zoom: PROTO3D.start.zoom,
-      pitch: PROTO3D.start.pitch,
-      bearing: PROTO3D.start.bearing,
-      maxPitch: PROTO3D.maxPitch,
-    });
-    this.map.on('error', (e) => { this.lastError = (e && e.error && e.error.message) || 'map error'; this._render(); });
-    this.map.on('load', () => this._onLoad());
-    this.map.on('mousemove', (e) => { this.cursor = e.lngLat; this._scheduleRender(); });
-    this.map.on('click', (e) => this._onClick(e));
-    this.map.on('move', () => this._scheduleRender());
-    this.map.on('idle', () => this._onIdle());
-    this.map.on('sourcedata', (e) => { if (e.sourceId === 'proto-dem' && e.isSourceLoaded) { this.boundaryDirty = true; this._boundaryTries = 0; } });
-    this._render();
-  }
-
-  close() {
-    this.open_ = false;
-    if (this.map) { try { this.map.remove(); } catch (e) { /* ignore */ } this.map = null; }
-    this.three = null;
-    this.screen.style.display = 'none';
-    if (this.onClose) this.onClose();
-  }
-
-  // ---- map setup -------------------------------------------------------
-  _onLoad() {
-    this.status.map = 'ready';
-    this._setupTerrain();
-    this._setupBuildings();
-    this._setupThree();
-    this._render();
-  }
-
-  _firstSymbolLayerId() { return mapTilerFirstSymbolLayerId(this.map); }
-
-  // TERRAIN + BUILDINGS: see mapTilerAddTerrain / mapTilerAddBuildings above.
-  _setupTerrain() {
-    try {
-      mapTilerAddTerrain(this.map, MAP_CONFIG.maptilerApiKey, this.exaggeration);
-      this.status.terrain = 'on (terrain-rgb-v2)';
-    } catch (err) { this.status.terrain = 'FAILED: ' + err.message; }
-  }
-
-  _setupBuildings() {
-    try {
-      const r = mapTilerAddBuildings(this.map);
-      this.vectorSource = r.vectorSource;
-      this.hiddenFlatLayers = r.hiddenFlatLayers;
-      this.status.buildings = `on (source "${this.vectorSource}", layer "building")`;
-    } catch (err) { this.status.buildings = 'FAILED: ' + err.message; }
-  }
-
-  // THREE.JS custom layer, drawn in MapLibre's own WebGL context and camera.
-  async _setupThree() {
-    try {
-      const THREE = PROTO3D.loadThree ? await PROTO3D.loadThree() : await import(PROTO3D.threeModuleUrl);
-      if (!this.map) return; // closed while loading
-      this.THREE = THREE;
-      this._buildThreeScene();
-      this.map.addLayer(this._customLayer());
-      this.status.three = `on (three r${THREE.REVISION})`;
-    } catch (err) { this.status.three = 'FAILED to load: ' + (err && err.message ? err.message : err); }
-    this._render();
-  }
-
-  _buildThreeScene() {
-    const T = this.THREE;
-    this.scene = new T.Scene();
-    this.anchor = new T.Group();           // positioned at the selected point's terrain height
-    this.scene.add(this.anchor);
-    const basic = (c) => new T.MeshBasicMaterial({ color: c });
-    // 60 m pole at the selected point (red).
-    const pole = new T.Mesh(new T.CylinderGeometry(1.2, 1.2, PROTO3D.poleHeightMeters, 12), basic(0xe74c3c));
-    pole.position.y = PROTO3D.poleHeightMeters / 2;
-    this.anchor.add(pole);
-    // 1.75 m "person" 4 m east of the pole (yellow), for scale against buildings.
-    const person = new T.Mesh(new T.CylinderGeometry(0.3, 0.3, PROTO3D.personHeightMeters, 10), basic(0xf1c40f));
-    person.position.set(4, PROTO3D.personHeightMeters / 2, 0);
-    this.anchor.add(person);
-    // Axis triad: east (red), north (green), up (blue).
-    const L = PROTO3D.axisLengthMeters;
-    const axis = (to, c) => { const g = new T.BufferGeometry().setFromPoints([new T.Vector3(0, 0.3, 0), to]); return new T.Line(g, new T.LineBasicMaterial({ color: c })); };
-    this.anchor.add(axis(new T.Vector3(L, 0.3, 0), 0xff4444));
-    this.anchor.add(axis(new T.Vector3(0, 0.3, -L), 0x44dd44));
-    this.anchor.add(axis(new T.Vector3(0, L, 0), 0x4488ff));
-    // Game-world boundary (800 m x 800 m), draped on the terrain. Rebuilt on idle.
-    this.boundary = new T.Line(new T.BufferGeometry(), new T.LineBasicMaterial({ color: 0x00e5ff }));
-    this.boundary.frustumCulled = false;
-    this.scene.add(this.boundary);
-  }
-
-  _customLayer() {
-    const self = this;
-    const T = this.THREE;
-    return {
-      id: 'proto-three',
-      type: 'custom',
-      renderingMode: '3d',
-      onAdd(map, gl) {
-        this.camera = new T.Camera();
-        this.renderer = new T.WebGLRenderer({ canvas: map.getCanvas(), context: gl, antialias: true });
-        this.renderer.autoClear = false;
-      },
-      render(gl, arg) {
-        if (!self.overlayOn) return;
-        // MapLibre 4.x passes the projection matrix; newer versions pass an object.
-        const m = (arg && arg.length === 16) ? arg : (arg && (arg.modelViewProjectionMatrix || (arg.defaultProjectionData && arg.defaultProjectionData.mainMatrix)));
-        if (!m) return;
-        const b = self.bridge;
-        // Scene meters -> Mercator: translate to the origin, scale by meters,
-        // flip Y (Mercator y grows southward) and rotate so Three's Y-up
-        // becomes Mercator's altitude axis. Result: X east, Y up, Z south.
-        const rotX = new T.Matrix4().makeRotationAxis(new T.Vector3(1, 0, 0), Math.PI / 2);
-        const l = new T.Matrix4()
-          .makeTranslation(b.originMerc.x, b.originMerc.y, 0)
-          .scale(new T.Vector3(b.sceneUnit, -b.sceneUnit, b.sceneUnit))
-          .multiply(rotX);
-        this.camera.projectionMatrix = new T.Matrix4().fromArray(m).multiply(l);
-        this.renderer.resetState();
-        this.renderer.render(self.scene, this.camera);
-        self.map.triggerRepaint();
-      },
-    };
-  }
-
-  // ---- terrain / elevation helpers --------------------------------------
-  // Elevation as DISPLAYED (true meters x exaggeration), or null if the DEM
-  // tile under that point has not loaded yet.
-  _elevationAt(lat, lng) {
-    if (!this.map || !this.terrainOn) return null;
-    try { const e = this.map.queryTerrainElevation({ lng, lat }); return (e === null || e === undefined || !isFinite(e)) ? null : e; } catch (err) { return null; }
-  }
-  _trueElevation(displayed) { return displayed === null ? null : displayed / (this.terrainOn ? this.exaggeration : 1); }
-
-  _onIdle() {
-    this._updateOverlayPlacement();
-    this._updateStats();
-    this._render();
-  }
-
-  // Put the pole/person/axes on the ground and drape the boundary line.
-  _updateOverlayPlacement() {
-    if (!this.THREE || !this.anchor || !this.boundary) return; // Three scene not (fully) built
-    const b = this.bridge;
-    const elev0 = this._elevationAt(b.originLat, b.originLng);
-    this.anchor.position.y = elev0 === null ? 0 : elev0;
-    if (!this.boundaryDirty && this._boundaryTries > 0) return;
-    const N = PROTO3D.boundarySamplesPerSide, W = b.worldW, H = b.worldH;
-    const pts = [];
-    for (let i = 0; i < N; i++) pts.push([W * i / N, 0]);
-    for (let i = 0; i < N; i++) pts.push([W, H * i / N]);
-    for (let i = 0; i < N; i++) pts.push([W - W * i / N, H]);
-    for (let i = 0; i < N; i++) pts.push([0, H - H * i / N]);
-    pts.push([0, 0]);
-    const pos = []; let missing = 0, fallback = elev0 === null ? 0 : elev0;
-    for (const [x, y] of pts) {
-      const ll = b.gamePxToLatLng(x, y);
-      const e = this._elevationAt(ll.lat, ll.lng);
-      if (e === null) missing++;
-      const s = b.latLngToScene(ll.lat, ll.lng, (e === null ? fallback : e) + 1);
-      pos.push(s.x, s.y, s.z);
-    }
-    this.boundary.geometry.setAttribute('position', new this.THREE.Float32BufferAttribute(pos, 3));
-    this.boundary.geometry.computeBoundingSphere();
-    this._boundaryTries++;
-    this.boundaryMissing = missing;
-    this.boundaryDirty = missing > 0 && this._boundaryTries < 20; // keep retrying until the DEM tiles are in
-    if (this.map) this.map.triggerRepaint();
-  }
-
-  // ---- controls --------------------------------------------------------
-  _cycleExaggeration() {
-    const c = PROTO3D.exaggerationChoices;
-    this.exaggeration = c[(c.indexOf(this.exaggeration) + 1) % c.length];
-    if (this.terrainOn && this.map) this.map.setTerrain({ source: 'proto-dem', exaggeration: this.exaggeration });
-    this.boundaryDirty = true; this._boundaryTries = 0;
-    this._render();
-  }
-  _toggleTerrain() {
-    this.terrainOn = !this.terrainOn;
-    if (this.map) this.map.setTerrain(this.terrainOn ? { source: 'proto-dem', exaggeration: this.exaggeration } : null);
-    this.boundaryDirty = true; this._boundaryTries = 0;
-    this._render();
-  }
-  _toggleBuildings() {
-    this.buildingsOn = !this.buildingsOn;
-    if (this.map && this.map.getLayer('proto-3d-buildings')) this.map.setLayoutProperty('proto-3d-buildings', 'visibility', this.buildingsOn ? 'visible' : 'none');
-    this._render();
-  }
-  _toggleOverlay() { this.overlayOn = !this.overlayOn; if (this.map) this.map.triggerRepaint(); this._render(); }
-
-  _onClick(e) {
-    const b = this.bridge;
-    const feats = this.map.getLayer('proto-3d-buildings') ? this.map.queryRenderedFeatures(e.point, { layers: ['proto-3d-buildings'] }) : [];
-    const ll = { lat: e.lngLat.lat, lng: e.lngLat.lng };
-    const disp = this._elevationAt(ll.lat, ll.lng);
-    this.clicked = {
-      lat: ll.lat, lng: ll.lng,
-      gamePx: b.latLngToGamePx(ll.lat, ll.lng),
-      elevationDisplayed: disp, elevationTrue: this._trueElevation(disp),
-      building: feats.length ? { render_height: feats[0].properties.render_height, render_min_height: feats[0].properties.render_min_height, props: feats[0].properties } : null,
-    };
-    this._render();
-  }
-
-  // Building statistics for the loaded tiles in view.
-  _updateStats() {
-    if (!this.map || !this.vectorSource || !this.map.getLayer('proto-3d-buildings')) return;
-    let feats = [];
-    try { feats = this.map.querySourceFeatures(this.vectorSource, { sourceLayer: 'building' }); } catch (e) { return; }
-    const seen = new Set(), heights = [];
-    let withHeight = 0, withBase = 0, hidden = 0, total = 0;
-    const firstCoord = (g) => { let c = g.coordinates; while (Array.isArray(c) && Array.isArray(c[0])) c = c[0]; return c; };
-    for (const f of feats) {
-      const c = firstCoord(f.geometry);
-      const key = (f.id === undefined ? '' : f.id) + '|' + (c ? c[0].toFixed(6) + ',' + c[1].toFixed(6) : '') + '|' + f.properties.render_height;
-      if (seen.has(key)) continue; seen.add(key); total++;
-      const h = Number(f.properties.render_height);
-      if (f.properties.hide_3d === true || f.properties.hide_3d === 'true') hidden++;
-      if (isFinite(h) && h > 0) { withHeight++; heights.push(h); }
-      if (Number(f.properties.render_min_height) > 0) withBase++;
-    }
-    heights.sort((a, b) => a - b);
-    const counts = new Map(); for (const h of heights) counts.set(h, (counts.get(h) || 0) + 1);
-    let modeH = null, modeN = 0; for (const [h, n] of counts) if (n > modeN) { modeN = n; modeH = h; }
-    const bucket = (lo, hi) => heights.filter((h) => h >= lo && h < hi).length;
-    this.stats = {
-      features: total, withRenderHeight: withHeight, withMinHeight: withBase, hide3d: hidden,
-      min: heights[0] ?? null, median: heights.length ? heights[Math.floor(heights.length / 2)] : null, max: heights.length ? heights[heights.length - 1] : null,
-      mostCommonHeight: modeH, mostCommonCount: modeN,
-      buckets: { 'lt6': bucket(0, 6), '6-12': bucket(6, 12), '12-30': bucket(12, 30), '30-100': bucket(30, 100), 'gte100': bucket(100, 1e9) },
-    };
-  }
-
-  // ---- diagnostics ------------------------------------------------------
-  collectDiagnostics() {
-    const b = this.bridge;
-    const out = { city: this.cityName, status: this.status, error: this.lastError || null };
-    if (!b) return out;
-    const o = { lat: b.originLat, lng: b.originLng };
-    const m = this.map;
-    const disp = this._elevationAt(o.lat, o.lng);
-    const corners = b.worldCorners();
-    const mercSdk = (typeof maptilersdk !== 'undefined' && maptilersdk.MercatorCoordinate) ? maptilersdk.MercatorCoordinate.fromLngLat({ lng: o.lng, lat: o.lat }, 0) : null;
-    out.origin = {
-      latLng: o,
-      localMeters: b.latLngToMeters(o.lat, o.lng),
-      gamePx: b.latLngToGamePx(o.lat, o.lng),
-      mercator: b.originMerc,
-      sceneMetersAtOrigin: b.latLngToScene(o.lat, o.lng, disp === null ? 0 : disp),
-      mercatorMatchesSdk: mercSdk ? { dx: mercSdk.x - b.originMerc.x, dy: mercSdk.y - b.originMerc.y, meterScaleSdk: mercSdk.meterInMercatorCoordinateUnits(), meterScaleOurs: b.sceneUnit } : 'sdk MercatorCoordinate unavailable',
-    };
-    out.gameWorld = {
-      sizePx: [b.worldW, b.worldH], pxPerMeter: [b.pxPerMeterX, b.pxPerMeterY],
-      cornersLatLng: corners,
-      edgeGroundMetersNorth: BigRound(MapTilerCoordinateBridge.haversineMeters(corners[0], corners[1])),
-      edgeGroundMetersEast: BigRound(MapTilerCoordinateBridge.haversineMeters(corners[1], corners[2])),
-      declaredMeters: [MAP_CONFIG.PLAYABLE_MAP_SIZE.widthMeters, MAP_CONFIG.PLAYABLE_MAP_SIZE.heightMeters],
-    };
-    out.terrain = {
-      source: 'MapTiler terrain-rgb-v2 (raster-dem)', decode: 'height_m = -10000 + (R*65536 + G*256 + B) * 0.1',
-      exaggeration: this.terrainOn ? this.exaggeration : 'terrain off',
-      elevationAtOriginDisplayed: disp, elevationAtOriginTrue: this._trueElevation(disp),
-      boundaryPointsWithoutElevation: this.boundaryMissing ?? null,
-    };
-    out.buildings = { source: this.vectorSource || null, layer: 'building', heightProperty: 'render_height', baseProperty: 'render_min_height', stats: this.stats, flatLayersHidden: this.hiddenFlatLayers || [] };
-    if (m) out.camera = { zoom: +m.getZoom().toFixed(2), pitch: +m.getPitch().toFixed(1), bearing: +m.getBearing().toFixed(1), center: m.getCenter() };
-    out.cursor = this.cursor ? this._pointInfo(this.cursor.lat, this.cursor.lng) : null;
-    out.clicked = this.clicked || null;
-    return out;
-  }
-
-  _pointInfo(lat, lng) {
-    const b = this.bridge, d = this._elevationAt(lat, lng);
-    return { lat, lng, localMeters: b.latLngToMeters(lat, lng), gamePx: b.latLngToGamePx(lat, lng), elevationDisplayed: d, elevationTrue: this._trueElevation(d) };
-  }
-
-  _copyDiagnostics() {
-    const txt = JSON.stringify(this.collectDiagnostics(), null, 2);
-    if (navigator.clipboard) navigator.clipboard.writeText(txt).catch(() => {});
-    const el = document.getElementById('proto3dCopy'); const old = el.textContent; el.textContent = 'Copied'; setTimeout(() => { el.textContent = old; }, 1200);
-  }
-
-  _scheduleRender() {
-    if (this._raf) return;
-    this._raf = requestAnimationFrame(() => { this._raf = 0; this._render(); });
-  }
-
-  _render() {
-    if (!this.open_) return;
-    const f = (v, d = 1) => (v === null || v === undefined ? '—' : Number(v).toFixed(d));
-    const d = this.collectDiagnostics();
-    const L = [];
-    L.push(`${d.city || ''}`);
-    L.push(`map: ${d.status.map}`);
-    L.push(`terrain: ${d.status.terrain}`);
-    L.push(`buildings: ${d.status.buildings}`);
-    L.push(`three.js: ${d.status.three}`);
-    if (d.error) L.push(`last error: ${d.error}`);
-    if (d.origin) {
-      const o = d.origin;
-      L.push('', '— selected point (origin) —');
-      L.push(`lat/lng   ${o.latLng.lat.toFixed(6)}, ${o.latLng.lng.toFixed(6)}`);
-      L.push(`local m   E ${f(o.localMeters.east)}  N ${f(o.localMeters.north)}`);
-      L.push(`game px   ${f(o.gamePx.x, 0)}, ${f(o.gamePx.y, 0)}  (world ${d.gameWorld.sizePx.join('x')})`);
-      L.push(`mercator  ${o.mercator.x.toFixed(8)}, ${o.mercator.y.toFixed(8)}`);
-      L.push(`scene m   X ${f(o.sceneMetersAtOrigin.x)}  Y ${f(o.sceneMetersAtOrigin.y)}  Z ${f(o.sceneMetersAtOrigin.z)}`);
-      L.push(`world edge  ${d.gameWorld.edgeGroundMetersEast} x ${d.gameWorld.edgeGroundMetersNorth} m on the ground (declared ${d.gameWorld.declaredMeters.join(' x ')})`);
-      L.push('', '— terrain —');
-      L.push(`exaggeration ${d.terrain.exaggeration}`);
-      L.push(`elevation here: true ${f(d.terrain.elevationAtOriginTrue)} m, shown ${f(d.terrain.elevationAtOriginDisplayed)} m`);
-      if (d.terrain.boundaryPointsWithoutElevation) L.push(`boundary samples awaiting DEM tiles: ${d.terrain.boundaryPointsWithoutElevation}`);
-    }
-    if (d.buildings && d.buildings.stats) {
-      const s = d.buildings.stats;
-      L.push('', '— buildings in loaded tiles —');
-      L.push(`${s.features} features, ${s.withRenderHeight} with render_height > 0, ${s.withMinHeight} raised (min_height)`);
-      L.push(`height m: min ${f(s.min)}  median ${f(s.median)}  max ${f(s.max)}`);
-      L.push(`most common ${f(s.mostCommonHeight)} m (${s.mostCommonCount} bldgs)`);
-      L.push(`<6: ${s.buckets.lt6}  6-12: ${s.buckets['6-12']}  12-30: ${s.buckets['12-30']}  30-100: ${s.buckets['30-100']}  100+: ${s.buckets.gte100}`);
-    }
-    if (d.camera) L.push('', `camera: zoom ${d.camera.zoom}  pitch ${d.camera.pitch}  bearing ${d.camera.bearing}`);
-    if (d.cursor) L.push('', '— cursor —', `${d.cursor.lat.toFixed(6)}, ${d.cursor.lng.toFixed(6)}`, `local E ${f(d.cursor.localMeters.east)} N ${f(d.cursor.localMeters.north)} m`, `game px ${f(d.cursor.gamePx.x, 0)}, ${f(d.cursor.gamePx.y, 0)}`, `elevation true ${f(d.cursor.elevationTrue)} m`);
-    if (d.clicked) {
-      const c = d.clicked;
-      L.push('', '— last click —', `${c.lat.toFixed(6)}, ${c.lng.toFixed(6)}  elev ${f(c.elevationTrue)} m`);
-      L.push(c.building ? `building: render_height ${c.building.render_height}  min_height ${c.building.render_min_height ?? 0}` : 'no building under click');
-    }
-    this.infoEl.textContent = L.join('\n');
-  }
-}
-
-function BigRound(v) { return Math.round(v * 10) / 10; }
-
-window.addEventListener('DOMContentLoaded', () => { window.proto3d = new MapTiler3DPrototype(); });
 
   </script>
   <script>
@@ -10137,7 +9738,11 @@ const GAME3D = {
   boundaryColor: 'rgba(231, 76, 60, 0.8)',
   collisionDebugKey: 'F2',  // toggles collision rectangles + footprints (debug)
   readoutKey: 'F3',         // toggles the geographic position readout (also on with ?debug3d)
-  collisionRadiusMeters: 120, // only buildings within this distance of the peanut take part in collision
+  collisionRadiusMeters: 300, // only buildings within this distance of the peanut take part in collision (covers the whole visible area + the spawn ring + a margin)
+  minBuildingAreaM2: 6,       // footprints smaller than this (sheds, kiosks) don't block movement
+  raisedPartMinHeightM: 4,    // building parts that start this far above the ground (overhangs) can be walked under
+  footprintMaxMeters: 260,    // farthest visible ground the zombie spawn ring may assume
+  projectileLiftPx: 14,       // bullets are drawn this high (game px) above their ground point, so they fly at chest height
   controls: false,          // no MapTiler widgets (zoom buttons, geolocate, ...): this is a game, not a web map
 };
 
@@ -10225,12 +9830,17 @@ class MapTilerWorldRenderer {
     if (!GAME3D.controls) Object.assign(opts, { navigationControl: false, geolocateControl: false, scaleControl: false, fullscreenControl: false, terrainControl: false });
     this.map = new maptilersdk.Map(opts);
     this.map.on('error', (e) => console.warn('[GameWorld3D] map error:', e && e.error && e.error.message));
-    this.map.on('sourcedata', (e) => { if (e.sourceId === 'proto-dem' && e.isSourceLoaded && this.onDemUpdate) this.onDemUpdate(); });
+    this.map.on('sourcedata', (e) => {
+      if (e.sourceId === 'maptiler-dem' && e.isSourceLoaded && this.onDemUpdate) this.onDemUpdate();
+      if (this.vectorSource && e.sourceId === this.vectorSource && e.isSourceLoaded) this.buildingsDirty = true; // new building tiles arrived
+    });
+    this.map.on('idle', () => { this.buildingsDirty = true; });
     this.map.on('load', () => {
       // Same terrain + building setup as the prototype (shared helpers).
       try { mapTilerAddTerrain(this.map, MAP_CONFIG.maptilerApiKey, GAME3D.terrainExaggeration); this.terrainOk = true; } catch (err) { console.warn('[GameWorld3D] terrain failed:', err.message); }
-      try { mapTilerAddBuildings(this.map); this.buildingsOk = true; } catch (err) { console.warn('[GameWorld3D] buildings failed:', err.message); }
+      try { this.vectorSource = mapTilerAddBuildings(this.map).vectorSource; this.buildingsOk = true; } catch (err) { console.warn('[GameWorld3D] buildings failed:', err.message); }
       this.map.addLayer(this._projectionLayer());
+      this.buildingsDirty = true;
       this.loaded = true;
     });
   }
@@ -10248,6 +9858,12 @@ class MapTilerWorldRenderer {
         if (self.onFrame) self.onFrame();
       },
     };
+  }
+
+  // The MapTiler building polygons currently loaded (the very data the extrusions are drawn from).
+  buildingFeatures() {
+    if (!this.map || !this.vectorSource) return [];
+    try { return this.map.querySourceFeatures(this.vectorSource, { sourceLayer: 'building' }); } catch (e) { return []; }
   }
 
   inverseMatrix() { if (!this._inv && this.matrix) this._inv = GW_M4.invert(this.matrix); return this._inv; }
@@ -10289,6 +9905,7 @@ class GameplayCamera3D {
     this.renderer = renderer; this.terrain = terrain; this.bridge = bridge; this.canvas = canvas;
     this.x = bridge.worldW / 2; this.y = bridge.worldH / 2; // smoothed camera target, game px
     this.snapshot = null;                                    // what the current map frame was set up with
+    this.refW = 0;                                           // clip-space w at the player, for per-entity perspective scale
     this.centerErr = { x: 0, y: 0 };
   }
 
@@ -10320,6 +9937,8 @@ class GameplayCamera3D {
     out.x = (c[0] / c[3] + 1) / 2 * W - this.centerErr.x;
     out.y = (1 - c[1] / c[3]) / 2 * H - this.centerErr.y;
     out.visible = true;
+    out.w = c[3];
+    out.scale = this.refW ? this.refW / c[3] : 1; // perspective: things farther than the player are smaller
     return out;
   }
 
@@ -10387,24 +10006,66 @@ class GameplayCamera3D {
 
 // ---- 4. Collision ----------------------------------------------------------------
 // Visual buildings (MapTiler's extrusions) and gameplay collision are separate
-// systems. Collision is the game's existing simplified geometry (a rectangle
-// fitted to each OSM footprint). Only buildings within `radius` of the peanut
-// are handed to the movement code; the list is rebuilt when the peanut has
-// moved a quarter of that radius, so a building that can reach the peanut is
-// never missing from it.
+// systems. Collision is invisible simplified geometry built from the SAME
+// building polygons MapTiler draws (its vector `building` layer), so it lines
+// up with what is on screen and needs no separate map download: each footprint
+// becomes one rotated rectangle by the game's existing footprint-to-rectangle
+// routine (BuildingGenerator._toObstacle — the same shapes the old game used,
+// just sourced from MapTiler instead of Overpass).
+//
+// `all` holds every building found; `active` is the small list the existing
+// movement / zombie / bullet / spawn code actually sees (it IS Game.obstacles,
+// refreshed in place), limited to buildings near the peanut.
 class NearbyCollision {
   constructor(bridge, radiusMeters) {
+    this.bridge = bridge;
     this.radiusPx = radiusMeters * bridge.pxPerMeterX;
-    this.all = []; this.active = []; this.cx = null; this.cy = null; this.rebuilds = 0;
+    this.all = []; this.active = []; this.keys = new Set();
+    this.cx = null; this.cy = null; this.rebuilds = 0; this.dirty = false;
+    this.skipped = { raised: 0, hidden: 0, tooSmall: 0, outside: 0, degenerate: 0, duplicate: 0 };
   }
-  setObstacles(list) { this.all = list || []; this.cx = null; this.active = []; }
-  near(px, py) {
-    if (this.cx === null || Math.hypot(px - this.cx, py - this.cy) > this.radiusPx * 0.25) {
-      this.cx = px; this.cy = py; this.rebuilds++;
-      const R = this.radiusPx;
-      this.active = this.all.filter((o) => Math.hypot(o.x - px, o.y - py) - Math.hypot(o.halfWidth, o.halfHeight) <= R);
+
+  // The array Game.obstacles points at; refreshed in place so no code holding it goes stale.
+  setActiveArray(arr) { this.active = arr; arr.length = 0; this.cx = null; this.dirty = true; }
+
+  // GeoJSON polygon features (lng/lat) from MapTiler's building layer -> collision rectangles.
+  ingest(features) {
+    const b = this.bridge, W = b.worldW, H = b.worldH, ppm2 = b.pxPerMeterX * b.pxPerMeterY;
+    let added = 0;
+    for (const f of features) {
+      const pr = f.properties || {};
+      if (pr.hide_3d === true || pr.hide_3d === 'true') { this.skipped.hidden++; continue; }  // parent of separate building:parts (not drawn either)
+      if (Number(pr.render_min_height) >= GAME3D.raisedPartMinHeightM) { this.skipped.raised++; continue; } // overhang: you can walk under it
+      const g = f.geometry; if (!g) continue;
+      const rings = g.type === 'Polygon' ? [g.coordinates[0]] : g.type === 'MultiPolygon' ? g.coordinates.map((poly) => poly[0]) : [];
+      for (const ring of rings) {
+        if (!ring || ring.length < 4) { this.skipped.degenerate++; continue; }
+        const key = (f.id === undefined ? '' : f.id) + '|' + ring[0][0].toFixed(6) + ',' + ring[0][1].toFixed(6) + '|' + ring.length;
+        if (this.keys.has(key)) { this.skipped.duplicate++; continue; }
+        this.keys.add(key);
+        const o = BuildingGenerator._toObstacle({ points: ring.map(([lng, lat]) => ({ lat, lng })), tags: { building: 'yes' } }, b.converter);
+        if (!o) { this.skipped.degenerate++; continue; }
+        const margin = Math.hypot(o.halfWidth, o.halfHeight);
+        if (o.x + margin < 0 || o.x - margin > W || o.y + margin < 0 || o.y - margin > H) { this.skipped.outside++; continue; }
+        if (4 * o.halfWidth * o.halfHeight * o.fillRatio / ppm2 < GAME3D.minBuildingAreaM2) { this.skipped.tooSmall++; continue; }
+        if (isFinite(Number(pr.render_height))) { o.buildingHeightMeters = Number(pr.render_height); o.heightSource = 'maptiler'; }
+        this.all.push(o); added++;
+      }
     }
-    return this.active;
+    if (added) this.dirty = true;
+    return added;
+  }
+
+  // Rebuild the active list (in place) when the peanut has moved a quarter of
+  // the radius, or new buildings arrived, so a building that can reach the
+  // peanut or a zombie in view is never missing.
+  sync(px, py) {
+    if (!this.dirty && this.cx !== null && Math.hypot(px - this.cx, py - this.cy) <= this.radiusPx * 0.25) return false;
+    this.cx = px; this.cy = py; this.dirty = false; this.rebuilds++;
+    const R = this.radiusPx, a = this.active;
+    a.length = 0;
+    for (const o of this.all) if (Math.hypot(o.x - px, o.y - py) - Math.hypot(o.halfWidth, o.halfHeight) <= R) a.push(o);
+    return true;
   }
 }
 
@@ -10492,6 +10153,8 @@ class MapTilerGameWorld {
     this.renderer = new MapTilerWorldRenderer(document.getElementById('world3dMap'));
     this.bridge = null; this.terrain = null; this.camera = null; this.collision = null;
     this.overlay = new WorldOverlay3D(this);
+    this.onBuildingsAdded = null; // Game rebuilds its zombie nav grid when this fires
+    this._buildingTimer = 0; this._footTimer = 99; this._footprintPx = 600;
   }
 
   // Creates the map at the selected location and waits until it (and its
@@ -10511,11 +10174,15 @@ class MapTilerGameWorld {
 
       // Ready = loaded + the DEM tile under the spawn is in (so the very first
       // frame already stands the peanut on the ground), or terrain is unavailable.
+      const t0 = performance.now();
       const poll = setInterval(() => {
         if (!this.renderer.loaded) return;
+        this.refreshBuildingCollision(true);
+        // Buildings: wait briefly for the first batch (a place with none just proceeds).
+        const buildingsReady = this.collision.all.length > 0 || !this.renderer.buildingsOk || performance.now() - t0 > 7000;
         const e = this.terrain.atGame(this.camera.x, this.camera.y);
-        if (e !== null) { this.terrain.lastGround = e; return finish({ ok: true, terrain: true }); }
-        if (!this.renderer.terrainOk && this.renderer.isIdle()) return finish({ ok: true, terrain: false });
+        if (e !== null) { this.terrain.lastGround = e; if (buildingsReady) return finish({ ok: true, terrain: true, buildings: this.collision.all.length }); return; }
+        if (!this.renderer.terrainOk && this.renderer.isIdle() && buildingsReady) return finish({ ok: true, terrain: false, buildings: this.collision.all.length });
       }, 200);
       const timer = setTimeout(() => {
         if (this.renderer.loaded) finish({ ok: true, terrain: false, note: 'terrain tiles did not arrive in time; standing on flat ground' });
@@ -10528,7 +10195,34 @@ class MapTilerGameWorld {
   resize() { this.renderer.resize(); }
 
   // Game hooks ---------------------------------------------------------------------------
-  attachRun(obstacles) { this.collision.setObstacles(obstacles); }
+  // Game.obstacles becomes the active collision list (refreshed in place).
+  attachRun(obstacles) { this.collision.setActiveArray(obstacles); }
+  syncCollision(px, py) { return this.collision.sync(px, py); }
+
+  // Look for newly loaded MapTiler buildings (throttled). Returns how many were added.
+  refreshBuildingCollision(force) {
+    if (!this.renderer.buildingsDirty && !force) return 0;
+    this.renderer.buildingsDirty = false;
+    const added = this.collision.ingest(this.renderer.buildingFeatures());
+    if (added && this.onBuildingsAdded) this.onBuildingsAdded(added);
+    return added;
+  }
+
+  // A canvas-sized object for the zombie spawner: its half-diagonal equals the
+  // farthest visible ground distance from the peanut, so zombies appear just
+  // OUTSIDE what is on screen (the 2D game used the screen size for this).
+  spawnViewCanvas() { const side = this._footprintPx * Math.SQRT2; return { width: side, height: side }; }
+  _updateFootprint() {
+    const cam = this.camera, sn = cam.snapshot; if (!sn) return;
+    const W = this.game.canvas.width, H = this.game.canvas.height, maxPx = GAME3D.footprintMaxMeters * this.bridge.pxPerMeterX;
+    let best = 0;
+    for (const [sx, sy] of [[0, 0], [W, 0], [0, H], [W, H]]) {
+      const g = cam.unproject(sx, sy);
+      const d = g ? Math.min(maxPx, Math.hypot(g.x - sn.camX, g.y - sn.camY)) : maxPx;
+      if (d > best) best = d;
+    }
+    if (best > 0) this._footprintPx = best;
+  }
   snapCamera(x, y) { this.camera.snapTo(x, y); }
   nearbyObstacles(px, py) { return this.collision.near(px, py); }
   frame(dt) {
@@ -10536,6 +10230,9 @@ class MapTilerGameWorld {
     if (!this.renderer.map || !p) return;
     this.camera.follow(dt, p.x, p.y);
     this.game.camera.x = this.camera.x; this.game.camera.y = this.camera.y;
+    this._buildingTimer += dt; this._footTimer += dt;
+    if (this._buildingTimer > 1) { this._buildingTimer = 0; this.refreshBuildingCollision(false); } // streaming: pick up buildings from new tiles
+    if (this._footTimer > 0.5 && this.renderer.matrix) { this._footTimer = 0; this._updateFootprint(); }
   }
   hasMatrix() { return !!this.renderer.matrix; }
   get snapshot() { return this.camera && this.camera.snapshot; }
@@ -10570,11 +10267,29 @@ class MapTilerGameWorld {
       expectedPixelsPerGamePixel: CAMERA_ZOOM,
       centerErrorPx: this.camera.centerErr,
       terrainOk: this.renderer.terrainOk, buildingsOk: this.renderer.buildingsOk,
-      collision: { total: this.collision.all.length, active: this.collision.active.length, rebuilds: this.collision.rebuilds },
+      collision: { total: this.collision.all.length, active: this.collision.active.length, rebuilds: this.collision.rebuilds, skipped: this.collision.skipped },
     };
   }
 }
 
+  </script>
+  <script>
+    // Difficulty (Easy / Normal / Hard): writes CONFIG.activeDifficulty, which the
+    // existing spawner and zombie code already read (health / damage / speed /
+    // spawn-rate multipliers in CONFIG.DIFFICULTY_LEVELS). Remembered between visits.
+    window.addEventListener('DOMContentLoaded', () => {
+      const KEY = 'operationPeanut.difficulty';
+      const buttons = [...document.querySelectorAll('#difficultyRow .diffBtn')];
+      const apply = (d) => {
+        if (!CONFIG.DIFFICULTY_LEVELS[d]) d = 'normal';
+        CONFIG.activeDifficulty = d;
+        try { localStorage.setItem(KEY, d); } catch (e) { /* private mode */ }
+        buttons.forEach((b) => b.classList.toggle('active', b.dataset.diff === d));
+      };
+      buttons.forEach((b) => b.addEventListener('click', () => apply(b.dataset.diff)));
+      let saved = 'normal'; try { saved = localStorage.getItem(KEY) || 'normal'; } catch (e) { /* ignore */ }
+      apply(saved);
+    });
   </script>
 </body>
 </html>
