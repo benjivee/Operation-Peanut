@@ -10570,12 +10570,18 @@ class BuildingFade3D {
     }
     return p.fadeKey;
   }
+  // Does this map feature touch `box` (game px)? A feature can be one polygon or several parts (a MultiPolygon: one building
+  // made of separate pieces); it counts if ANY part's outline reaches the box. (Requiring every part to lie inside it rejected
+  // buildings whose other parts are elsewhere, which is why a building could be found and still never be accepted.)
   _inBox(f, box) {
     const b = this.world.bridge, g = f.geometry; if (!g) return false;
     const rings = g.type === 'Polygon' ? [g.coordinates[0]] : g.type === 'MultiPolygon' ? g.coordinates.map((q) => q[0]) : [];
-    if (!rings.length) return false;
-    for (const rg of rings) for (const [lo, la] of rg) { const q = b.latLngToGamePx(la, lo); if (q.x < box.x0 || q.x > box.x1 || q.y < box.y0 || q.y > box.y1) return false; }
-    return true;
+    for (const rg of rings) {
+      let x0 = 1e18, y0 = 1e18, x1 = -1e18, y1 = -1e18;
+      for (const [lo, la] of rg) { const q = b.latLngToGamePx(la, lo); if (q.x < x0) x0 = q.x; if (q.x > x1) x1 = q.x; if (q.y < y0) y0 = q.y; if (q.y > y1) y1 = q.y; }
+      if (x1 >= box.x0 && x0 <= box.x1 && y1 >= box.y0 && y0 <= box.y1) return true;
+    }
+    return false;
   }
   // -> { clause, exact, box } or null.
   //  exact: the clause selects only this building (checked against the loaded tiles).
@@ -10603,7 +10609,7 @@ class BuildingFade3D {
     const tries = [];
     for (const [name, c] of cands) {   // 1) a rule that selects only this building
       const ms = q(c); if (ms === null) { tries.push(name + ':err'); continue; }
-      const good = ms.filter((f) => this._inBox(f, wide)).length; tries.push(name + ':' + good + '/' + ms.length);
+      const good = ms.filter((f) => this._inBox(f, tight)).length; tries.push(name + ':' + good + '/' + ms.length + (ms[0] && ms[0].geometry ? (ms[0].geometry.type === 'MultiPolygon' ? 'M' + ms[0].geometry.coordinates.length : 'P') : ''));
       if (ms.length && good === ms.length) { p.fadeInfo = this.lastTry = 'exact ' + tries.join(' '); return { clause: c, exact: true, box: tight }; }
     }
     for (const [name, c] of byProps) {   // 2) a rule that also selects look-alikes: this building is drawn as a copy
