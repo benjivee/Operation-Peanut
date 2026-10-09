@@ -9942,7 +9942,7 @@ class MapTilerWorldRenderer {
     };
     if (!GAME3D.controls) Object.assign(opts, { navigationControl: false, geolocateControl: false, scaleControl: false, fullscreenControl: false, terrainControl: false });
     this.map = new maptilersdk.Map(opts);
-    this.map.on('error', (e) => console.warn('[GameWorld3D] map error:', e && e.error && e.error.message));
+    this.map.on('error', (e) => { this.lastError = (e && e.error && e.error.message) || String(e); console.warn('[GameWorld3D] map error:', this.lastError); });
     this.map.on('sourcedata', (e) => {
       if (e.sourceId === 'maptiler-dem' && e.isSourceLoaded && this.onDemUpdate) this.onDemUpdate();
       if (this.vectorSource && e.sourceId === this.vectorSource && e.isSourceLoaded) this.buildingsDirty = true; // new building tiles arrived
@@ -10577,17 +10577,24 @@ class BuildingFade3D {
       for (const rg of rings) for (const [lo, la] of rg) { const q = b.latLngToGamePx(la, lo); if (q.x < box.x0 || q.x > box.x1 || q.y < box.y0 || q.y > box.y1) return false; }
       return true;
     };
-    for (const c of cands) {
-      let ms; try { ms = r.map.querySourceFeatures(r.vectorSource, { sourceLayer: 'building', filter: c }); } catch (e) { continue; }
-      if (ms.length && ms.every(onBuilding)) return c;
+    const names = ['id+props', 'id+heights', 'props', 'heights', 'outline', 'id'], tries = [];
+    for (let i = 0; i < cands.length; i++) {
+      const c = cands[i]; let ms;
+      try { ms = r.map.querySourceFeatures(r.vectorSource, { sourceLayer: 'building', filter: c }); } catch (e) { tries.push(c[0] + ':error'); continue; }
+      const good = ms.filter(onBuilding).length;
+      tries.push((c[0] === 'within' ? 'outline' : c.length > 2 && c[1] === d.idStr ? 'id+' : '') + ':' + good + '/' + ms.length);
+      if (ms.length && good === ms.length) { this.lastTry = 'ok ' + tries.join(' '); return c; }
     }
+    this.lastTry = 'FAILED ' + tries.join(' ');
     return null;
   }
   _setAffected(list) { for (const p of this.affected) p.fade = 1; this.affected = list; for (const p of list) p.fade = this.opacity; }
 
   update(dt, obstructing) {
     const w = this.world, col = w.collision, r = w.renderer;
-    if (this.disabled || !GAME3D.fadeBuildings || !col.idsAvailable || !r.fadeReady) return;
+    this.lastObstructing = obstructing.length;
+    this.why = this.disabled ? 'stopped after an error' : !GAME3D.fadeBuildings ? 'switched off' : !col.idsAvailable ? 'no buildings known' : !r.fadeReady ? 'fade layer was not created' : '';
+    if (this.why) return;
     this.t += dt; const now = this.t;
     const seen = new Set();
     for (const p of obstructing) {
@@ -10713,12 +10720,17 @@ class WorldOverlay3D {
       `ground ${d.playerGroundElevationM === null ? '—' : d.playerGroundElevationM.toFixed(1)} m   game px ${d.playerGamePx.x.toFixed(0)}, ${d.playerGamePx.y.toFixed(0)}`,
       `collision: ${d.collision.active}/${d.collision.total} buildings active   map zoom ${d.mapZoom.toFixed(2)}`,
     ];
+    const f = w.fade, rr = w.renderer;   // the building fade: what it is doing right now
+    lines.push(`fade: ${f.why ? 'IDLE - ' + f.why : f.mode}   obstructing: ${f.lastObstructing || 0}   faded: ${f.ids.size} @ ${f.opacity.toFixed(2)}`);
+    if (f.lastTry) lines.push('last building lookup: ' + f.lastTry.slice(0, 80));
+    if (rr.lastError) lines.push('map error: ' + String(rr.lastError).slice(0, 80));
     ctx.save();
     ctx.font = '12px monospace';
+    const boxH = lines.length * 16 + 4, top = ctx.canvas.height - 10 - boxH;
     ctx.fillStyle = 'rgba(0,0,0,0.6)';
-    ctx.fillRect(84, ctx.canvas.height - 62, 420, 52);
+    ctx.fillRect(84, top, 560, boxH);
     ctx.fillStyle = '#bde';
-    lines.forEach((t, i) => ctx.fillText(t, 92, ctx.canvas.height - 44 + i * 16));
+    lines.forEach((t, i) => ctx.fillText(t, 92, top + 14 + i * 16));
     ctx.restore();
   }
 }
