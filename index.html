@@ -10278,6 +10278,13 @@ class NearbyCollision {
         if (o.x + margin < 0 || o.x - margin > W || o.y + margin < 0 || o.y - margin > H) { this.skipped.outside++; continue; }
         if (4 * o.halfWidth * o.halfHeight * o.fillRatio / ppm2 < GAME3D.minBuildingAreaM2) { this.skipped.tooSmall++; continue; }
         if (isFinite(hM)) { o.buildingHeightMeters = hM; o.heightSource = 'maptiler'; }
+        // Collide with the REAL footprint polygon, not the rotated bounding rectangle fitted to it: an L-, U- or
+        // courtyard-shaped building used to block the empty ground inside its bounding box. The rectangle stays
+        // on the obstacle (spawn / bullet / grenade prefilters use it), but the existing polygon resolver
+        // (Utils.resolveCircleRect -> collisionPieces) decides every actual hit, for the player, zombies,
+        // bullets, spawning and the zombie nav grid alike. Just the footprint: nothing swept upward, since
+        // the 3D camera is not the old oblique 2D view.
+        if (o.footprint && o.footprint.length >= 3) { const bnd = BuildingCollision._bounds(o.footprint); o.collisionPieces = [{ pts: o.footprint, bounds: bnd }]; o.collisionBounds = bnd; }
         this.all.push(o); added++;
       }
     }
@@ -10614,9 +10621,11 @@ class WorldOverlay3D {
       });
       ctx.strokeStyle = 'rgba(255,60,60,0.95)';
       ctx.beginPath();
-      corners.forEach(([x, y], i) => { const p = camera.worldToScreen(x, y, view); if (i) ctx.lineTo(p.x, p.y); else ctx.moveTo(p.x, p.y); });
+      if (o.collisionPieces) { // the real collision shape (the footprint polygon)
+        o.collisionPieces[0].pts.forEach((q, i) => { const p = camera.worldToScreen(q.x, q.y, view); if (i) ctx.lineTo(p.x, p.y); else ctx.moveTo(p.x, p.y); });
+      } else corners.forEach(([x, y], i) => { const p = camera.worldToScreen(x, y, view); if (i) ctx.lineTo(p.x, p.y); else ctx.moveTo(p.x, p.y); });
       ctx.closePath(); ctx.stroke();
-      if (o.footprint && o.footprint.length > 2) {
+      if (!o.collisionPieces && o.footprint && o.footprint.length > 2) {
         ctx.strokeStyle = 'rgba(255,220,60,0.95)';
         ctx.beginPath();
         o.footprint.forEach((q, i) => { const p = camera.worldToScreen(q.x, q.y, view); if (i) ctx.lineTo(p.x, p.y); else ctx.moveTo(p.x, p.y); });
