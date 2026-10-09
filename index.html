@@ -5763,7 +5763,9 @@ class Game {
     }
     for (const b of this.bullets) {
       const lift = BUILDING_OCCLUSION_CONFIG.playerFeetOffset * PLAYER_SCALE * GAME3D.entityScale * k;
-      if (!occ.bulletHidden(b, lift)) b.draw(ctx, this.camera, view);   // a shot behind a building is not drawn
+      const vis = occ.bulletVisibility(b, lift);   // 0 behind a solid building; partly visible through a faded one
+      if (vis >= 0.999) b.draw(ctx, this.camera, view);
+      else if (vis >= 0.05) { ctx.save(); ctx.globalAlpha = Math.max(vis, 0.55); b.draw(ctx, this.camera, view); ctx.restore(); }
     }
     this._drawGrenades(ctx, view);
     this._drawExplosions(ctx, view);
@@ -9985,10 +9987,17 @@ class MapTilerWorldRenderer {
       },
     }, mapTilerFirstSymbolLayerId(this.map));
   }
-  setFadeIds(ids) {
+  // A building is recognised by its tile id TOGETHER with its height, base height and colour. The id alone is
+  // not enough: tile ids repeat between tiles, and many features carry none, which made unrelated buildings
+  // (or all buildings with a common id) fade together, or some never fade at all.
+  setFadeKeys(descs) {
     const base = ['!=', ['get', 'hide_3d'], true];
-    this.map.setFilter('maptiler-3d-buildings-fade', ['in', ['id'], ['literal', ids]]);
-    this.map.setFilter('maptiler-3d-buildings', ids.length ? ['all', base, ['!', ['in', ['id'], ['literal', ids]]]] : base);
+    const clause = (d) => ['all', ['==', ['to-string', ['id']], d.idStr],
+      ...d.props.map(([k, v]) => typeof v === 'number' ? ['==', ['coalesce', ['to-number', ['get', k]], 0], v]
+        : typeof v === 'boolean' ? ['==', ['get', k], v] : ['==', ['to-string', ['get', k]], v])];
+    const any = ['any', ...descs.map(clause)];
+    this.map.setFilter('maptiler-3d-buildings-fade', descs.length ? any : ['in', ['id'], ['literal', []]]);
+    this.map.setFilter('maptiler-3d-buildings', descs.length ? ['all', base, ['!', any]] : base);
     this.map.setPaintProperty('maptiler-3d-buildings-fade', 'fill-extrusion-opacity', 1);
   }
   setFadeOpacity(o) { this.map.setPaintProperty('maptiler-3d-buildings-fade', 'fill-extrusion-opacity', o); }
@@ -10204,7 +10213,7 @@ class NearbyCollision {
     this.cx = null; this.cy = null; this.rebuilds = 0; this.dirty = false;
     this.skipped = { raised: 0, hidden: 0, tooSmall: 0, outside: 0, degenerate: 0, duplicate: 0 };
     this.prisms = []; this.grid = new Map(); this.cell = 200; this.maxPrismH = 0; this.idsAvailable = false;
-    this.badIds = new Set(); this.idBox = new Map(); // ids shared by buildings that are NOT parts of one building: unsafe to fade by id
+    this.badKeys = new Set(); this.keyBox = new Map(); // building keys (id|height|base|colour) shared by buildings that are NOT parts of one building: unsafe to fade
   }
 
   // The array Game.obstacles points at; refreshed in place so no code holding it goes stale.
@@ -10212,7 +10221,7 @@ class NearbyCollision {
 
   _gridKey(cx, cy) { return (cx + 200) * 1000 + (cy + 200); }
 
-  _addPrism(id, ring, h, base) {
+  _addPrism(id, ring, h, base, featureProps) {
     const b = this.bridge, n = ring.length - 1; // the ring repeats its first point
     const pts = [], mx = [], my = [], lat = [], lng = [];
     let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9, sLat = 0, sLng = 0;
@@ -10222,20 +10231,25 @@ class NearbyCollision {
       x0 = Math.min(x0, p.x); y0 = Math.min(y0, p.y); x1 = Math.max(x1, p.x); y1 = Math.max(y1, p.y);
     }
     if (n < 3 || x1 < -400 || x0 > b.worldW + 400 || y1 < -400 || y0 > b.worldH + 400) return;
-    const prism = { id: typeof id === 'number' ? id : undefined, h, base, pts, mx, my, lat, lng, cLat: sLat / n, cLng: sLng / n,
+    // What identifies this building to the map's filter: its tile id plus EVERY simple property it carries
+    // (height, base, colour, class, names, osm ids ... whatever the tiles have), so two buildings only look
+    // alike to the filter when they are alike in everything the tiles say about them.
+    const idStr = (id === undefined || id === null) ? '' : String(id), props = [];
+    for (const k of Object.keys(featureProps || {}).sort()) { const v = featureProps[k]; if (typeof v === 'number' || typeof v === 'boolean' || (typeof v === 'string' && v.length <= 60)) props.push([k, v]); }
+    if (props.length > 12) props.length = 12;
+    const prism = { id: typeof id === 'number' ? id : undefined, key: idStr + '|' + JSON.stringify(props), desc: { idStr, props }, h, base, pts, mx, my, lat, lng, cLat: sLat / n, cLng: sLng / n,
       bbox: { x0, y0, x1, y1 }, zb: null, zt: 0, retry: 0, fade: 1, cf: -1, cb: null, ct: null };
     this.prisms.push(prism);
     this.maxPrismH = Math.max(this.maxPrismH, h);
-    if (prism.id !== undefined) {
-      this.idsAvailable = true;
-      // The fade layer picks buildings by feature id. If one id is carried by buildings that are far
-      // apart (ids that are not unique across tiles), fading it would fade all of them. Pieces of ONE
-      // building cut at a tile edge touch each other, so they keep a single growing bounding box.
-      const u = this.idBox.get(prism.id), b = prism.bbox, g = 20;
-      if (!u) this.idBox.set(prism.id, { x0: b.x0, y0: b.y0, x1: b.x1, y1: b.y1 });
+    this.idsAvailable = true; // every building has a key now, ids or not
+    // Two buildings with the same key far apart cannot be told apart by the map's filter, so such a key is never
+    // faded. Pieces of ONE building cut at a tile edge touch each other: they share one growing bounding box.
+    {
+      const u = this.keyBox.get(prism.key), bb = prism.bbox, g = 20;
+      if (!u) this.keyBox.set(prism.key, { x0: bb.x0, y0: bb.y0, x1: bb.x1, y1: bb.y1 });
       else {
-        if (b.x0 > u.x1 + g || b.x1 < u.x0 - g || b.y0 > u.y1 + g || b.y1 < u.y0 - g) this.badIds.add(prism.id);
-        u.x0 = Math.min(u.x0, b.x0); u.y0 = Math.min(u.y0, b.y0); u.x1 = Math.max(u.x1, b.x1); u.y1 = Math.max(u.y1, b.y1);
+        if (bb.x0 > u.x1 + g || bb.x1 < u.x0 - g || bb.y0 > u.y1 + g || bb.y1 < u.y0 - g) this.badKeys.add(prism.key);
+        u.x0 = Math.min(u.x0, bb.x0); u.y0 = Math.min(u.y0, bb.y0); u.x1 = Math.max(u.x1, bb.x1); u.y1 = Math.max(u.y1, bb.y1);
       }
     }
     for (let cx = Math.floor(x0 / this.cell); cx <= Math.floor(x1 / this.cell); cx++)
@@ -10270,7 +10284,7 @@ class NearbyCollision {
         const key = (f.id === undefined ? '' : f.id) + '|' + ring[0][0].toFixed(6) + ',' + ring[0][1].toFixed(6) + '|' + ring.length;
         if (this.keys.has(key)) { this.skipped.duplicate++; continue; }
         this.keys.add(key);
-        if (isFinite(hM) && hM > 0) this._addPrism(f.id, ring, hM, baseM);   // visual depth shape: every drawn building
+        if (isFinite(hM) && hM > 0) this._addPrism(f.id, ring, hM, baseM, pr);   // visual depth shape: every drawn building
         if (raised) { if (!raisedCounted) { this.skipped.raised++; raisedCounted = true; } continue; }
         const o = BuildingGenerator._toObstacle({ points: ring.map(([lng, lat]) => ({ lat, lng })), tags: { building: 'yes' } }, b.converter);
         if (!o) { this.skipped.degenerate++; continue; }
@@ -10499,13 +10513,19 @@ class BuildingOcclusion3D {
   }
 
   // Projectiles: is the point where this bullet is drawn behind a building?
-  bulletHidden(b, liftPx) {
+  // 0..1: how visible a projectile is. 1 = nothing in front; 0 = behind a solid building. Behind a building that
+  // is currently faded it shows through as much as that building lets (1 - its opacity), so shots stay visible
+  // wherever the building itself is see-through.
+  bulletVisibility(b, liftPx) {
     const info = this.world.collision.prisms.length ? this.infoFor(b.x, b.y, 'bullet', 10) : null;
-    if (!info) return false;
+    if (!info) return 1;
     info.bbox = { x0: info.px - 6, x1: info.px + 6, y0: info.py - liftPx - 6, y1: info.py - liftPx + 6 };
     const occ = this.occludersFor(info);
-    return occ.some((o) => o.polys.some((poly) => BuildingOcclusion3D.pointInPoly(info.px, info.py - liftPx, poly)));
+    let v = 1;
+    for (const o of occ) if (o.polys.some((poly) => BuildingOcclusion3D.pointInPoly(info.px, info.py - liftPx, poly))) v = Math.min(v, 1 - o.prism.fade);
+    return v;
   }
+  bulletHidden(b, liftPx) { return this.bulletVisibility(b, liftPx) < 0.05; }
 
   drawDebug(ctx) { // F2: the pieces of buildings that are in front of characters (magenta)
     if (!this.debugPrev.length) return;
@@ -10529,8 +10549,9 @@ class BuildingFade3D {
   }
   static same(a, b) { if (a.size !== b.size) return false; for (const x of a) if (!b.has(x)) return false; return true; }
 
-  get mode() { const col = this.world.collision; return this.disabled || !GAME3D.fadeBuildings ? 'x-ray only (fade disabled)' : col.idsAvailable ? 'building fade (' + col.badIds.size + ' shared ids skipped)' : 'x-ray only (tiles have no building ids)'; }
+  get mode() { const col = this.world.collision; return this.disabled || !GAME3D.fadeBuildings ? 'x-ray only (fade disabled)' : col.idsAvailable ? 'building fade (' + col.badKeys.size + ' ambiguous skipped)' : 'x-ray only (tiles have no building ids)'; }
 
+  _descs(col, keys) { const seen = new Map(); for (const p of col.prisms) if (keys.has(p.key) && !seen.has(p.key)) seen.set(p.key, p.desc); return [...seen.values()]; }
   _setAffected(list) { for (const p of this.affected) p.fade = 1; this.affected = list; for (const p of list) p.fade = this.opacity; }
 
   update(dt, obstructing) {
@@ -10538,9 +10559,9 @@ class BuildingFade3D {
     if (this.disabled || !GAME3D.fadeBuildings || !col.idsAvailable || !r.fadeReady) return;
     this.t += dt; const now = this.t;
     const seen = new Set();
-    for (const p of obstructing) if (p.id !== undefined && !col.badIds.has(p.id)) { // shared ids are never faded (they would fade other buildings too)
-      seen.add(p.id);
-      let s = this.since.get(p.id); if (!s) { s = { on: now, off: null }; this.since.set(p.id, s); }
+    for (const p of obstructing) if (!col.badKeys.has(p.key)) { // a key shared by far-apart buildings is never faded (it would fade the others too)
+      seen.add(p.key);
+      let s = this.since.get(p.key); if (!s) { s = { on: now, off: null }; this.since.set(p.key, s); }
       s.off = null;
     }
     for (const [id, s] of this.since) { if (!seen.has(id) && s.off === null) s.off = now; if (s.off !== null && now - s.off > 0.45) this.since.delete(id); }
@@ -10548,7 +10569,7 @@ class BuildingFade3D {
     try {
       if (!BuildingFade3D.same(want, this.ids)) {
         if (this.ids.size > 0 && this.opacity < 0.999) { this.opacity = Math.min(1, this.opacity + dt / GAME3D.fadeUpSec * (1 - GAME3D.fadeOpacity)); r.setFadeOpacity(this.opacity); }
-        else { r.setFadeIds([...want]); this.ids = want; this.phase = 'arming'; this.armAt = now; this.applies++; this._setAffected(col.prisms.filter((p) => p.id !== undefined && want.has(p.id))); }
+        else { r.setFadeKeys(this._descs(col, want)); this.ids = want; this.phase = 'arming'; this.armAt = now; this.applies++; this._setAffected(col.prisms.filter((p) => want.has(p.key))); }
       } else if (this.ids.size > 0) {
         if (this.phase === 'arming') { if (now - this.armAt > GAME3D.fadeArmSec) this.phase = 'fading'; }   // let the map re-draw the layers first
         else if (this.phase === 'fading') { this.opacity = Math.max(GAME3D.fadeOpacity, this.opacity - dt / GAME3D.fadeDownSec * (1 - GAME3D.fadeOpacity)); r.setFadeOpacity(this.opacity); }
@@ -10818,7 +10839,7 @@ class MapTilerGameWorld {
       terrainOk: this.renderer.terrainOk, buildingsOk: this.renderer.buildingsOk,
       collision: { total: this.collision.all.length, active: this.collision.active.length, rebuilds: this.collision.rebuilds, skipped: this.collision.skipped },
       camera: { distance: CAMERA_DISTANCE, effectiveDistance: CAMERA_DISTANCE / CAMERA_ZOOM, pitch: CAMERA_PITCH, followSpeed: CAMERA_FOLLOW_SPEED, heightMeters: cameraHeightMeters() },
-      depth: { prisms: this.collision.prisms.length, ...this.occlusion.stats, fadeMode: this.fade.mode, sharedIds: this.collision.badIds.size, fadedBuildings: this.fade.ids.size, fadeOpacity: this.fade.opacity },
+      depth: { prisms: this.collision.prisms.length, ...this.occlusion.stats, fadeMode: this.fade.mode, ambiguousBuildings: this.collision.badKeys.size, fadedBuildings: this.fade.ids.size, fadeOpacity: this.fade.opacity },
     };
   }
 }
