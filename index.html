@@ -10204,6 +10204,7 @@ class NearbyCollision {
     this.cx = null; this.cy = null; this.rebuilds = 0; this.dirty = false;
     this.skipped = { raised: 0, hidden: 0, tooSmall: 0, outside: 0, degenerate: 0, duplicate: 0 };
     this.prisms = []; this.grid = new Map(); this.cell = 200; this.maxPrismH = 0; this.idsAvailable = false;
+    this.badIds = new Set(); this.idBox = new Map(); // ids shared by buildings that are NOT parts of one building: unsafe to fade by id
   }
 
   // The array Game.obstacles points at; refreshed in place so no code holding it goes stale.
@@ -10225,7 +10226,18 @@ class NearbyCollision {
       bbox: { x0, y0, x1, y1 }, zb: null, zt: 0, retry: 0, fade: 1, cf: -1, cb: null, ct: null };
     this.prisms.push(prism);
     this.maxPrismH = Math.max(this.maxPrismH, h);
-    if (prism.id !== undefined) this.idsAvailable = true;
+    if (prism.id !== undefined) {
+      this.idsAvailable = true;
+      // The fade layer picks buildings by feature id. If one id is carried by buildings that are far
+      // apart (ids that are not unique across tiles), fading it would fade all of them. Pieces of ONE
+      // building cut at a tile edge touch each other, so they keep a single growing bounding box.
+      const u = this.idBox.get(prism.id), b = prism.bbox, g = 20;
+      if (!u) this.idBox.set(prism.id, { x0: b.x0, y0: b.y0, x1: b.x1, y1: b.y1 });
+      else {
+        if (b.x0 > u.x1 + g || b.x1 < u.x0 - g || b.y0 > u.y1 + g || b.y1 < u.y0 - g) this.badIds.add(prism.id);
+        u.x0 = Math.min(u.x0, b.x0); u.y0 = Math.min(u.y0, b.y0); u.x1 = Math.max(u.x1, b.x1); u.y1 = Math.max(u.y1, b.y1);
+      }
+    }
     for (let cx = Math.floor(x0 / this.cell); cx <= Math.floor(x1 / this.cell); cx++)
       for (let cy = Math.floor(y0 / this.cell); cy <= Math.floor(y1 / this.cell); cy++) {
         const k = this._gridKey(cx, cy); let a = this.grid.get(k); if (!a) { a = []; this.grid.set(k, a); } a.push(prism);
@@ -10510,7 +10522,7 @@ class BuildingFade3D {
   }
   static same(a, b) { if (a.size !== b.size) return false; for (const x of a) if (!b.has(x)) return false; return true; }
 
-  get mode() { const col = this.world.collision; return this.disabled || !GAME3D.fadeBuildings ? 'x-ray only (fade disabled)' : col.idsAvailable ? 'building fade' : 'x-ray only (tiles have no building ids)'; }
+  get mode() { const col = this.world.collision; return this.disabled || !GAME3D.fadeBuildings ? 'x-ray only (fade disabled)' : col.idsAvailable ? 'building fade (' + col.badIds.size + ' shared ids skipped)' : 'x-ray only (tiles have no building ids)'; }
 
   _setAffected(list) { for (const p of this.affected) p.fade = 1; this.affected = list; for (const p of list) p.fade = this.opacity; }
 
@@ -10519,7 +10531,7 @@ class BuildingFade3D {
     if (this.disabled || !GAME3D.fadeBuildings || !col.idsAvailable || !r.fadeReady) return;
     this.t += dt; const now = this.t;
     const seen = new Set();
-    for (const p of obstructing) if (p.id !== undefined) {
+    for (const p of obstructing) if (p.id !== undefined && !col.badIds.has(p.id)) { // shared ids are never faded (they would fade other buildings too)
       seen.add(p.id);
       let s = this.since.get(p.id); if (!s) { s = { on: now, off: null }; this.since.set(p.id, s); }
       s.off = null;
@@ -10797,7 +10809,7 @@ class MapTilerGameWorld {
       terrainOk: this.renderer.terrainOk, buildingsOk: this.renderer.buildingsOk,
       collision: { total: this.collision.all.length, active: this.collision.active.length, rebuilds: this.collision.rebuilds, skipped: this.collision.skipped },
       camera: { distance: CAMERA_DISTANCE, effectiveDistance: CAMERA_DISTANCE / CAMERA_ZOOM, pitch: CAMERA_PITCH, followSpeed: CAMERA_FOLLOW_SPEED, heightMeters: cameraHeightMeters() },
-      depth: { prisms: this.collision.prisms.length, ...this.occlusion.stats, fadeMode: this.fade.mode, fadedBuildings: this.fade.ids.size, fadeOpacity: this.fade.opacity },
+      depth: { prisms: this.collision.prisms.length, ...this.occlusion.stats, fadeMode: this.fade.mode, sharedIds: this.collision.badIds.size, fadedBuildings: this.fade.ids.size, fadeOpacity: this.fade.opacity },
     };
   }
 }
