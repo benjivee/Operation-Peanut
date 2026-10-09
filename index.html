@@ -2867,9 +2867,13 @@ class Camera {
   // place of the real canvas.
   // 3D runs only: things farther from the camera than the peanut draw smaller
   // (and nearer ones larger), like everything else in the perspective view.
-  applyEntityScale(ctx, p) {
-    const s = p.depthScale;
-    if (s === undefined || Math.abs(s - 1) < 0.003) return;
+  // `p` is the character's GROUND point: it scales about its feet, so it stays planted.
+  // isEntity=false skips the visual entityScale (used for projectiles).
+  applyEntityScale(ctx, p, isEntity = true) {
+    let s = p.depthScale;
+    if (s === undefined) return;
+    if (isEntity) s *= GAME3D.entityScale;
+    if (Math.abs(s - 1) < 0.003) return;
     ctx.translate(p.x, p.y);
     ctx.scale(s, s);
     ctx.translate(-p.x, -p.y);
@@ -3770,6 +3774,7 @@ const TEST_MODE = {
 // image is drawn and then rotated by the leftover angle (up to +-22.5 deg), so
 // the weapon follows the mouse through a full 360 degrees. The nozzle (where
 // bullets leave) is rotated the same way. false = the original 8-way snapping.
+let ENTITY_SCALE_3D = 1; // GAME3D.entityScale during a 3D run, else 1 (set in Game._attachWorld3d)
 let WEAPON_ROTATE_360 = true; // (let, so it can be flipped at runtime to compare with the original 8-way snapping)
 const WEAPON_DIR_ANGLE = { 'east': 0, 'south-east': Math.PI / 4, 'south': Math.PI / 2, 'south-west': 3 * Math.PI / 4, 'west': Math.PI, 'north-west': -3 * Math.PI / 4, 'north': -Math.PI / 2, 'north-east': -Math.PI / 4 };
 function weaponAimResidual(aimAngle, dir) {
@@ -4100,6 +4105,7 @@ class Bullet extends Entity {
     this.damage = spec.damage;
     this.color = spec.color || '#f1c40f';
     this.life = spec.life ?? CONFIG.BULLET.maxLifetime;
+    this.prevX = spec.x; this.prevY = spec.y; // where it was before the latest update(): collision sweeps this whole step
     this.explosive = !!spec.explosive;
     this.splashRadius = spec.splashRadius || 0;
 
@@ -4126,6 +4132,7 @@ class Bullet extends Entity {
   }
 
   update(dt) {
+    this.prevX = this.x; this.prevY = this.y;
     this.x += this.vx * dt;
     this.y += this.vy * dt;
     this.life -= dt;
@@ -4134,10 +4141,10 @@ class Bullet extends Entity {
 
   draw(ctx, camera, canvas) {
     const p = camera.worldToScreen(this.x, this.y, canvas);
-    if (camera.rig3d) p.y -= GAME3D.projectileLiftPx; // 3D: projectiles fly at weapon height, not along the ground
-    if (this.flame) { ctx.save(); camera.applyEntityScale(ctx, p); this._drawFlame(ctx, p); ctx.restore(); return; }
+    if (camera.rig3d) p.y -= BUILDING_OCCLUSION_CONFIG.playerFeetOffset * PLAYER_SCALE * GAME3D.entityScale * (p.depthScale || 1); // 3D: projectiles fly at weapon height, not along the ground
+    if (this.flame) { ctx.save(); camera.applyEntityScale(ctx, p, false); this._drawFlame(ctx, p); ctx.restore(); return; }
     ctx.save();
-    camera.applyEntityScale(ctx, p);
+    camera.applyEntityScale(ctx, p, false);
     ctx.fillStyle = this.color;
     ctx.beginPath();
     ctx.arc(p.x, p.y, this.radius, 0, Math.PI * 2);
@@ -4209,7 +4216,7 @@ class Pickup extends Entity {
 
     ctx.save();
     camera.applyEntityScale(ctx, p);
-    ctx.translate(p.x, p.y + bob);
+    ctx.translate(p.x, p.y + bob - (camera.rig3d ? this.radius : 0)); // 3D: the crate's base rests on the terrain point instead of its centre sinking into it
 
     // Simple placeholder crate icon with a glyph.
     ctx.fillStyle = 'rgba(0,0,0,0.35)';
@@ -4616,7 +4623,7 @@ class Player extends Entity {
       const rx = m0.x - att.offsetX, ry = m0.y - att.offsetY;
       m = { x: att.offsetX + rx * c - ry * sn, y: att.offsetY + rx * sn + ry * c };
     }
-    const ox = this.x + m.x * PLAYER_SCALE, oy = this.y + m.y * PLAYER_SCALE; // the held weapon is drawn at PLAYER_SCALE, so its nozzle is too
+    const ox = this.x + m.x * PLAYER_SCALE * ENTITY_SCALE_3D, oy = this.y + m.y * PLAYER_SCALE * ENTITY_SCALE_3D; // (3D: the weapon is drawn entityScale smaller, so its nozzle is too) // the held weapon is drawn at PLAYER_SCALE, so its nozzle is too
     let angle = this.aimAngle;
     if (this.aimTarget) {
       const dx = this.aimTarget.x - ox, dy = this.aimTarget.y - oy;
@@ -4705,6 +4712,7 @@ class Player extends Entity {
     const cy = pp.y - (camera.rig3d && GAME3D.feetAnchor ? BUILDING_OCCLUSION_CONFIG.playerFeetOffset * PLAYER_SCALE : 0);
 
     ctx.save();
+    camera.applyEntityScale(ctx, pp); // 3D: perspective + entityScale, about the feet
 
     if (this.currentWeapon.config.melee && !this.currentWeapon.config.spriteFolder) {
       // The knife isn't part of the sprite-based attachment system below
@@ -5058,11 +5066,12 @@ class Zombie extends Entity {
     // being visually larger than the collision radius.
     const visualSize = zombieVisualSize(this.type); // spriteDisplaySize x this type's *_ZOMBIE_SCALE (visual only)
     const cullMargin = Math.max(50, visualSize);
+    const g0 = { x: p.x, y: p.y, depthScale: p.depthScale }; // the ground point (scale pivot)
     if (camera.rig3d && GAME3D.feetAnchor) p.y -= visualSize * 0.35; // 3D: stand the feet on the ground point
     if (p.x < -cullMargin || p.x > canvas.width + cullMargin || p.y < -cullMargin || p.y > canvas.height + cullMargin) return;
 
     ctx.save();
-    camera.applyEntityScale(ctx, p);
+    camera.applyEntityScale(ctx, g0);
 
     const spriteSet = ZOMBIE_SPRITES[this.type.id];
     const sprite = pickSpriteFrame(spriteSet, this.facing, this.isMoving, this.animFrame);
@@ -5679,10 +5688,12 @@ class Game {
       this._rebuildNavGrid();
       this.world3d.onBuildingsAdded = () => { this._navDirty = true; }; // buildings from newly streamed tiles
       this.camera.rig3d = this.world3d;
+      ENTITY_SCALE_3D = GAME3D.entityScale;
       container.classList.add('world3d-active');
       quitBtn.textContent = 'Quit to Menu'; // a 3D run can't be saved/resumed yet
     } else {
       this.camera.rig3d = null;
+      ENTITY_SCALE_3D = 1;
       this.obstaclesAll = null;
       this.camera.zoom = CAMERA_ZOOM;
       container.classList.remove('world3d-active');
@@ -5715,37 +5726,53 @@ class Game {
   }
 
   // Gameplay layer for a 3D run: the player, zombies, pickups, projectiles and
-  // effects, projected onto the MapTiler terrain. Called by the map from inside
-  // its own render callback, with the matrix that frame was drawn with.
+  // effects, projected onto the MapTiler terrain and depth-sorted against the REAL
+  // building shapes (see BuildingOcclusion3D). Called by the map from inside its own
+  // render callback, with the matrix that frame was drawn with.
   _renderWorld3D() {
     const w = this.world3d, ctx = this.ctx, rc = this.canvas;
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, rc.width, rc.height);
     if (!w || !this.player || !w.hasMatrix() || !w.snapshot) return;
-    const snap = w.snapshot;
+    const snap = w.snapshot, occ = w.occlusion;
     w.camera.refW = 0; w.camera.refW = w.camera.project(snap.px, snap.py, {}).w; // perspective reference = the peanut
     const k = w.pixelScaleAt(snap.px, snap.py); // art scale at the player
     this.camera.zoom = k;
     const view = this.camera.viewSize(rc);
+    occ.beginFrame();
     ctx.save();
     ctx.scale(k, k);
     w.drawBoundary(ctx, this.camera, view);
     w.drawCollisionDebug(ctx, this.camera, view);
-    // Painter's order by ground y (larger y = nearer the camera). The player is
-    // drawn where it was when this camera frame was set, not where the next game
-    // tick will move it, so sprite and map never disagree.
+    // Painter's order between characters (by ground y); against BUILDINGS the order is
+    // the real 3D one. The player is drawn where it was when this camera frame was
+    // set, not where the next game tick will move it, so sprite and map never disagree.
     const player = this.player, px = player.x, py = player.y;
     const items = [...this.pickups, ...this.zombies, player].sort((a, b) => (a === player ? snap.py : a.y) - (b === player ? snap.py : b.y));
+    let obstructors = [];
     for (const e of items) {
-      if (e === player) { player.x = snap.px; player.y = snap.py; player.draw(ctx, this.camera, view); player.x = px; player.y = py; }
-      else e.draw(ctx, this.camera, view);
+      if (e === player) {
+        occ.draw(ctx, k, occ.infoFor(snap.px, snap.py, 'player', 60), (c) => { player.x = snap.px; player.y = snap.py; player.draw(c, this.camera, view); player.x = px; player.y = py; }, { xray: GAME3D.xrayPlayer, track: true, exact: true });
+        obstructors = occ.lastObstructors;
+      } else if (e instanceof Zombie) {
+        const near = Math.hypot(e.x - snap.px, e.y - snap.py) <= GAME3D.zombieXrayRangePx;
+        occ.draw(ctx, k, occ.infoFor(e.x, e.y, 'zombie', zombieVisualSize(e.type)), (c) => e.draw(c, this.camera, view), { xray: near ? GAME3D.xrayZombie : 0, exact: near });
+      } else {
+        occ.draw(ctx, k, occ.infoFor(e.x, e.y, 'pickup', 40), (c) => e.draw(c, this.camera, view), { xray: 0 });
+      }
     }
-    for (const e of this.bullets) e.draw(ctx, this.camera, view);
+    for (const b of this.bullets) {
+      const lift = BUILDING_OCCLUSION_CONFIG.playerFeetOffset * PLAYER_SCALE * GAME3D.entityScale * k;
+      if (!occ.bulletHidden(b, lift)) b.draw(ctx, this.camera, view);   // a shot behind a building is not drawn
+    }
     this._drawGrenades(ctx, view);
     this._drawExplosions(ctx, view);
     this._drawFloatingTexts(ctx, view);
     ctx.restore();
     w.drawReadout(ctx); // F3: lat/lng, ground height, active collision (screen space)
+    const now = performance.now(), dt = Math.min(0.1, (now - (this._lastOverlayT || now)) / 1000);
+    this._lastOverlayT = now;
+    w.fade.update(dt, obstructors); // fade only the building(s) actually in front of the peanut
   }
 
   // FALLBACK synthetic obstacles — real buildings (MapGenerator, Phase
@@ -6137,14 +6164,34 @@ class Game {
     // first; an explosive one still detonates (and damages zombies in its
     // splash radius) right at the building's surface instead of passing
     // through to blast whatever's on the other side.
+    // The test sweeps the bullet's whole step (previous -> current position), not just
+    // where it ended up, so a fast shot (RPG) or a slow frame can't skip through a thin
+    // wall; the bullet stops at the first surface it meets. Only buildings near the
+    // segment are looked at (bounding-circle prefilter), which also keeps this cheap
+    // with the few hundred buildings of a 3D run.
     for (const bullet of this.bullets) {
       if (!bullet.alive) continue;
-      for (const obstacle of this.obstacles) {
-        if (Utils.resolveCircleRect(bullet.x, bullet.y, bullet.radius, obstacle)) {
-          if (bullet.explosive) this._explodeBullet(bullet);
-          else bullet.alive = false;
-          break;
+      const sx = bullet.prevX === undefined ? bullet.x : bullet.prevX, sy = bullet.prevY === undefined ? bullet.y : bullet.prevY;
+      const ex = bullet.x, ey = bullet.y;
+      const x0 = Math.min(sx, ex), x1 = Math.max(sx, ex), y0 = Math.min(sy, ey), y1 = Math.max(sy, ey);
+      let near = null;
+      for (const o of this.obstacles) {
+        const r = Math.hypot(o.halfWidth, o.halfHeight) + bullet.radius;
+        if (o.x + r < x0 || o.x - r > x1 || o.y + r < y0 || o.y - r > y1) continue;
+        (near || (near = [])).push(o);
+      }
+      if (!near) continue;
+      const steps = Math.min(48, Math.max(1, Math.ceil(Math.hypot(ex - sx, ey - sy) / Math.max(3, bullet.radius))));
+      let hit = false;
+      for (let i = 1; i <= steps && !hit; i++) {
+        const qx = sx + (ex - sx) * i / steps, qy = sy + (ey - sy) * i / steps;
+        for (const obstacle of near) {
+          if (Utils.resolveCircleRect(qx, qy, bullet.radius, obstacle)) { bullet.x = qx; bullet.y = qy; hit = true; break; }
         }
+      }
+      if (hit) {
+        if (bullet.explosive) this._explodeBullet(bullet);
+        else bullet.alive = false;
       }
     }
 
@@ -6421,6 +6468,8 @@ class Game {
       targetY = player.y + dy * scale;
     }
 
+    if (this.world3d) { const t = this._grenadeLanding(player.x, player.y, targetX, targetY, weapon.config.arcHeight); targetX = t.x; targetY = t.y; }
+
     if (!player.tryThrow()) return; // out of grenades / still on cooldown — canShoot() already covers both, same gate every other weapon uses
 
     const throwDist = Math.max(1, Math.hypot(targetX - player.x, targetY - player.y));
@@ -6438,6 +6487,38 @@ class Game {
       exploded: false,
     });
     Sound.shoot(weapon.config.id);
+  }
+
+  // 3D runs: the real buildings are tall, so a lob can no longer just float over them.
+  // Walks the throw line in small steps; the grenade is stopped just in front of the first
+  // building that is taller than the grenade is at that point of its arc (height = arcHeight *
+  // 4t(1-t), game px -> meters through the world scale), and it never lands INSIDE any
+  // footprint. A building the grenade clears (a shed, a low wall) lets it carry on.
+  // Only the buildings near the line are tested. Landing point only; throw speed, fuse, damage
+  // and splash are untouched.
+  _grenadeLanding(sx, sy, tx, ty, arcHeight) {
+    const dist = Math.hypot(tx - sx, ty - sy);
+    if (dist < 1 || !this.world3d) return { x: tx, y: ty };
+    const ppm = this.world3d.bridge.pxPerMeterX, R = 4;
+    const x0 = Math.min(sx, tx), x1 = Math.max(sx, tx), y0 = Math.min(sy, ty), y1 = Math.max(sy, ty);
+    const near = this.obstacles.filter((o) => { const r = Math.hypot(o.halfWidth, o.halfHeight) + R; return !(o.x + r < x0 || o.x - r > x1 || o.y + r < y0 || o.y - r > y1); });
+    if (!near.length) return { x: tx, y: ty };
+    const steps = Math.max(2, Math.ceil(dist / 4));
+    let lastX = sx, lastY = sy;
+    for (let i = 1; i <= steps; i++) {
+      const t = i / steps, qx = sx + (tx - sx) * t, qy = sy + (ty - sy) * t;
+      const heightM = (arcHeight * 4 * t * (1 - t)) / ppm;
+      let blocked = false, over = false;
+      for (const o of near) {
+        if (!Utils.resolveCircleRect(qx, qy, R, o)) continue;
+        over = true;
+        const hM = o.buildingHeightMeters;
+        if (i === steps || hM == null || hM > heightM) { blocked = true; break; } // landing inside a footprint, or too tall to clear
+      }
+      if (blocked) return { x: lastX, y: lastY };  // the last point that was clear of every footprint
+      if (!over) { lastX = qx; lastY = qy; }
+    }
+    return { x: tx, y: ty };
   }
 
   // Advances every in-flight grenade and detonates (via the shared
@@ -9736,13 +9817,19 @@ class MapTilerCoordinateBridge {
  * The origin (world center, game px 1800,1800) is the location selected.
  */
 
+// ---- Gameplay camera (3D). Everything about the camera lives here. ----------------
+const CAMERA_DISTANCE = 240;     // m: camera -> peanut distance at CAMERA_ZOOM 1 (for a 720 px tall window)
+const CAMERA_PITCH = 60;         // degrees from straight down: 0 = top-down, 60 = 3/4 action-shooter angle
+const CAMERA_FOLLOW_SPEED = 10;  // 1/s: how tightly the camera tracks the peanut (higher = snappier, 0 = rigid)
+// CAMERA_ZOOM (defined with the 2D camera) scales the whole view: 1.25 = 25% closer.
+// CAMERA_HEIGHT is derived, not set: camera height above the ground = distance * cos(pitch).
+function cameraHeightMeters() { return (CAMERA_DISTANCE / CAMERA_ZOOM) * Math.cos(CAMERA_PITCH * Math.PI / 180); }
+
 const GAME3D = {
   // Master switch. Also: add ?mode=2d to the URL to force the original 2D map.
   enabled: true,
-  pitch: 60,                // degrees from straight down; 3/4 action-game angle
   bearing: 0,               // north is up the screen, like the game's own axes
   maxPitch: 85,
-  followSmoothing: 10,      // 1/s; higher = tighter, 0 = rigidly locked to the player
   terrainExaggeration: 1,   // true scale
   tileSizePx: 512,          // MapLibre's world size at zoom z is tileSizePx * 2^z
   feetAnchor: true,         // stand the sprite's feet on the ground point (not its centre)
@@ -9757,7 +9844,16 @@ const GAME3D = {
   bodyAim: true,              // aiming at any part of a zombie's drawn body targets that zombie (not just its feet)
   bodyHalfWidth: 0.30,        // body hit area: half width, as a fraction of the zombie's drawn size
   bodyHeight: 0.70,           // body hit area: height above the feet, as a fraction of the drawn size
-  projectileLiftPx: 14,       // bullets are drawn this high (game px) above their ground point, so they fly at chest height
+  entityScale: 0.6,           // how big the peanut / zombies / pickups are DRAWN relative to the city (visual only; hit areas, speeds and ranges are unchanged)
+  maskBudget: 16,             // at most this many nearby zombies per frame get the pixel-exact building cut-out (the peanut always does)
+  xrayPlayer: 0.5,            // how visible the peanut stays when a building is in front of it (0..1)
+  xrayZombie: 0.3,            // same for zombies ...
+  zombieXrayRangePx: 380,     // ... but only zombies this close to the peanut; farther ones stay fully hidden
+  fadeBuildings: true,        // fade the building that is in front of the peanut (needs building ids in the tiles; falls back to the x-ray above)
+  fadeOpacity: 0.3,           // opacity of an obstructing building
+  fadeDownSec: 0.25, fadeUpSec: 0.3, fadeArmSec: 0.25,
+  outOfBoundsDim: 0.35,       // darkening outside the playable area
+  curtainMeters: 14,          // height of the translucent wall along the playable-area edge
   controls: false,          // no MapTiler widgets (zoom buttons, geolocate, ...): this is a game, not a web map
 };
 
@@ -9854,6 +9950,7 @@ class MapTilerWorldRenderer {
       // Same terrain + building setup as the prototype (shared helpers).
       try { mapTilerAddTerrain(this.map, MAP_CONFIG.maptilerApiKey, GAME3D.terrainExaggeration); this.terrainOk = true; } catch (err) { console.warn('[GameWorld3D] terrain failed:', err.message); }
       try { this.vectorSource = mapTilerAddBuildings(this.map).vectorSource; this.buildingsOk = true; } catch (err) { console.warn('[GameWorld3D] buildings failed:', err.message); }
+      if (this.buildingsOk && GAME3D.fadeBuildings) { try { this.addFadeLayer(); this.fadeReady = true; } catch (err) { console.warn('[GameWorld3D] fade layer unavailable:', err.message); } }
       this.map.addLayer(this._projectionLayer());
       this.buildingsDirty = true;
       this.loaded = true;
@@ -9874,6 +9971,27 @@ class MapTilerWorldRenderer {
       },
     };
   }
+
+  // A copy of the building layer that shows only the buildings being faded (see BuildingFade3D).
+  addFadeLayer() {
+    this.map.addLayer({
+      id: 'maptiler-3d-buildings-fade', type: 'fill-extrusion', source: this.vectorSource, 'source-layer': 'building', minzoom: MAPTILER3D.buildingMinZoom,
+      filter: ['in', ['id'], ['literal', []]],
+      paint: {
+        'fill-extrusion-color': MAPTILER3D.buildingColor,
+        'fill-extrusion-height': ['coalesce', ['to-number', ['get', 'render_height']], 0],
+        'fill-extrusion-base': ['coalesce', ['to-number', ['get', 'render_min_height']], 0],
+        'fill-extrusion-opacity': 1, 'fill-extrusion-vertical-gradient': true,
+      },
+    }, mapTilerFirstSymbolLayerId(this.map));
+  }
+  setFadeIds(ids) {
+    const base = ['!=', ['get', 'hide_3d'], true];
+    this.map.setFilter('maptiler-3d-buildings-fade', ['in', ['id'], ['literal', ids]]);
+    this.map.setFilter('maptiler-3d-buildings', ids.length ? ['all', base, ['!', ['in', ['id'], ['literal', ids]]]] : base);
+    this.map.setPaintProperty('maptiler-3d-buildings-fade', 'fill-extrusion-opacity', 1);
+  }
+  setFadeOpacity(o) { this.map.setPaintProperty('maptiler-3d-buildings-fade', 'fill-extrusion-opacity', o); }
 
   // The MapTiler building polygons currently loaded (the very data the extrusions are drawn from).
   buildingFeatures() {
@@ -9924,24 +10042,50 @@ class GameplayCamera3D {
     this.centerErr = { x: 0, y: 0 };
   }
 
-  // The zoom at which one game pixel is drawn CAMERA_ZOOM screen pixels wide
-  // (the game's existing look). MapLibre: world size = tileSize*2^z px per
-  // Mercator unit, so screen px per meter at the centre = tileSize*2^z*unitsPerMeter.
+  // CAMERA_DISTANCE -> map zoom. MapLibre's vertical field of view has
+  // tan(fov/2) = 1/3, so a camera D meters from its target for a 720 px window sees
+  // 720 / (2 * D / 3) screen px per meter at the target; CAMERA_ZOOM multiplies that.
+  // (Independent of the window height, so the art keeps its size on any screen.)
+  // World size = tileSize * 2^z px per Mercator unit => px per meter = tileSize*2^z*unitsPerMeter.
   targetZoom() {
     const b = this.bridge;
-    return Math.log2((b.pxPerMeterX * CAMERA_ZOOM) / (GAME3D.tileSizePx * Mercator.unitsPerMeter(b.originLat)));
+    const pxPerMeter = (720 / (2 * CAMERA_DISTANCE / 3)) * CAMERA_ZOOM;
+    return Math.log2(pxPerMeter / (GAME3D.tileSizePx * Mercator.unitsPerMeter(b.originLat)));
   }
 
-  snapTo(x, y) { this.x = x; this.y = y; }
+  snapTo(x, y) { this.x = x; this.y = y - this.centreLift(); }
+
+  // Ground distance (game px) the camera aims "behind" the peanut so the peanut's
+  // TORSO, not its feet, sits at the screen centre: the sprite stands up from the
+  // ground point by about playerFeetOffset, and the ground is foreshortened by cos(pitch).
+  centreLift() {
+    const liftGame = BUILDING_OCCLUSION_CONFIG.playerFeetOffset * PLAYER_SCALE * GAME3D.entityScale;
+    return liftGame / Math.cos(CAMERA_PITCH * Math.PI / 180);
+  }
 
   // Called once per game frame after the player has moved.
   follow(dt, tx, ty) {
-    const a = GAME3D.followSmoothing > 0 ? 1 - Math.exp(-GAME3D.followSmoothing * dt) : 1;
+    const a = CAMERA_FOLLOW_SPEED > 0 ? 1 - Math.exp(-CAMERA_FOLLOW_SPEED * dt) : 1;
+    const gy = ty - this.centreLift();
     this.x += (tx - this.x) * a;
-    this.y += (ty - this.y) * a;
+    this.y += (gy - this.y) * a;
     this.snapshot = { px: tx, py: ty, camX: this.x, camY: this.y };
     const ll = this.bridge.gamePxToLatLng(this.x, this.y);
-    this.renderer.setCamera({ lat: ll.lat, lng: ll.lng, zoom: this.targetZoom(), pitch: GAME3D.pitch, bearing: GAME3D.bearing });
+    this.renderer.setCamera({ lat: ll.lat, lng: ll.lng, zoom: this.targetZoom(), pitch: CAMERA_PITCH, bearing: GAME3D.bearing });
+  }
+
+  // Direction (ground, game px) from the screen point toward the camera, and the
+  // slope of that line of sight (tan of its angle above the horizon).
+  rayToCamera(sx, sy) {
+    const inv = this.renderer.inverseMatrix();
+    if (!inv) return null;
+    const W = this.canvas.width, H = this.canvas.height;
+    const ndcX = 2 * (sx + this.centerErr.x) / W - 1, ndcY = 1 - 2 * (sy + this.centerErr.y) / H;
+    const un = (z) => { const v = GW_M4.apply(inv, ndcX, ndcY, z); return [v[0] / v[3], v[1] / v[3], v[2] / v[3]]; };
+    const n = un(-1), f = un(1);
+    const dx = n[0] - f[0], dy = n[1] - f[1], dz = n[2] - f[2], h = Math.hypot(dx, dy);
+    if (h < 1e-15) return { dx: 0, dy: 1, tan: 1e6 };
+    return { dx: dx / h, dy: dy / h, tan: dz / h };
   }
 
   // Mercator point + altitude (meters) -> CSS px. Residual centre error removed.
@@ -9973,11 +10117,28 @@ class GameplayCamera3D {
   }
 
   // Game px -> screen px, at the terrain height under that point.
-  project(gx, gy, out = {}) {
+  project(gx, gy, out = {}, lift = 0) {
     const ll = this.bridge.gamePxToLatLng(gx, gy);
     const e = this.terrain.atLatLng(ll.lat, ll.lng) ?? this.terrain.lastGround;
     const m = Mercator.fromLngLat(ll.lng, ll.lat);
-    return this._projectMerc(m.x, m.y, e, ll.lat, out);
+    return this._projectMerc(m.x, m.y, e + lift, ll.lat, out);
+  }
+
+  // Raw clip-space [x, y, z, w] of a ground point (+ lift meters): for polygons that must be clipped.
+  clipAt(gx, gy, lift = 0) {
+    const ll = this.bridge.gamePxToLatLng(gx, gy);
+    const e = this.terrain.atLatLng(ll.lat, ll.lng) ?? this.terrain.lastGround;
+    const m = Mercator.fromLngLat(ll.lng, ll.lat);
+    return GW_M4.apply(this.renderer.matrix, m.x, m.y, (e + lift) * Mercator.unitsPerMeter(ll.lat));
+  }
+
+  // The same ground point at two heights (one terrain lookup): for vertical walls.
+  projectColumn(gx, gy, lift, bottom, top) {
+    const ll = this.bridge.gamePxToLatLng(gx, gy);
+    const e = this.terrain.atLatLng(ll.lat, ll.lng) ?? this.terrain.lastGround;
+    const m = Mercator.fromLngLat(ll.lng, ll.lat);
+    this._projectMerc(m.x, m.y, e, ll.lat, bottom);
+    this._projectMerc(m.x, m.y, e + lift, ll.lat, top);
   }
 
   // Screen px -> game px on the terrain. The cursor ray is marched down through
@@ -10019,18 +10180,22 @@ class GameplayCamera3D {
   }
 }
 
-// ---- 4. Collision ----------------------------------------------------------------
+// ---- 4. Collision + building shapes ----------------------------------------------
 // Visual buildings (MapTiler's extrusions) and gameplay collision are separate
 // systems. Collision is invisible simplified geometry built from the SAME
-// building polygons MapTiler draws (its vector `building` layer), so it lines
-// up with what is on screen and needs no separate map download: each footprint
+// building polygons MapTiler draws (its vector `building` layer): each footprint
 // becomes one rotated rectangle by the game's existing footprint-to-rectangle
-// routine (BuildingGenerator._toObstacle — the same shapes the old game used,
-// just sourced from MapTiler instead of Overpass).
+// routine (BuildingGenerator._toObstacle).
 //
-// `all` holds every building found; `active` is the small list the existing
-// movement / zombie / bullet / spawn code actually sees (it IS Game.obstacles,
-// refreshed in place), limited to buildings near the peanut.
+// The same polygons + render_height / render_min_height also become "prisms":
+// the true footprint extruded to the true height. Prisms are never used for
+// collision; they are what the depth/occlusion system tests against (see
+// BuildingOcclusion3D), so a character is hidden by exactly the geometry that is
+// drawn in front of it.
+//
+// `all` holds every collision rectangle; `active` is the small list the existing
+// movement / zombie / bullet / spawn code sees (it IS Game.obstacles, refreshed in
+// place), limited to buildings near the peanut.
 class NearbyCollision {
   constructor(bridge, radiusMeters) {
     this.bridge = bridge;
@@ -10038,32 +10203,69 @@ class NearbyCollision {
     this.all = []; this.active = []; this.keys = new Set();
     this.cx = null; this.cy = null; this.rebuilds = 0; this.dirty = false;
     this.skipped = { raised: 0, hidden: 0, tooSmall: 0, outside: 0, degenerate: 0, duplicate: 0 };
+    this.prisms = []; this.grid = new Map(); this.cell = 200; this.maxPrismH = 0; this.idsAvailable = false;
   }
 
   // The array Game.obstacles points at; refreshed in place so no code holding it goes stale.
   setActiveArray(arr) { this.active = arr; arr.length = 0; this.cx = null; this.dirty = true; }
 
-  // GeoJSON polygon features (lng/lat) from MapTiler's building layer -> collision rectangles.
+  _gridKey(cx, cy) { return (cx + 200) * 1000 + (cy + 200); }
+
+  _addPrism(id, ring, h, base) {
+    const b = this.bridge, n = ring.length - 1; // the ring repeats its first point
+    const pts = [], mx = [], my = [], lat = [], lng = [];
+    let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9, sLat = 0, sLng = 0;
+    for (let i = 0; i < n; i++) {
+      const [lo, la] = ring[i], p = b.latLngToGamePx(la, lo), m = Mercator.fromLngLat(lo, la);
+      pts.push(p); mx.push(m.x); my.push(m.y); lat.push(la); lng.push(lo); sLat += la; sLng += lo;
+      x0 = Math.min(x0, p.x); y0 = Math.min(y0, p.y); x1 = Math.max(x1, p.x); y1 = Math.max(y1, p.y);
+    }
+    if (n < 3 || x1 < -400 || x0 > b.worldW + 400 || y1 < -400 || y0 > b.worldH + 400) return;
+    const prism = { id: typeof id === 'number' ? id : undefined, h, base, pts, mx, my, lat, lng, cLat: sLat / n, cLng: sLng / n,
+      bbox: { x0, y0, x1, y1 }, zb: null, zt: 0, retry: 0, fade: 1, cf: -1, cb: null, ct: null };
+    this.prisms.push(prism);
+    this.maxPrismH = Math.max(this.maxPrismH, h);
+    if (prism.id !== undefined) this.idsAvailable = true;
+    for (let cx = Math.floor(x0 / this.cell); cx <= Math.floor(x1 / this.cell); cx++)
+      for (let cy = Math.floor(y0 / this.cell); cy <= Math.floor(y1 / this.cell); cy++) {
+        const k = this._gridKey(cx, cy); let a = this.grid.get(k); if (!a) { a = []; this.grid.set(k, a); } a.push(prism);
+      }
+  }
+
+  prismsInRect(x0, y0, x1, y1) {
+    const out = new Set();
+    for (let cx = Math.floor(x0 / this.cell); cx <= Math.floor(x1 / this.cell); cx++)
+      for (let cy = Math.floor(y0 / this.cell); cy <= Math.floor(y1 / this.cell); cy++) {
+        const a = this.grid.get(this._gridKey(cx, cy)); if (a) for (const p of a) out.add(p);
+      }
+    return out;
+  }
+
+  // GeoJSON polygon features (lng/lat) from MapTiler's building layer -> collision rectangles + prisms.
   ingest(features) {
     const b = this.bridge, W = b.worldW, H = b.worldH, ppm2 = b.pxPerMeterX * b.pxPerMeterY;
     let added = 0;
     for (const f of features) {
       const pr = f.properties || {};
       if (pr.hide_3d === true || pr.hide_3d === 'true') { this.skipped.hidden++; continue; }  // parent of separate building:parts (not drawn either)
-      if (Number(pr.render_min_height) >= GAME3D.raisedPartMinHeightM) { this.skipped.raised++; continue; } // overhang: you can walk under it
       const g = f.geometry; if (!g) continue;
       const rings = g.type === 'Polygon' ? [g.coordinates[0]] : g.type === 'MultiPolygon' ? g.coordinates.map((poly) => poly[0]) : [];
+      const raised = Number(pr.render_min_height) >= GAME3D.raisedPartMinHeightM; // overhang: drawn, but you can walk under it
+      const hM = Number(pr.render_height), baseM = Number(pr.render_min_height) || 0;
+      let raisedCounted = false;
       for (const ring of rings) {
         if (!ring || ring.length < 4) { this.skipped.degenerate++; continue; }
         const key = (f.id === undefined ? '' : f.id) + '|' + ring[0][0].toFixed(6) + ',' + ring[0][1].toFixed(6) + '|' + ring.length;
         if (this.keys.has(key)) { this.skipped.duplicate++; continue; }
         this.keys.add(key);
+        if (isFinite(hM) && hM > 0) this._addPrism(f.id, ring, hM, baseM);   // visual depth shape: every drawn building
+        if (raised) { if (!raisedCounted) { this.skipped.raised++; raisedCounted = true; } continue; }
         const o = BuildingGenerator._toObstacle({ points: ring.map(([lng, lat]) => ({ lat, lng })), tags: { building: 'yes' } }, b.converter);
         if (!o) { this.skipped.degenerate++; continue; }
         const margin = Math.hypot(o.halfWidth, o.halfHeight);
         if (o.x + margin < 0 || o.x - margin > W || o.y + margin < 0 || o.y - margin > H) { this.skipped.outside++; continue; }
         if (4 * o.halfWidth * o.halfHeight * o.fillRatio / ppm2 < GAME3D.minBuildingAreaM2) { this.skipped.tooSmall++; continue; }
-        if (isFinite(Number(pr.render_height))) { o.buildingHeightMeters = Number(pr.render_height); o.heightSource = 'maptiler'; }
+        if (isFinite(hM)) { o.buildingHeightMeters = hM; o.heightSource = 'maptiler'; }
         this.all.push(o); added++;
       }
     }
@@ -10084,6 +10286,259 @@ class NearbyCollision {
   }
 }
 
+// ---- 4b. Depth + occlusion against the real building shapes ----------------------------
+// Characters are 2D billboards on a canvas above the map, so the GPU cannot depth-test
+// them against the buildings. This does the same test analytically, with the SAME
+// projection matrix the map was just drawn with:
+//   - a character is a camera-facing plane at its own depth;
+//   - every building prism between it and the camera has its faces (walls + roof)
+//     sliced at that depth, keeping only the part nearer the camera than the character;
+//   - those pieces, projected to the screen, are exactly the pixels where a building
+//     is in front of the character: they are cut out of the character (pixel-exact,
+//     including partial overlap at a building's edge).
+// Only prisms along the character's line of sight to the camera are examined (found
+// through a spatial grid), so cost scales with what is near the characters, never
+// with the size of the city, and no triangles are scanned.
+// The hidden part is drawn back faintly ("x-ray", never fully hidden for the peanut),
+// or more strongly when that building is being faded (BuildingFade3D).
+class BuildingOcclusion3D {
+  constructor(world) {
+    this.world = world; this.frame = 0; this.buf = {};
+    this.stats = { entities: 0, occluded: 0, polys: 0 };
+    this.debug = []; this.debugPrev = [];
+    this.lastObstructors = [];
+  }
+
+  beginFrame() { this.frame++; this.masked = 0; this.stats = { entities: 0, occluded: 0, polys: 0, cheap: 0 }; this.debugPrev = this.debug; this.debug = []; }
+
+  // Small scratch canvases (grown on demand): copying from a full-screen canvas costs
+  // milliseconds per copy, copying from one the size of a character costs microseconds.
+  _buf(name, w, h) {
+    let c = this.buf[name];
+    if (!c || c.width < w || c.height < h) {
+      c = document.createElement('canvas'); c.width = Math.max(64, Math.ceil(w / 64) * 64, c ? c.width : 0); c.height = Math.max(64, Math.ceil(h / 64) * 64, c ? c.height : 0);
+      c._c = c.getContext('2d'); this.buf[name] = c;
+    }
+    return c;
+  }
+
+  // Heights of a prism's walls (ground per vertex + min height) and roof (ground at its
+  // centre + height: MapLibre extrudes flat roofs from the terrain at the footprint centre).
+  _ensureElev(p) {
+    if (p.zb) return true;
+    if (p.retry > this.frame) return false;
+    const w = this.world, t = w.terrain;
+    const flat = !w.renderer.terrainOk;
+    const cE = flat ? t.lastGround : t.atLatLng(p.cLat, p.cLng);
+    if (cE === null) { p.retry = this.frame + 30; return false; }
+    const n = p.pts.length, zb = new Array(n);
+    for (let i = 0; i < n; i++) { const e = flat ? cE : t.atLatLng(p.lat[i], p.lng[i]); zb[i] = (e === null ? cE : e) + p.base; }
+    p.zb = zb; p.zt = cE + p.h;
+    return true;
+  }
+
+  _clip(p) {
+    if (p.cf === this.frame) return;
+    const m = this.world.renderer.matrix, n = p.pts.length, upm = Mercator.unitsPerMeter(p.cLat), zt = p.zt * upm;
+    p.cb = new Array(n); p.ct = new Array(n);
+    for (let i = 0; i < n; i++) { p.cb[i] = GW_M4.apply(m, p.mx[i], p.my[i], p.zb[i] * upm); p.ct[i] = GW_M4.apply(m, p.mx[i], p.my[i], zt); }
+    p.cf = this.frame;
+  }
+
+  static clipHalf(poly, f) {
+    const out = [], n = poly.length;
+    for (let i = 0; i < n; i++) {
+      const a = poly[i], b = poly[(i + 1) % n], fa = f(a), fb = f(b);
+      if (fa >= 0) out.push(a);
+      if ((fa >= 0) !== (fb >= 0)) { const t = fa / (fa - fb); out.push([a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t, a[3] + (b[3] - a[3]) * t]); }
+    }
+    return out;
+  }
+
+  // Screen polygons (real px) of the part of prism `p` nearer than clip-depth wMax.
+  _polysFor(p, wMax, bbox) {
+    const polys = [], cb = p.cb, ct = p.ct, n = p.pts.length, cam = this.world.camera, W = cam.canvas.width, H = cam.canvas.height, ex = cam.centerErr.x, ey = cam.centerErr.y;
+    let minW = 1e30;
+    for (let i = 0; i < n; i++) minW = Math.min(minW, cb[i][3], ct[i][3]);
+    if (minW > wMax) return polys; // the whole building is behind the character
+    const EPS = 1e-6;
+    const add = (poly) => {
+      let c = BuildingOcclusion3D.clipHalf(poly, (v) => wMax - v[3]);
+      if (c.length >= 3) c = BuildingOcclusion3D.clipHalf(c, (v) => v[3] - EPS);
+      if (c.length < 3) return;
+      let x0 = 1e30, y0 = 1e30, x1 = -1e30, y1 = -1e30;
+      const s = c.map((v) => { const x = (v[0] / v[3] + 1) / 2 * W - ex, y = (1 - v[1] / v[3]) / 2 * H - ey; x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); return [x, y]; });
+      if (x1 < bbox.x0 || x0 > bbox.x1 || y1 < bbox.y0 || y0 > bbox.y1) return;
+      polys.push(s);
+    };
+    for (let i = 0; i < n; i++) { const j = (i + 1) % n; add([cb[i], cb[j], ct[j], ct[i]]); }
+    add(ct.slice());
+    return polys;
+  }
+
+  // Where (screen) and how deep a character standing at game px (gx, gy) is.
+  infoFor(gx, gy, kind, sizeGamePx) {
+    const w = this.world, cam = w.game.camera, rc = w.game.canvas;
+    const pr = w.camera.project(gx, gy, {});
+    if (!pr.visible) return null;
+    const s = pr.scale * GAME3D.entityScale, k = cam.zoom, hpx = sizeGamePx * s * k, wpx = hpx * 0.9;
+    const bbox = { x0: Math.max(0, pr.x - wpx * 0.7), x1: Math.min(rc.width, pr.x + wpx * 0.7), y0: Math.max(0, pr.y - hpx * 1.15), y1: Math.min(rc.height, pr.y + hpx * 0.25) };
+    return { kind, gx, gy, wE: pr.w, bbox, px: pr.x, py: pr.y, hpx, sx: pr.x, sy: pr.y - hpx * 0.4 };
+  }
+
+  occludersFor(info) {
+    const w = this.world, col = w.collision;
+    if (!info || !col.prisms.length || !w.hasMatrix()) return [];
+    const ray = w.camera.rayToCamera(info.sx, info.sy);
+    if (!ray || ray.tan < 0.05) return [];
+    const ppm = w.bridge.pxPerMeterX, Hmax = Math.min(col.maxPrismH, 200);
+    const L = Math.min(1200, (Hmax / ray.tan) * ppm);                 // how far toward the camera a building can still hide it
+    const ex = info.gx, ey = info.gy, x1 = ex + ray.dx * L, y1 = ey + ray.dy * L, pad = 60;
+    const set = col.prismsInRect(Math.min(ex, x1) - pad, Math.min(ey, y1) - pad, Math.max(ex, x1) + pad, Math.max(ey, y1) + pad);
+    const out = [];
+    for (const p of set) {
+      const cx = (p.bbox.x0 + p.bbox.x1) / 2, cy = (p.bbox.y0 + p.bbox.y1) / 2, r = Math.hypot(p.bbox.x1 - p.bbox.x0, p.bbox.y1 - p.bbox.y0) / 2 + pad;
+      const t = Math.max(0, Math.min(1, ((cx - ex) * ray.dx + (cy - ey) * ray.dy) / L)), qx = ex + ray.dx * L * t, qy = ey + ray.dy * L * t;
+      if (Math.hypot(cx - qx, cy - qy) > r) continue;                // not along the line of sight
+      if (!this._ensureElev(p)) continue;
+      this._clip(p);
+      const polys = this._polysFor(p, info.wE, info.bbox);
+      if (polys.length) out.push({ prism: p, polys });
+    }
+    return out;
+  }
+
+  static pointInPoly(x, y, poly) {
+    let inside = false;
+    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+      const xi = poly[i][0], yi = poly[i][1], xj = poly[j][0], yj = poly[j][1];
+      if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) inside = !inside;
+    }
+    return inside;
+  }
+
+  // Draws one character through `drawFn(ctx)` with buildings in front of it cut out.
+  // opts.xray = 0..1: how visible the hidden part stays; opts.track = report which
+  // buildings obstruct it (used to fade them).
+  draw(mainCtx, k, info, drawFn, opts = {}) {
+    this.stats.entities++;
+    const occ = this.occludersFor(info);
+    this.lastObstructors = [];
+    if (!occ.length) { drawFn(mainCtx); return occ; }
+    // A crowded frame must not become slow: the pixel-exact cut-out is for the peanut and for zombies
+    // near it (up to `maskBudget` per frame); everything else uses a cheap hidden-or-visible test of its torso.
+    if (!opts.track && (!opts.exact || this.masked >= GAME3D.maskBudget)) {
+      this.stats.cheap++;
+      const hidden = occ.some((o) => o.polys.some((poly) => BuildingOcclusion3D.pointInPoly(info.sx, info.sy, poly)));
+      if (!hidden) drawFn(mainCtx);
+      return occ;
+    }
+    const r = { x: Math.floor(info.bbox.x0), y: Math.floor(info.bbox.y0) };
+    r.w = Math.ceil(info.bbox.x1) - r.x; r.h = Math.ceil(info.bbox.y1) - r.y;
+    if (r.w <= 0 || r.h <= 0) { drawFn(mainCtx); return []; }
+    this.masked++;
+    this.stats.occluded++;
+    // Everything below happens on small scratch canvases whose origin is the character's box (r.x, r.y).
+    const fillPolys = (c, polys) => { for (const poly of polys) { c.beginPath(); poly.forEach(([x, y], i) => (i ? c.lineTo(x - r.x, y - r.y) : c.moveTo(x - r.x, y - r.y))); c.closePath(); c.fill(); } }; // one fill per polygon: faces have mixed winding
+    // Which hidden parts stay faintly visible? Buildings sharing an opacity are handled together.
+    const groups = new Map();
+    for (const o of occ) { const a = Math.round(Math.max(opts.xray || 0, 1 - o.prism.fade) * 50) / 50; if (a >= 0.02) { let g = groups.get(a); if (!g) groups.set(a, g = []); g.push(...o.polys); } }
+    const A = this._buf('A', r.w, r.h), ac = A._c;
+    ac.setTransform(1, 0, 0, 1, 0, 0); ac.globalCompositeOperation = 'source-over'; ac.clearRect(0, 0, r.w, r.h);
+    let S = null;
+    if (groups.size) { // the character alone is needed again for the faint parts
+      S = this._buf('S', r.w, r.h); const sc = S._c; sc.setTransform(1, 0, 0, 1, 0, 0); sc.globalCompositeOperation = 'source-over'; sc.clearRect(0, 0, r.w, r.h);
+      sc.save(); sc.beginPath(); sc.rect(0, 0, r.w, r.h); sc.clip(); sc.setTransform(k, 0, 0, k, -r.x, -r.y); drawFn(sc); sc.restore();
+      ac.drawImage(S, 0, 0, r.w, r.h, 0, 0, r.w, r.h);
+    } else { // nothing shows through: draw straight into the working canvas
+      ac.save(); ac.beginPath(); ac.rect(0, 0, r.w, r.h); ac.clip(); ac.setTransform(k, 0, 0, k, -r.x, -r.y); drawFn(ac); ac.restore();
+    }
+    // 1) the visible part: the character minus every nearer building
+    ac.globalCompositeOperation = 'destination-out'; ac.fillStyle = '#000';
+    for (const o of occ) fillPolys(ac, o.polys);
+    ac.globalCompositeOperation = 'source-over';
+    mainCtx.save(); mainCtx.setTransform(1, 0, 0, 1, 0, 0);
+    mainCtx.drawImage(A, 0, 0, r.w, r.h, r.x, r.y, r.w, r.h);
+    // 2) the hidden parts, faintly: the peanut is never fully hidden; a faded building shows what is behind it
+    if (groups.size) {
+      const B = this._buf('B', r.w, r.h), M = this._buf('M', r.w, r.h), bc = B._c, mc = M._c;
+      for (const [a, polys] of groups) {
+        mc.setTransform(1, 0, 0, 1, 0, 0); mc.globalCompositeOperation = 'source-over'; mc.clearRect(0, 0, r.w, r.h); mc.fillStyle = '#000'; fillPolys(mc, polys);
+        bc.setTransform(1, 0, 0, 1, 0, 0); bc.globalCompositeOperation = 'source-over'; bc.clearRect(0, 0, r.w, r.h);
+        bc.drawImage(S, 0, 0, r.w, r.h, 0, 0, r.w, r.h);
+        bc.globalCompositeOperation = 'destination-in'; bc.drawImage(M, 0, 0, r.w, r.h, 0, 0, r.w, r.h); bc.globalCompositeOperation = 'source-over';
+        mainCtx.globalAlpha = a; mainCtx.drawImage(B, 0, 0, r.w, r.h, r.x, r.y, r.w, r.h); mainCtx.globalAlpha = 1;
+      }
+    }
+    mainCtx.restore();
+    for (const o of occ) { this.stats.polys += o.polys.length; for (const poly of o.polys) this.debug.push(poly); }
+    if (opts.track) { // which buildings really stand between the camera and the peanut's body?
+      const samples = [0.05, 0.3, 0.55, 0.8, 1].map((f) => [info.px, info.py - info.hpx * f]);
+      this.lastObstructors = occ.filter((o) => o.polys.some((poly) => samples.some(([x, y]) => BuildingOcclusion3D.pointInPoly(x, y, poly)))).map((o) => o.prism);
+    }
+    return occ;
+  }
+
+  // Projectiles: is the point where this bullet is drawn behind a building?
+  bulletHidden(b, liftPx) {
+    const info = this.world.collision.prisms.length ? this.infoFor(b.x, b.y, 'bullet', 10) : null;
+    if (!info) return false;
+    info.bbox = { x0: info.px - 6, x1: info.px + 6, y0: info.py - liftPx - 6, y1: info.py - liftPx + 6 };
+    const occ = this.occludersFor(info);
+    return occ.some((o) => o.polys.some((poly) => BuildingOcclusion3D.pointInPoly(info.px, info.py - liftPx, poly)));
+  }
+
+  drawDebug(ctx) { // F2: the pieces of buildings that are in front of characters (magenta)
+    if (!this.debugPrev.length) return;
+    ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.strokeStyle = 'rgba(255,0,255,0.7)'; ctx.lineWidth = 1;
+    for (const poly of this.debugPrev) { ctx.beginPath(); poly.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y))); ctx.closePath(); ctx.stroke(); }
+    ctx.restore();
+  }
+}
+
+// ---- 4c. Fading the building that is in front of the peanut --------------------------------
+// MapTiler draws all buildings as one layer, and one layer has one opacity. To fade only
+// the obstructing building(s), a second identical "fade" layer shows just those buildings
+// (matched by feature id) while the main layer hides them; the fade layer's opacity is
+// animated 1 -> fadeOpacity, then back. Everything else is untouched. This needs numeric
+// feature ids in MapTiler's building tiles; if they are absent it switches itself off and
+// the x-ray (above) keeps the peanut visible instead.
+class BuildingFade3D {
+  constructor(world) {
+    this.world = world; this.ids = new Set(); this.opacity = 1; this.phase = 'idle'; this.armAt = 0;
+    this.since = new Map(); this.t = 0; this.disabled = false; this.affected = []; this.applies = 0;
+  }
+  static same(a, b) { if (a.size !== b.size) return false; for (const x of a) if (!b.has(x)) return false; return true; }
+
+  get mode() { const col = this.world.collision; return this.disabled || !GAME3D.fadeBuildings ? 'x-ray only (fade disabled)' : col.idsAvailable ? 'building fade' : 'x-ray only (tiles have no building ids)'; }
+
+  _setAffected(list) { for (const p of this.affected) p.fade = 1; this.affected = list; for (const p of list) p.fade = this.opacity; }
+
+  update(dt, obstructing) {
+    const w = this.world, col = w.collision, r = w.renderer;
+    if (this.disabled || !GAME3D.fadeBuildings || !col.idsAvailable || !r.fadeReady) return;
+    this.t += dt; const now = this.t;
+    const seen = new Set();
+    for (const p of obstructing) if (p.id !== undefined) {
+      seen.add(p.id);
+      let s = this.since.get(p.id); if (!s) { s = { on: now, off: null }; this.since.set(p.id, s); }
+      s.off = null;
+    }
+    for (const [id, s] of this.since) { if (!seen.has(id) && s.off === null) s.off = now; if (s.off !== null && now - s.off > 0.45) this.since.delete(id); }
+    const want = new Set(); for (const [id, s] of this.since) if (now - s.on >= 0.12) want.add(id);   // must obstruct for a moment; released with a delay: no flicker
+    try {
+      if (!BuildingFade3D.same(want, this.ids)) {
+        if (this.ids.size > 0 && this.opacity < 0.999) { this.opacity = Math.min(1, this.opacity + dt / GAME3D.fadeUpSec * (1 - GAME3D.fadeOpacity)); r.setFadeOpacity(this.opacity); }
+        else { r.setFadeIds([...want]); this.ids = want; this.phase = 'arming'; this.armAt = now; this.applies++; this._setAffected(col.prisms.filter((p) => p.id !== undefined && want.has(p.id))); }
+      } else if (this.ids.size > 0) {
+        if (this.phase === 'arming') { if (now - this.armAt > GAME3D.fadeArmSec) this.phase = 'fading'; }   // let the map re-draw the layers first
+        else if (this.phase === 'fading') { this.opacity = Math.max(GAME3D.fadeOpacity, this.opacity - dt / GAME3D.fadeDownSec * (1 - GAME3D.fadeOpacity)); r.setFadeOpacity(this.opacity); }
+      }
+      for (const p of this.affected) p.fade = this.ids.size ? this.opacity : 1;
+    } catch (err) { this.disabled = true; console.warn('[GameWorld3D] building fade disabled:', err.message); }
+  }
+}
+
 // ---- 5. Overlay (everything drawn on the gameplay canvas besides the player) -----------
 class WorldOverlay3D {
   constructor(world) {
@@ -10092,26 +10547,44 @@ class WorldOverlay3D {
     this.showReadout = /[?&]debug3d\b/.test(location.search);
   }
 
-  // The playable-area edge (800 m square), draped on the terrain.
+  // The playable area: the world outside it is dimmed, its edge is a line draped on the
+  // terrain plus a faint wall rising from it. (The area itself is the existing game-world
+  // square; movement is clamped to it by the existing movement code.)
   drawBoundary(ctx, camera, view) {
-    const b = this.world.bridge, W = b.worldW, H = b.worldH, N = 24;
+    const w = this.world, b = w.bridge, cam = w.camera, W = b.worldW, H = b.worldH, N = 24, k = camera.zoom;
     const pts = [];
     for (let i = 0; i < N; i++) pts.push([W * i / N, 0]);
     for (let i = 0; i < N; i++) pts.push([W, H * i / N]);
     for (let i = 0; i < N; i++) pts.push([W - W * i / N, H]);
     for (let i = 0; i < N; i++) pts.push([0, H - H * i / N]);
+    const bot = [], top = [];
+    let allVisible = true;
+    for (const [x, y] of pts) { const a = {}, c = {}; cam.projectColumn(x, y, GAME3D.curtainMeters, a, c); bot.push(a); top.push(c); if (!a.visible) allVisible = false; }
+    const rc = w.game.canvas;
     ctx.save();
-    ctx.strokeStyle = GAME3D.boundaryColor;
-    ctx.lineWidth = 3 / camera.zoom;
-    ctx.beginPath();
-    let moved = false;
-    for (const [x, y] of pts) {
-      const p = camera.worldToScreen(x, y, view);
-      if (p.x < -5e4) { moved = false; continue; }
-      if (!moved) { ctx.moveTo(p.x, p.y); moved = true; } else ctx.lineTo(p.x, p.y);
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    if (GAME3D.outOfBoundsDim > 0) { // darken everything outside the playable area
+      // The area's outline is clipped against the camera's near plane first: with a tilted
+      // camera, part of the outline is usually behind the camera.
+      const ring = pts.map(([x, y]) => cam.clipAt(x, y));
+      const wMin = Math.max(1e-6, Math.min(...ring.map((v) => v[3]).filter((v) => v > 0).concat([1e9])) * 0.25);
+      const poly = BuildingOcclusion3D.clipHalf(ring, (v) => v[3] - wMin * 8);
+      if (poly.length >= 3) {
+        ctx.fillStyle = 'rgba(0,0,0,' + GAME3D.outOfBoundsDim + ')';
+        ctx.beginPath(); ctx.rect(0, 0, rc.width, rc.height);
+        poly.forEach((v, i) => { const x = (v[0] / v[3] + 1) / 2 * rc.width - cam.centerErr.x, y = (1 - v[1] / v[3]) / 2 * rc.height - cam.centerErr.y; if (i) ctx.lineTo(x, y); else ctx.moveTo(x, y); });
+        ctx.closePath(); ctx.fill('evenodd');
+      }
     }
-    ctx.closePath();
-    ctx.stroke();
+    ctx.fillStyle = 'rgba(231,76,60,0.13)';          // the wall
+    for (let i = 0; i < pts.length; i++) {
+      const j = (i + 1) % pts.length; if (!bot[i].visible || !bot[j].visible) continue;
+      ctx.beginPath(); ctx.moveTo(bot[i].x, bot[i].y); ctx.lineTo(bot[j].x, bot[j].y); ctx.lineTo(top[j].x, top[j].y); ctx.lineTo(top[i].x, top[i].y); ctx.closePath(); ctx.fill();
+    }
+    ctx.strokeStyle = GAME3D.boundaryColor; ctx.lineWidth = 3;
+    ctx.beginPath(); let moved = false;
+    for (const p of bot) { if (!p.visible) { moved = false; continue; } if (!moved) { ctx.moveTo(p.x, p.y); moved = true; } else ctx.lineTo(p.x, p.y); }
+    ctx.closePath(); ctx.stroke();
     ctx.restore();
   }
 
@@ -10183,6 +10656,8 @@ class MapTilerGameWorld {
     this.renderer = new MapTilerWorldRenderer(document.getElementById('world3dMap'));
     this.bridge = null; this.terrain = null; this.camera = null; this.collision = null;
     this.overlay = new WorldOverlay3D(this);
+    this.occlusion = new BuildingOcclusion3D(this);
+    this.fade = new BuildingFade3D(this);
     this.onBuildingsAdded = null; // Game rebuilds its zombie nav grid when this fires
     this._buildingTimer = 0; this._footTimer = 99; this._footprintPx = 600;
   }
@@ -10199,7 +10674,7 @@ class MapTilerGameWorld {
       this.collision = new NearbyCollision(this.bridge, GAME3D.collisionRadiusMeters);
       this.renderer.onFrame = () => { this.camera.measureCenterError(); this.game._renderWorld3D(); }; // overlay is drawn from the very matrix this frame used
       try {
-        this.renderer.create({ lat, lng, zoom: this.camera.targetZoom(), pitch: GAME3D.pitch, bearing: GAME3D.bearing, maxPitch: GAME3D.maxPitch });
+        this.renderer.create({ lat, lng, zoom: this.camera.targetZoom(), pitch: CAMERA_PITCH, bearing: GAME3D.bearing, maxPitch: GAME3D.maxPitch });
       } catch (err) { this.exit(); return resolve({ ok: false, reason: 'map creation failed: ' + err.message }); }
 
       // Ready = loaded + the DEM tile under the spawn is in (so the very first
@@ -10270,11 +10745,11 @@ class MapTilerGameWorld {
   unproject(sx, sy) { return this.camera.unproject(sx, sy); }
   pixelScaleAt(gx, gy) { return this.camera.pixelScaleAt(gx, gy, this.game.camera.zoom); }
   drawBoundary(ctx, camera, view) { this.overlay.drawBoundary(ctx, camera, view); }
-  drawCollisionDebug(ctx, camera, view) { this.overlay.drawCollisionDebug(ctx, camera, view, this.collision.active); this.overlay.drawBodyDebug(ctx, camera, view); }
+  drawCollisionDebug(ctx, camera, view) { this.overlay.drawCollisionDebug(ctx, camera, view, this.collision.active); this.overlay.drawBodyDebug(ctx, camera, view); if (this.overlay.showCollision) this.occlusion.drawDebug(ctx); }
 
   // A zombie's body on screen (view coords): from its feet up, scaled by perspective.
   zombieBodyRect(z, cam, view) {
-    const p = cam.worldToScreen(z.x, z.y, view), size = zombieVisualSize(z.type) * (p.depthScale === undefined ? 1 : p.depthScale);
+    const p = cam.worldToScreen(z.x, z.y, view), size = zombieVisualSize(z.type) * (p.depthScale === undefined ? 1 : p.depthScale) * GAME3D.entityScale;
     return { x0: p.x - size * GAME3D.bodyHalfWidth, x1: p.x + size * GAME3D.bodyHalfWidth, y0: p.y - size * GAME3D.bodyHeight, y1: p.y + size * 0.08 };
   }
 
@@ -10321,6 +10796,8 @@ class MapTilerGameWorld {
       centerErrorPx: this.camera.centerErr,
       terrainOk: this.renderer.terrainOk, buildingsOk: this.renderer.buildingsOk,
       collision: { total: this.collision.all.length, active: this.collision.active.length, rebuilds: this.collision.rebuilds, skipped: this.collision.skipped },
+      camera: { distance: CAMERA_DISTANCE, effectiveDistance: CAMERA_DISTANCE / CAMERA_ZOOM, pitch: CAMERA_PITCH, followSpeed: CAMERA_FOLLOW_SPEED, heightMeters: cameraHeightMeters() },
+      depth: { prisms: this.collision.prisms.length, ...this.occlusion.stats, fadeMode: this.fade.mode, fadedBuildings: this.fade.ids.size, fadeOpacity: this.fade.opacity },
     };
   }
 }
