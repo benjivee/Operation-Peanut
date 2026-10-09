@@ -9976,6 +9976,12 @@ class MapTilerWorldRenderer {
 
   // A copy of the building layer that shows only the buildings being faded (see BuildingFade3D).
   addFadeLayer() {
+    this.map.addSource('game-fade-src', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+    for (const [id, grp] of [['game-fade-solid', 'solid'], ['game-fade-target', 'target']]) {
+      this.map.addLayer({ id, type: 'fill-extrusion', source: 'game-fade-src', minzoom: MAPTILER3D.buildingMinZoom, filter: ['==', ['get', 'grp'], grp],
+        paint: { 'fill-extrusion-color': MAPTILER3D.buildingColor, 'fill-extrusion-height': ['coalesce', ['to-number', ['get', 'render_height']], 0],
+          'fill-extrusion-base': ['coalesce', ['to-number', ['get', 'render_min_height']], 0], 'fill-extrusion-opacity': 1, 'fill-extrusion-vertical-gradient': true } }, mapTilerFirstSymbolLayerId(this.map));
+    }
     this.map.addLayer({
       id: 'maptiler-3d-buildings-fade', type: 'fill-extrusion', source: this.vectorSource, 'source-layer': 'building', minzoom: MAPTILER3D.buildingMinZoom,
       filter: ['in', ['id'], ['literal', []]],
@@ -9987,15 +9993,20 @@ class MapTilerWorldRenderer {
       },
     }, mapTilerFirstSymbolLayerId(this.map));
   }
-  // `clauses` are map-filter expressions, each one verified (BuildingFade3D._resolve) to select exactly one building.
-  setFadeClauses(clauses) {
+  // exact: map-filter clauses verified to select exactly one building each (faded by the fade layer).
+  // copies: clauses that ALSO select other, identical-looking buildings (towers with no ids and the same height); the main
+  // layer drops everything they select, and `feats` (GeoJSON of those very buildings, each tagged grp 'target' = fade it /
+  // 'solid' = draw it normally) is drawn by two copies of the building layer instead, so only the target fades.
+  setFadeClauses(exact, copies, feats) {
     const base = ['!=', ['get', 'hide_3d'], true];
-    const any = ['any', ...clauses];
-    this.map.setFilter('maptiler-3d-buildings-fade', clauses.length ? any : ['in', ['id'], ['literal', []]]);
-    this.map.setFilter('maptiler-3d-buildings', clauses.length ? ['all', base, ['!', any]] : base);
+    const all = [...exact, ...copies];
+    this.map.setFilter('maptiler-3d-buildings-fade', exact.length ? ['any', ...exact] : ['in', ['id'], ['literal', []]]);
+    this.map.setFilter('maptiler-3d-buildings', all.length ? ['all', base, ['!', ['any', ...all]]] : base);
+    const src = this.map.getSource('game-fade-src'); if (src) src.setData({ type: 'FeatureCollection', features: feats || [] });
+    this.map.setPaintProperty('game-fade-target', 'fill-extrusion-opacity', 1);
     this.map.setPaintProperty('maptiler-3d-buildings-fade', 'fill-extrusion-opacity', 1);
   }
-  setFadeOpacity(o) { this.map.setPaintProperty('maptiler-3d-buildings-fade', 'fill-extrusion-opacity', o); }
+  setFadeOpacity(o) { this.map.setPaintProperty('maptiler-3d-buildings-fade', 'fill-extrusion-opacity', o); this.map.setPaintProperty('game-fade-target', 'fill-extrusion-opacity', o); }
 
   // The MapTiler building polygons currently loaded (the very data the extrusions are drawn from).
   buildingFeatures() {
@@ -10540,11 +10551,11 @@ class BuildingOcclusion3D {
 class BuildingFade3D {
   constructor(world) {
     this.world = world; this.ids = new Set(); this.opacity = 1; this.phase = 'idle'; this.armAt = 0;
-    this.since = new Map(); this.t = 0; this.disabled = false; this.affected = []; this.applies = 0; this.clauses = new Map(); this.unfadable = 0;
+    this.since = new Map(); this.t = 0; this.disabled = false; this.affected = []; this.applies = 0; this.clauses = new Map(); this.unfadable = 0; this.fallbacks = 0; this.curInfo = '';
   }
   static same(a, b) { if (a.size !== b.size) return false; for (const x of a) if (!b.has(x)) return false; return true; }
 
-  get mode() { const col = this.world.collision; return this.disabled || !GAME3D.fadeBuildings ? 'x-ray only (fade disabled)' : col.idsAvailable ? 'building fade (' + this.unfadable + ' buildings cannot be singled out)' : 'x-ray only (tiles have no building ids)'; }
+  get mode() { const col = this.world.collision; return this.disabled || !GAME3D.fadeBuildings ? 'x-ray only (fade disabled)' : col.idsAvailable ? 'building fade (' + this.unfadable + ' buildings cannot be faded, ' + this.fallbacks + ' faded as copies)' : 'x-ray only (tiles have no building ids)'; }
 
   // The map's building layer is one layer; to fade ONE building a filter must select exactly that building. Tile ids
   // repeat or are missing, so instead of trusting any one rule, several rules are tried from most to least specific
@@ -10553,40 +10564,68 @@ class BuildingFade3D {
   // can single out is left solid rather than fading others with it. Done once per building, then remembered.
   _clauseKey(p) {
     if (p.fadeKey === undefined) {
-      const c = this._resolve(p);
-      p.fadeKey = c ? JSON.stringify(c) : null;
-      if (c) this.clauses.set(p.fadeKey, c); else this.unfadable++;
+      const e = this._resolve(p);
+      if (e) { p.fadeKey = JSON.stringify(e.clause) + (e.exact ? '' : '@' + Math.round(p.bbox.x0) + ',' + Math.round(p.bbox.y0)); this.clauses.set(p.fadeKey, e); if (!e.exact) this.fallbacks++; }
+      else { p.fadeKey = null; this.unfadable++; }
     }
     return p.fadeKey;
   }
+  _inBox(f, box) {
+    const b = this.world.bridge, g = f.geometry; if (!g) return false;
+    const rings = g.type === 'Polygon' ? [g.coordinates[0]] : g.type === 'MultiPolygon' ? g.coordinates.map((q) => q[0]) : [];
+    if (!rings.length) return false;
+    for (const rg of rings) for (const [lo, la] of rg) { const q = b.latLngToGamePx(la, lo); if (q.x < box.x0 || q.x > box.x1 || q.y < box.y0 || q.y > box.y1) return false; }
+    return true;
+  }
+  // -> { clause, exact, box } or null.
+  //  exact: the clause selects only this building (checked against the loaded tiles).
+  //  not exact: it selects this building AND look-alikes elsewhere (identical towers with no ids); the fade then draws
+  //  those from copies (see MapTilerWorldRenderer.setFadeClauses) so that only this one becomes see-through.
   _resolve(p) {
     const r = this.world.renderer, b = this.world.bridge, d = p.desc;
     if (!r.map || !r.vectorSource) return null;
     const bb = p.bbox, padX = Math.max(25, bb.x1 - bb.x0), padY = Math.max(25, bb.y1 - bb.y0);
-    const box = { x0: bb.x0 - padX, x1: bb.x1 + padX, y0: bb.y0 - padY, y1: bb.y1 + padY };
+    const wide = { x0: bb.x0 - padX, x1: bb.x1 + padX, y0: bb.y0 - padY, y1: bb.y1 + padY };   // may include its neighbours
+    const tight = { x0: bb.x0 - 30, x1: bb.x1 + 30, y0: bb.y0 - 30, y1: bb.y1 + 30 };          // this building (and pieces touching it)
     const prop = ([k, v]) => typeof v === 'number' ? ['==', ['coalesce', ['to-number', ['get', k]], 0], v] : typeof v === 'boolean' ? ['==', ['get', k], v] : ['==', ['to-string', ['get', k]], v];
     const idC = ['==', ['to-string', ['id']], d.idStr];
     const heights = d.props.filter(([k]) => k === 'render_height' || k === 'render_min_height').map(prop);
     const ring = p.lng.map((lo, i) => [lo, p.lat[i]]); ring.push(ring[0]);
-    const cands = [['all', idC, ...d.props.map(prop)], heights.length ? ['all', idC, ...heights] : null, d.props.length ? ['all', ...d.props.map(prop)] : null,
-      heights.length ? ['all', ...heights] : null, ['within', { type: 'Polygon', coordinates: [ring] }], d.idStr ? ['all', idC] : null].filter(Boolean);
-    const onBuilding = (f) => {
-      const g = f.geometry; if (!g) return false;
-      const rings = g.type === 'Polygon' ? [g.coordinates[0]] : g.type === 'MultiPolygon' ? g.coordinates.map((q) => q[0]) : [];
-      if (!rings.length) return false;
-      for (const rg of rings) for (const [lo, la] of rg) { const q = b.latLngToGamePx(la, lo); if (q.x < box.x0 || q.x > box.x1 || q.y < box.y0 || q.y > box.y1) return false; }
-      return true;
-    };
-    const names = ['id+props', 'id+heights', 'props', 'heights', 'outline', 'id'], tries = [];
-    for (let i = 0; i < cands.length; i++) {
-      const c = cands[i]; let ms;
-      try { ms = r.map.querySourceFeatures(r.vectorSource, { sourceLayer: 'building', filter: c }); } catch (e) { tries.push(c[0] + ':error'); continue; }
-      const good = ms.filter(onBuilding).length;
-      tries.push((c[0] === 'within' ? 'outline' : c.length > 2 && c[1] === d.idStr ? 'id+' : '') + ':' + good + '/' + ms.length);
-      if (ms.length && good === ms.length) { this.lastTry = 'ok ' + tries.join(' '); return c; }
+    let inner = null; { let cx = 0, cy = 0; for (const q of p.pts) { cx += q.x; cy += q.y; } cx /= p.pts.length; cy /= p.pts.length;
+      if (Utils.pointInPolygon(cx, cy, p.pts)) inner = { x: cx, y: cy };
+      else outer: for (let i = 1; i < 10; i++) for (let j = 1; j < 10; j++) { const x = bb.x0 + (bb.x1 - bb.x0) * i / 10, y = bb.y0 + (bb.y1 - bb.y0) * j / 10; if (Utils.pointInPolygon(x, y, p.pts)) { inner = { x, y }; break outer; } } }
+    const il = inner ? b.gamePxToLatLng(inner.x, inner.y) : null;
+    const byProps = [['id+props', ['all', idC, ...d.props.map(prop)]], heights.length ? ['id+heights', ['all', idC, ...heights]] : null, d.props.length ? ['props', ['all', ...d.props.map(prop)]] : null,
+      heights.length ? ['heights', ['all', ...heights]] : null].filter(Boolean);
+    const byShape = [il ? ['point', ['<', ['distance', { type: 'Point', coordinates: [il.lng, il.lat] }], 0.5]] : null, ['outline', ['within', { type: 'Polygon', coordinates: [ring] }]]].filter(Boolean);
+    const cands = [...byProps, ...byShape, ...(d.idStr ? [['id', ['all', idC]]] : [])];
+    const q = (c) => { try { return r.map.querySourceFeatures(r.vectorSource, { sourceLayer: 'building', filter: c }); } catch (e) { return null; } };
+    const tries = [];
+    for (const [name, c] of cands) {   // 1) a rule that selects only this building
+      const ms = q(c); if (ms === null) { tries.push(name + ':err'); continue; }
+      const good = ms.filter((f) => this._inBox(f, wide)).length; tries.push(name + ':' + good + '/' + ms.length);
+      if (ms.length && good === ms.length) { p.fadeInfo = this.lastTry = 'exact ' + tries.join(' '); return { clause: c, exact: true, box: tight }; }
     }
-    this.lastTry = 'FAILED ' + tries.join(' ');
+    for (const [name, c] of byProps) {   // 2) a rule that also selects look-alikes: this building is drawn as a copy
+      const ms = q(c); if (ms && ms.some((f) => this._inBox(f, tight))) { p.fadeInfo = this.lastTry = 'copy ' + name + ' (' + ms.length + ') | ' + tries.join(' '); return { clause: c, exact: false, box: tight }; }
+    }
+    p.fadeInfo = this.lastTry = 'FAILED ' + tries.join(' ');
     return null;
+  }
+  // Applies the wanted set to the map: exact rules go to the fade layer, copies are rebuilt as GeoJSON.
+  _apply(want) {
+    const r = this.world.renderer, ents = [...want].map((k) => this.clauses.get(k)).filter(Boolean);
+    const exact = ents.filter((e) => e.exact).map((e) => e.clause), cp = ents.filter((e) => !e.exact);
+    const copyClauses = [], seen = new Set(), feats = [];
+    for (const e of cp) {
+      const ck = JSON.stringify(e.clause); if (seen.has(ck)) continue; seen.add(ck); copyClauses.push(e.clause);
+      let ms = []; try { ms = r.map.querySourceFeatures(r.vectorSource, { sourceLayer: 'building', filter: e.clause }); } catch (err) { /* none */ }
+      for (const f of ms) {
+        const pr = f.properties || {}; if (!f.geometry || pr.hide_3d === true || pr.hide_3d === 'true') continue;
+        feats.push({ type: 'Feature', geometry: f.geometry, properties: { ...pr, grp: cp.some((x) => this._inBox(f, x.box)) ? 'target' : 'solid' } });
+      }
+    }
+    r.setFadeClauses(exact, copyClauses, feats);
   }
   _setAffected(list) { for (const p of this.affected) p.fade = 1; this.affected = list; for (const p of list) p.fade = this.opacity; }
 
@@ -10598,7 +10637,7 @@ class BuildingFade3D {
     this.t += dt; const now = this.t;
     const seen = new Set();
     for (const p of obstructing) {
-      const ck = this._clauseKey(p); if (ck === null) continue; // no filter selects only this building: it stays solid (the x-ray still shows the peanut)
+      const ck = this._clauseKey(p); this.curInfo = p.fadeInfo || ''; if (ck === null) continue; // no filter selects only this building: it stays solid (the x-ray still shows the peanut)
       seen.add(ck);
       let s = this.since.get(ck); if (!s) { s = { on: now, off: null }; this.since.set(ck, s); }
       s.off = null;
@@ -10608,7 +10647,7 @@ class BuildingFade3D {
     try {
       if (!BuildingFade3D.same(want, this.ids)) {
         if (this.ids.size > 0 && this.opacity < 0.999) { this.opacity = Math.min(1, this.opacity + dt / GAME3D.fadeUpSec * (1 - GAME3D.fadeOpacity)); r.setFadeOpacity(this.opacity); }
-        else { r.setFadeClauses([...want].map((k) => this.clauses.get(k))); this.ids = want; this.phase = 'arming'; this.armAt = now; this.applies++; this._setAffected(col.prisms.filter((p) => p.fadeKey && want.has(p.fadeKey))); }
+        else { this._apply(want); this.ids = want; this.phase = 'arming'; this.armAt = now; this.applies++; this._setAffected(col.prisms.filter((p) => p.fadeKey && want.has(p.fadeKey))); }
       } else if (this.ids.size > 0) {
         if (this.phase === 'arming') { if (now - this.armAt > GAME3D.fadeArmSec) this.phase = 'fading'; }   // let the map re-draw the layers first
         else if (this.phase === 'fading') { this.opacity = Math.max(GAME3D.fadeOpacity, this.opacity - dt / GAME3D.fadeDownSec * (1 - GAME3D.fadeOpacity)); r.setFadeOpacity(this.opacity); }
@@ -10722,7 +10761,7 @@ class WorldOverlay3D {
     ];
     const f = w.fade, rr = w.renderer;   // the building fade: what it is doing right now
     lines.push(`fade: ${f.why ? 'IDLE - ' + f.why : f.mode}   obstructing: ${f.lastObstructing || 0}   faded: ${f.ids.size} @ ${f.opacity.toFixed(2)}`);
-    if (f.lastTry) lines.push('last building lookup: ' + f.lastTry.slice(0, 80));
+    if (f.curInfo || f.lastTry) lines.push('building lookup: ' + (f.curInfo || f.lastTry).slice(0, 90));
     if (rr.lastError) lines.push('map error: ' + String(rr.lastError).slice(0, 80));
     ctx.save();
     ctx.font = '12px monospace';
