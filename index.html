@@ -1444,7 +1444,7 @@ const EMBEDDED_ASSETS = {
 
     <!-- ===================== Start overlay (home page) ===================== -->
     <div id="startScreen" class="overlay homePage">
-      <div id="versionTag" class="versionTag">v3.85.1</div>
+      <div id="versionTag" class="versionTag">v3.85.2</div>
       <div id="homeSidebar" class="homeSidebar">
         <div class="homeSidebarTitle">Your Stats</div>
         <div class="homeSidebarStat">
@@ -11057,7 +11057,8 @@ const OP_DETAIL = {
   maxBuildings: 1500,      // details on up to this many buildings, nearest the peanut first as new ones stream in (the first pass was 80)
   drawRangePx: 640, maxDrawn: 320,   // props are drawn within this distance of the peanut (game px), at most this many per frame
   safeSpawnPx: 150,        // no props this close to where the run starts
-  caps: { tree: 440, car: 70, light: 40, sign: 22, barrier: 18, dumpster: 26, crate: 22, pallet: 12, trash: 50, debris: 30, util: 16, gen: 8, weeds: 60, crack: 45 },
+  // How many of each prop to place. Only trees, cars and lamps are on for now; a 0 switches a kind off (give it a number to bring it back).
+  caps: { tree: 440, car: 70, light: 40, sign: 0, barrier: 0, dumpster: 0, crate: 0, pallet: 0, trash: 0, debris: 0, util: 0, gen: 0, weeds: 0, crack: 0 },
 };
 
 function opHash(a, b, salt) {   // deterministic 0..1 from integers
