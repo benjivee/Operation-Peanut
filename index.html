@@ -290,6 +290,19 @@ html, body {
   margin: 0 0 20px 0;
 }
 
+.versionTag {
+  position: absolute;
+  right: 14px;
+  bottom: 10px;
+  font-family: monospace;
+  font-size: 13px;
+  letter-spacing: 0.5px;
+  color: #fff;
+  opacity: 0.55;
+  pointer-events: none;
+  user-select: none;
+}
+
 .tagline {
   font-style: italic;
   color: #c0392b;
@@ -1421,6 +1434,7 @@ const EMBEDDED_ASSETS = {
 
     <!-- ===================== Start overlay (home page) ===================== -->
     <div id="startScreen" class="overlay homePage">
+      <div id="versionTag" class="versionTag">v3.80.0</div>
       <div id="homeSidebar" class="homeSidebar">
         <div class="homeSidebarTitle">Your Stats</div>
         <div class="homeSidebarStat">
@@ -5758,7 +5772,7 @@ class Game {
         const near = Math.hypot(e.x - snap.px, e.y - snap.py) <= GAME3D.zombieXrayRangePx;
         occ.draw(ctx, k, occ.infoFor(e.x, e.y, 'zombie', zombieVisualSize(e.type)), (c) => e.draw(c, this.camera, view), { xray: near ? GAME3D.xrayZombie : 0, exact: near });
       } else {
-        occ.draw(ctx, k, occ.infoFor(e.x, e.y, 'pickup', 40), (c) => e.draw(c, this.camera, view), { xray: 0 });
+        occ.draw(ctx, k, occ.infoFor(e.x, e.y, 'pickup', 40), (c) => e.draw(c, this.camera, view), { xray: 0, ghost: GAME3D.pickupGhost });
       }
     }
     for (const b of this.bullets) {
@@ -9850,6 +9864,7 @@ const GAME3D = {
   maskBudget: 16,             // at most this many nearby zombies per frame get the pixel-exact building cut-out (the peanut always does)
   xrayPlayer: 0.5,            // how visible the peanut stays when a building is in front of it (0..1)
   xrayZombie: 0.3,            // same for zombies ...
+  pickupGhost: 0.6,           // how visible a drop (ammo, medkit, weapon, fuel) stays behind a building (0..1), at any distance
   zombieXrayRangePx: 380,     // ... but only zombies this close to the peanut; farther ones stay fully hidden
   fadeBuildings: true,        // fade the building that is in front of the peanut (needs building ids in the tiles; falls back to the x-ray above)
   fadeOpacity: 0.3,           // opacity of an obstructing building
@@ -10468,8 +10483,12 @@ class BuildingOcclusion3D {
     // near it (up to `maskBudget` per frame); everything else uses a cheap hidden-or-visible test of its torso.
     if (!opts.track && (!opts.exact || this.masked >= GAME3D.maskBudget)) {
       this.stats.cheap++;
-      const hidden = occ.some((o) => o.polys.some((poly) => BuildingOcclusion3D.pointInPoly(info.sx, info.sy, poly)));
-      if (!hidden) drawFn(mainCtx);
+      // Behind a building: invisible (as before), unless the building is currently faded (then it shows through as much as
+      // the building does) or the caller asked for a ghost (opts.ghost = how visible it stays, 0..1; used for drops).
+      let covered = false, vis = 1;
+      for (const o of occ) if (o.polys.some((poly) => BuildingOcclusion3D.pointInPoly(info.sx, info.sy, poly))) { covered = true; vis = Math.min(vis, 1 - o.prism.fade); }
+      if (!covered) drawFn(mainCtx);
+      else { const a = Math.max(vis, opts.ghost || 0); if (a >= 0.05) { mainCtx.save(); mainCtx.globalAlpha = a; drawFn(mainCtx); mainCtx.restore(); } }
       return occ;
     }
     const r = { x: Math.floor(info.bbox.x0), y: Math.floor(info.bbox.y0) };
@@ -10610,13 +10629,29 @@ class BuildingFade3D {
     for (const [name, c] of cands) {   // 1) a rule that selects only this building
       const ms = q(c); if (ms === null) { tries.push(name + ':err'); continue; }
       const good = ms.filter((f) => this._inBox(f, tight)).length; tries.push(name + ':' + good + '/' + ms.length + (ms[0] && ms[0].geometry ? (ms[0].geometry.type === 'MultiPolygon' ? 'M' + ms[0].geometry.coordinates.length : 'P') : ''));
-      if (ms.length && good === ms.length) { p.fadeInfo = this.lastTry = 'exact ' + tries.join(' '); return { clause: c, exact: true, box: tight }; }
+      if (ms.length && good === ms.length) {
+        // One feature made of several separate buildings (MultiPolygon): fading it would fade all of them, so it is
+        // drawn as copies, split part by part (see _apply), and only the part in the way becomes see-through.
+        const multi = ms.some((f) => f.geometry && f.geometry.type === 'MultiPolygon' && f.geometry.coordinates.length > 1);
+        p.fadeInfo = this.lastTry = (multi ? 'parts ' : 'exact ') + tries.join(' ');
+        return { clause: c, exact: !multi, box: tight, inner, bb };
+      }
     }
     for (const [name, c] of byProps) {   // 2) a rule that also selects look-alikes: this building is drawn as a copy
-      const ms = q(c); if (ms && ms.some((f) => this._inBox(f, tight))) { p.fadeInfo = this.lastTry = 'copy ' + name + ' (' + ms.length + ') | ' + tries.join(' '); return { clause: c, exact: false, box: tight }; }
+      const ms = q(c); if (ms && ms.some((f) => this._inBox(f, tight))) { p.fadeInfo = this.lastTry = 'copy ' + name + ' (' + ms.length + ') | ' + tries.join(' '); return { clause: c, exact: false, box: tight, inner, bb }; }
     }
     p.fadeInfo = this.lastTry = 'FAILED ' + tries.join(' ');
     return null;
+  }
+  // Is this polygon part the building in the way? It is when it contains the point inside that building, or (when no such
+  // point was found) when its outline matches the building's bounding box; a neighbouring part merely nearby is not.
+  _isThisBuilding(coords, e) {
+    const b = this.world.bridge, ring = coords[0].map(([lo, la]) => b.latLngToGamePx(la, lo));
+    if (e.inner && Utils.pointInPolygon(e.inner.x, e.inner.y, ring)) return true;
+    let x0 = 1e18, y0 = 1e18, x1 = -1e18, y1 = -1e18;
+    for (const q of ring) { if (q.x < x0) x0 = q.x; if (q.x > x1) x1 = q.x; if (q.y < y0) y0 = q.y; if (q.y > y1) y1 = q.y; }
+    const t = 15;
+    return Math.abs(x0 - e.bb.x0) < t && Math.abs(x1 - e.bb.x1) < t && Math.abs(y0 - e.bb.y0) < t && Math.abs(y1 - e.bb.y1) < t;
   }
   // Applies the wanted set to the map: exact rules go to the fade layer, copies are rebuilt as GeoJSON.
   _apply(want) {
@@ -10628,7 +10663,8 @@ class BuildingFade3D {
       let ms = []; try { ms = r.map.querySourceFeatures(r.vectorSource, { sourceLayer: 'building', filter: e.clause }); } catch (err) { /* none */ }
       for (const f of ms) {
         const pr = f.properties || {}; if (!f.geometry || pr.hide_3d === true || pr.hide_3d === 'true') continue;
-        feats.push({ type: 'Feature', geometry: f.geometry, properties: { ...pr, grp: cp.some((x) => this._inBox(f, x.box)) ? 'target' : 'solid' } });
+        const parts = f.geometry.type === 'MultiPolygon' ? f.geometry.coordinates : f.geometry.type === 'Polygon' ? [f.geometry.coordinates] : [];
+        for (const coords of parts) feats.push({ type: 'Feature', geometry: { type: 'Polygon', coordinates: coords }, properties: { ...pr, grp: cp.some((x) => this._isThisBuilding(coords, x)) ? 'target' : 'solid' } });
       }
     }
     r.setFadeClauses(exact, copyClauses, feats);
