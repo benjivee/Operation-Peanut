@@ -1434,7 +1434,7 @@ const EMBEDDED_ASSETS = {
 
     <!-- ===================== Start overlay (home page) ===================== -->
     <div id="startScreen" class="overlay homePage">
-      <div id="versionTag" class="versionTag">v3.81.0</div>
+      <div id="versionTag" class="versionTag">v3.81.1</div>
       <div id="homeSidebar" class="homeSidebar">
         <div class="homeSidebarTitle">Your Stats</div>
         <div class="homeSidebarStat">
@@ -9740,10 +9740,10 @@ const OP_STYLE = (() => {
       ['match', ['%', ['floor', ['*', h, 3]], 4], 0, '#8c7b66', 1, '#b3a58b', 2, '#7e8085', '#9b8a73']],
     light: { anchor: 'viewport', color: '#fff1da', intensity: 0.62, position: [1.4, 205, 28] },   // high light: bright roofs, darker walls
     pixel: true,                                         // pixel-style shading on ground surfaces (F5 toggles); needs enabled
-    pattern: { ground: 'op-ground', grass: 'op-grass', forest: 'op-forest', water: 'op-water', sand: 'op-sand', sidewalk: 'op-sidewalk', concrete: 'op-concrete', asphalt: 'op-asphalt' },
+    pattern: { grass: 'op-grass', forest: 'op-forest', water: 'op-water' },   // pixel texture only here; ground, concrete, sand, sidewalks and asphalt stay flat
     mark: { color: '#80828b', opacity: 0.8 },            // faint dashed centre line on roads
     hillshade: 0.18,                                     // terrain relief, toned down
-    edge: { color: '#14141b', opacity: 0.8 },            // dark outline / shadow ring on the ground around every building
+    shadow: { color: '#0d0d14', opacity: 0.34, bands: [[0, 5], [12, 10], [40, 17]] },   // drop shadow: footprint shifted down-right (px); taller buildings (min height m) cast longer ones
     buildingLayers: ['maptiler-3d-buildings', 'maptiler-3d-buildings-fade', 'game-fade-solid', 'game-fade-target'],
   };
 })();
@@ -9829,7 +9829,7 @@ class OperationPeanutStyle {
       if (l.id.startsWith('maptiler-') || l.id.startsWith('game-') || ['symbol', 'custom', 'raster', 'hillshade', 'fill-extrusion', 'circle', 'heatmap'].includes(l.type)) continue;
       const sl = l['source-layer'] || '', f = JSON.stringify(l.filter || ''), neg = /"!in"|"!="|"!"/.test(f);
       const txt = (l.id + ' ' + (neg ? '' : f)).toLowerCase();
-      if (l.type === 'background') { this._set(l.id, 'background-color', S.ground); if (S.pixel) this._set(l.id, 'background-pattern', S.pattern.ground); count('background'); }
+      if (l.type === 'background') { this._set(l.id, 'background-color', S.ground); if (S.pixel && S.pattern.ground) this._set(l.id, 'background-pattern', S.pattern.ground); count('background'); }
       else if (l.type === 'fill') {
         const k = this._fillKind(sl, txt); if (!k) { if (sl !== 'building') this.stats.skipped.push(l.id); continue; }
         this._set(l.id, 'fill-color', S.fill[k]); this._set(l.id, 'fill-antialias', false);
@@ -9860,20 +9860,30 @@ class OperationPeanutStyle {
     if (m.getLayer('maptiler-hillshade')) this._set('maptiler-hillshade', 'hillshade-exaggeration', S.hillshade);
     for (const id of S.buildingLayers) if (m.getLayer(id)) { this._set(id, 'fill-extrusion-color', S.buildingColor); this._set(id, 'fill-extrusion-vertical-gradient', false); count('building-layer'); }
     try { if (!this.prevLight) this.prevLight = m.getLight(); m.setLight(S.light); } catch (e) { /* no light control */ }
-    if (!m.getLayer('game-building-edge') && m.getLayer('maptiler-3d-buildings')) {
-      const src = m.getLayer('maptiler-3d-buildings').source;
-      m.addLayer({ id: 'game-building-edge', type: 'line', source: src, 'source-layer': 'building', minzoom: MAPTILER3D.buildingMinZoom,
-        filter: ['!=', ['get', 'hide_3d'], true], layout: { 'line-join': 'round' },
-        paint: { 'line-color': S.edge.color, 'line-opacity': S.edge.opacity, 'line-width': ['interpolate', ['linear'], ['zoom'], 14, 2, 18, 8, 20, 16] } }, 'maptiler-3d-buildings');
+    // Drop shadow: a dark translucent copy of every building footprint, shifted down-right on the ground and drawn under the
+    // buildings, so only the part beyond the base shows. Three height bands give taller buildings longer shadows.
+    this.shadowIds = this.shadowIds || [];
+    if (m.getLayer('maptiler-3d-buildings')) {
+      const src = m.getLayer('maptiler-3d-buildings').source, H = ['coalesce', ['to-number', ['get', 'render_height']], 6];
+      S.shadow.bands.forEach(([minH, d], i) => {
+        const id = 'game-building-shadow-' + i, maxH = i + 1 < S.shadow.bands.length ? S.shadow.bands[i + 1][0] : 1e9;
+        if (!m.getLayer(id)) {
+          m.addLayer({ id, type: 'fill', source: src, 'source-layer': 'building', minzoom: MAPTILER3D.buildingMinZoom,
+            filter: ['all', ['!=', ['get', 'hide_3d'], true], ['>=', H, minH], ['<', H, maxH]],
+            paint: { 'fill-color': S.shadow.color, 'fill-opacity': S.shadow.opacity, 'fill-translate': [d, d], 'fill-translate-anchor': 'viewport', 'fill-antialias': false } }, 'maptiler-3d-buildings');
+          this.shadowIds.push(id);
+        }
+        m.setLayoutProperty(id, 'visibility', 'visible');
+      });
     }
-    if (m.getLayer('game-building-edge')) m.setLayoutProperty('game-building-edge', 'visibility', 'visible');
+    if (m.getLayer('game-building-edge')) m.setLayoutProperty('game-building-edge', 'visibility', 'none');   // the old ring is gone
     this.on = true;
   }
   revert() {
     const m = this.map;
     for (let i = this.backup.length - 1; i >= 0; i--) { const [id, prop, v] = this.backup[i]; try { m.setPaintProperty(id, prop, v); } catch (e) { /* ignore */ } }
     try { if (this.prevLight) m.setLight(this.prevLight); } catch (e) { /* ignore */ }
-    if (m.getLayer('game-building-edge')) m.setLayoutProperty('game-building-edge', 'visibility', 'none');
+    for (const id of (this.shadowIds || [])) if (m.getLayer(id)) m.setLayoutProperty(id, 'visibility', 'none');
     for (const id of (this.markIds || [])) if (m.getLayer(id)) m.setLayoutProperty(id, 'visibility', 'none');
     this.on = false;
   }
@@ -10976,8 +10986,8 @@ class WorldOverlay3D {
       lines.push('style: ' + (rr.style.on ? 'on' : 'off') + ' (F4)  pixel: ' + (OP_STYLE.pixel ? 'on' : 'off') + ' (F5)  roads: ' + (st.roads || []).slice(0, 3).join(',') + '  skipped: ' + (st.skipped.slice(0, 4).join(', ') || 'none'));
       lines.push('  restyled: ' + kinds.slice(0, 120));
       const tn = performance.now();   // once a second: is the dark building ring actually being drawn?
-      if (!rr.style._eqT || tn - rr.style._eqT > 1000) { rr.style._eqT = tn; try { rr.style._eqN = rr.map.getLayer('game-building-edge') ? rr.map.queryRenderedFeatures({ layers: ['game-building-edge'] }).length : 'layer missing'; } catch (e) { rr.style._eqN = 'query failed'; } }
-      lines.push('  building edge ring: ' + rr.style._eqN + ' features drawn');
+      if (!rr.style._eqT || tn - rr.style._eqT > 1000) { rr.style._eqT = tn; try { rr.style._eqN = (rr.style.shadowIds || []).length ? rr.map.queryRenderedFeatures({ layers: rr.style.shadowIds }).length : 'layers missing'; } catch (e) { rr.style._eqN = 'query failed'; } }
+      lines.push('  building shadows: ' + rr.style._eqN + ' features drawn');
     }
     if (rr.lastError) lines.push('map error: ' + String(rr.lastError).slice(0, 80));
     ctx.save();
