@@ -1434,7 +1434,7 @@ const EMBEDDED_ASSETS = {
 
     <!-- ===================== Start overlay (home page) ===================== -->
     <div id="startScreen" class="overlay homePage">
-      <div id="versionTag" class="versionTag">v3.80.2</div>
+      <div id="versionTag" class="versionTag">v3.80.3</div>
       <div id="homeSidebar" class="homeSidebar">
         <div class="homeSidebarTitle">Your Stats</div>
         <div class="homeSidebarStat">
@@ -9730,9 +9730,9 @@ const OP_STYLE = (() => {
   const h = ['coalesce', ['to-number', ['get', 'render_height']], 6];
   return {
     enabled: true,
-    ground: '#b3a88f',                                   // plain ground / background: dusty concrete
-    fill: { water: '#4a7f86', grass: '#7a8a4b', forest: '#4f6137', sand: '#c9b98d', sidewalk: '#c4b89f', concrete: '#a39a88', ground: '#b3a88f', asphalt: '#43454d' },
-    line: { road: '#3d3f47', casing: '#23242b', path: '#cdc1a8', pathCasing: '#857a64', rail: '#2f3037', water: '#43737b' },
+    ground: '#aeab9b',                                   // plain ground / background: cooler dusty concrete (buildings stay warmer)
+    fill: { water: '#4a7f86', grass: '#7a8a4b', forest: '#4f6137', sand: '#c9b98d', sidewalk: '#c3bfae', concrete: '#a19d8e', ground: '#aeab9b', asphalt: '#43454d' },
+    line: { road: '#3d3f47', casing: '#23242b', path: '#cfcab8', pathCasing: '#847f6c', rail: '#2f3037', water: '#43737b' },
     // Buildings: four muted wall colours picked per building from its height (so neighbours differ, identical towers match),
     // and tall towers go charcoal. Roofs read lighter than walls through the flat light below.
     buildingColor: ['case', ['>=', h, 40], '#585a63',
@@ -10909,6 +10909,9 @@ class WorldOverlay3D {
       const st = rr.style.stats, kinds = Object.keys(st).filter((k) => k !== 'skipped').map((k) => k + ':' + st[k]).join(' ');
       lines.push('style: ' + (rr.style.on ? 'on' : 'off') + ' (F4)  skipped layers: ' + (st.skipped.slice(0, 4).join(', ') || 'none'));
       lines.push('  restyled: ' + kinds.slice(0, 120));
+      const tn = performance.now();   // once a second: is the dark building ring actually being drawn?
+      if (!rr.style._eqT || tn - rr.style._eqT > 1000) { rr.style._eqT = tn; try { rr.style._eqN = rr.map.getLayer('game-building-edge') ? rr.map.queryRenderedFeatures({ layers: ['game-building-edge'] }).length : 'layer missing'; } catch (e) { rr.style._eqN = 'query failed'; } }
+      lines.push('  building edge ring: ' + rr.style._eqN + ' features drawn');
     }
     if (rr.lastError) lines.push('map error: ' + String(rr.lastError).slice(0, 80));
     ctx.save();
