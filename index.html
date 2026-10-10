@@ -1444,7 +1444,7 @@ const EMBEDDED_ASSETS = {
 
     <!-- ===================== Start overlay (home page) ===================== -->
     <div id="startScreen" class="overlay homePage">
-      <div id="versionTag" class="versionTag">v3.84.1</div>
+      <div id="versionTag" class="versionTag">v3.84.2</div>
       <div id="homeSidebar" class="homeSidebar">
         <div class="homeSidebarTitle">Your Stats</div>
         <div class="homeSidebarStat">
@@ -9811,7 +9811,7 @@ function opMakePatterns(map) {
 }
 
 class OperationPeanutStyle {
-  constructor(map) { this.map = map; this.on = false; this.backup = []; this.seen = new Set(); this.hiddenLayers = []; this.prevLight = null; this.stats = { skipped: [] }; }
+  constructor(map) { this.map = map; this.on = false; this.backup = []; this.seen = new Set(); this.hiddenLayers = []; this.treeLayers = []; this.prevLight = null; this.stats = { skipped: [] }; }
   _set(id, prop, value) {   // remember the original value once, then change it
     try {
       const key = id + '|' + prop;
@@ -9843,7 +9843,7 @@ class OperationPeanutStyle {
     return null;
   }
   apply() {
-    const m = this.map, S = OP_STYLE; this.stats = { skipped: [] };
+    const m = this.map, S = OP_STYLE; this.stats = { skipped: [] }; this.treeLayers = [];
     const count = (k) => { this.stats[k] = (this.stats[k] || 0) + 1; };
     if (S.pixel) { try { opMakePatterns(m); } catch (e) { console.warn('[style] pixel patterns failed:', e.message); S.pixel = false; } }
     const roadLayers = [];
@@ -9854,6 +9854,7 @@ class OperationPeanutStyle {
       if (l.type === 'background') { this._set(l.id, 'background-color', S.ground); if (S.pixel && S.pattern.ground) this._set(l.id, 'background-pattern', S.pattern.ground); count('background'); }
       else if (l.type === 'fill') {
         const k = this._fillKind(sl, txt); if (!k) { if (sl !== 'building') this.stats.skipped.push(l.id); continue; }
+        if (k === 'grass' || k === 'forest') this.treeLayers.push({ source: l.source, sl, filter: l.filter, kind: k });   // trees follow what is painted green
         this._set(l.id, 'fill-color', S.fill[k]); this._set(l.id, 'fill-antialias', false);
         if (S.pixel && S.pattern[k]) this._set(l.id, 'fill-pattern', S.pattern[k]);
         else if (m.getPaintProperty(l.id, 'fill-pattern')) this._set(l.id, 'fill-pattern', undefined);
@@ -11219,25 +11220,32 @@ class PropField3D {
   }
   // Trees: inside park polygons (sparse) and wooded areas (denser), on a fixed world grid so the result never depends on tile order.
   _parks() {
-    const r = this.world.renderer, b = this.world.bridge;
-    for (const sl of ['park', 'landuse', 'landcover']) {
-      let fs = []; try { fs = r.map.querySourceFeatures(r.vectorSource, { sourceLayer: sl }); } catch (e) { continue; }
-      for (const f of fs) {
-        const pr = f.properties || {}, cls = String(pr.class || '').toLowerCase(), g = f.geometry; if (!g) continue;
-        const wood = sl === 'landcover' && /^(wood|forest)$/.test(cls);
-        if (!(sl === 'park' || (sl === 'landuse' && /^(park|garden|cemetery)$/.test(cls)) || wood)) continue;
-        const sp = wood ? 85 : 170, prob = wood ? 0.8 : 1.0, rings = g.type === 'Polygon' ? [g.coordinates[0]] : g.type === 'MultiPolygon' ? g.coordinates.map((q) => q[0]) : [];
-        for (const rg of rings) {
-          const pts = rg.map(([lo, la]) => b.latLngToGamePx(la, lo)); let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
-          for (const q of pts) { x0 = Math.min(x0, q.x); x1 = Math.max(x1, q.x); y0 = Math.min(y0, q.y); y1 = Math.max(y1, q.y); }
-          for (let gx = Math.ceil(x0 / sp); gx <= Math.floor(x1 / sp); gx++) for (let gy = Math.ceil(y0 / sp); gy <= Math.floor(y1 / sp); gy++) {
-            const key = 'T' + sp + ':' + gx + ',' + gy; if (this.cells.has(key)) continue;
-            const x = gx * sp + (opHash(gx, gy, 201) - 0.5) * sp * 0.6, y = gy * sp + (opHash(gx, gy, 202) - 0.5) * sp * 0.6;
-            if (!Utils.pointInPolygon(x, y, pts)) continue;   // not inside this one: another polygon (or a later tile) may still own the cell
-            this.cells.add(key); if (opHash(gx, gy, 203) > prob || this._onRoad(x, y, 16)) continue;
-            this._add('tree', x, y, OP_ART.tree(), 64, 72, 20, { coll: [12, 9], rot: 0 });
-          }
-        }
+    const r = this.world.renderer, b = this.world.bridge, p = this.world.game.player, st = r.style, srcs = [];
+    if (st && st.treeLayers && st.treeLayers.length) {
+      // The very map layers the style paints dark green ('forest') or mid green ('grass'): trees go where the ground is green.
+      for (const t of st.treeLayers) { let fs = []; try { fs = r.map.querySourceFeatures(t.source, { sourceLayer: t.sl, filter: t.filter || undefined }); } catch (e) { continue; } for (const f of fs) srcs.push([f, t.kind === 'forest']); }
+    } else {
+      for (const sl of ['park', 'landuse', 'landcover']) {
+        let fs = []; try { fs = r.map.querySourceFeatures(r.vectorSource, { sourceLayer: sl }); } catch (e) { continue; }
+        for (const f of fs) { const cls = String((f.properties || {}).class || '').toLowerCase(), wood = sl === 'landcover' && /^(wood|forest)$/.test(cls); if (sl === 'park' || (sl === 'landuse' && /^(park|garden|cemetery)$/.test(cls)) || wood) srcs.push([f, wood]); }
+      }
+    }
+    const ring0 = (g) => g.type === 'Polygon' ? [g.coordinates[0]] : g.type === 'MultiPolygon' ? g.coordinates.map((q) => q[0]) : [];
+    const polys = [];
+    for (const [f, dense] of srcs) { if (!f.geometry) continue; for (const rg of ring0(f.geometry)) {
+      const pts = rg.map(([lo, la]) => b.latLngToGamePx(la, lo)); let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
+      for (const q of pts) { x0 = Math.min(x0, q.x); x1 = Math.max(x1, q.x); y0 = Math.min(y0, q.y); y1 = Math.max(y1, q.y); }
+      polys.push({ pts, x0, y0, x1, y1, dense, d: p ? Math.hypot((x0 + x1) / 2 - p.x, (y0 + y1) / 2 - p.y) : 0 });
+    } }
+    polys.sort((m, n) => m.d - n.d);   // nearest the peanut first, so the tree limit is spent where the player is
+    for (const pl of polys) {
+      const sp = pl.dense ? 85 : 170, prob = pl.dense ? 0.8 : 1.0;
+      for (let gx = Math.ceil(pl.x0 / sp); gx <= Math.floor(pl.x1 / sp); gx++) for (let gy = Math.ceil(pl.y0 / sp); gy <= Math.floor(pl.y1 / sp); gy++) {
+        const key = 'T' + sp + ':' + gx + ',' + gy; if (this.cells.has(key)) continue;
+        const x = gx * sp + (opHash(gx, gy, 201) - 0.5) * sp * 0.6, y = gy * sp + (opHash(gx, gy, 202) - 0.5) * sp * 0.6;
+        if (!Utils.pointInPolygon(x, y, pl.pts)) continue;   // not inside this one: another polygon (or a later tile) may still own the cell
+        this.cells.add(key); if (opHash(gx, gy, 203) > prob || this._onRoad(x, y, 16)) continue;
+        this._add('tree', x, y, OP_ART.tree(), 64, 72, 20, { coll: [12, 9], rot: 0 });
       }
     }
   }
