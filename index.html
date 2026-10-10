@@ -1434,7 +1434,7 @@ const EMBEDDED_ASSETS = {
 
     <!-- ===================== Start overlay (home page) ===================== -->
     <div id="startScreen" class="overlay homePage">
-      <div id="versionTag" class="versionTag">v3.80.1</div>
+      <div id="versionTag" class="versionTag">v3.80.2</div>
       <div id="homeSidebar" class="homeSidebar">
         <div class="homeSidebarTitle">Your Stats</div>
         <div class="homeSidebarStat">
@@ -9732,14 +9732,14 @@ const OP_STYLE = (() => {
     enabled: true,
     ground: '#b3a88f',                                   // plain ground / background: dusty concrete
     fill: { water: '#4a7f86', grass: '#7a8a4b', forest: '#4f6137', sand: '#c9b98d', sidewalk: '#c4b89f', concrete: '#a39a88', ground: '#b3a88f', asphalt: '#43454d' },
-    line: { road: '#3d3f47', casing: '#23242b', path: '#cbbfa6', rail: '#2f3037', water: '#43737b' },
+    line: { road: '#3d3f47', casing: '#23242b', path: '#cdc1a8', pathCasing: '#857a64', rail: '#2f3037', water: '#43737b' },
     // Buildings: four muted wall colours picked per building from its height (so neighbours differ, identical towers match),
     // and tall towers go charcoal. Roofs read lighter than walls through the flat light below.
     buildingColor: ['case', ['>=', h, 40], '#585a63',
       ['match', ['%', ['floor', ['*', h, 3]], 4], 0, '#8c7b66', 1, '#b3a58b', 2, '#7e8085', '#9b8a73']],
     light: { anchor: 'viewport', color: '#fff1da', intensity: 0.62, position: [1.4, 205, 28] },   // high light: bright roofs, darker walls
     hillshade: 0.18,                                     // terrain relief, toned down
-    edge: { color: '#14141b', opacity: 0.6 },            // dark outline / shadow ring on the ground around every building
+    edge: { color: '#14141b', opacity: 0.8 },            // dark outline / shadow ring on the ground around every building
     buildingLayers: ['maptiler-3d-buildings', 'maptiler-3d-buildings-fade', 'game-fade-solid', 'game-fade-target'],
   };
 })();
@@ -9769,7 +9769,7 @@ class OperationPeanutStyle {
   _lineKind(sl, txt) {
     if (sl === 'waterway' || /waterway|river|stream|canal/.test(txt)) return 'water';
     if (sl === 'transportation' || sl === 'aeroway') {
-      if (/casing|outline|border/.test(txt)) return 'casing';
+      if (/casing|outline|border/.test(txt)) return /path|footway|pedestrian|track|cycle|steps|trail|bridleway|alley/.test(txt) ? 'pathCasing' : 'casing';
       if (/rail|subway|tram|funicular|ferry/.test(txt)) return 'rail';
       if (/path|footway|pedestrian|track|cycle|steps|trail|bridleway|alley/.test(txt)) return 'path';
       return 'road';
@@ -9801,7 +9801,7 @@ class OperationPeanutStyle {
       const src = m.getLayer('maptiler-3d-buildings').source;
       m.addLayer({ id: 'game-building-edge', type: 'line', source: src, 'source-layer': 'building', minzoom: MAPTILER3D.buildingMinZoom,
         filter: ['!=', ['get', 'hide_3d'], true], layout: { 'line-join': 'round' },
-        paint: { 'line-color': S.edge.color, 'line-opacity': S.edge.opacity, 'line-width': ['interpolate', ['linear'], ['zoom'], 14, 1.5, 18, 4, 20, 8] } }, 'maptiler-3d-buildings');
+        paint: { 'line-color': S.edge.color, 'line-opacity': S.edge.opacity, 'line-width': ['interpolate', ['linear'], ['zoom'], 14, 2, 18, 8, 20, 16] } }, 'maptiler-3d-buildings');
     }
     if (m.getLayer('game-building-edge')) m.setLayoutProperty('game-building-edge', 'visibility', 'visible');
     this.on = true;
@@ -10905,7 +10905,11 @@ class WorldOverlay3D {
     const f = w.fade, rr = w.renderer;   // the building fade: what it is doing right now
     lines.push(`fade: ${f.why ? 'IDLE - ' + f.why : f.mode}   obstructing: ${f.lastObstructing || 0}   faded: ${f.ids.size} @ ${f.opacity.toFixed(2)}`);
     if (f.curInfo || f.lastTry) lines.push('building lookup: ' + (f.curInfo || f.lastTry).slice(0, 90));
-    if (rr.style) lines.push('style: ' + (rr.style.on ? 'on' : 'off') + ' (F4)  ' + JSON.stringify({ ...rr.style.stats, skipped: rr.style.stats.skipped.slice(0, 3) }).slice(0, 110));
+    if (rr.style) {
+      const st = rr.style.stats, kinds = Object.keys(st).filter((k) => k !== 'skipped').map((k) => k + ':' + st[k]).join(' ');
+      lines.push('style: ' + (rr.style.on ? 'on' : 'off') + ' (F4)  skipped layers: ' + (st.skipped.slice(0, 4).join(', ') || 'none'));
+      lines.push('  restyled: ' + kinds.slice(0, 120));
+    }
     if (rr.lastError) lines.push('map error: ' + String(rr.lastError).slice(0, 80));
     ctx.save();
     ctx.font = '12px monospace';
