@@ -1434,7 +1434,7 @@ const EMBEDDED_ASSETS = {
 
     <!-- ===================== Start overlay (home page) ===================== -->
     <div id="startScreen" class="overlay homePage">
-      <div id="versionTag" class="versionTag">v3.80.0</div>
+      <div id="versionTag" class="versionTag">v3.80.1</div>
       <div id="homeSidebar" class="homeSidebar">
         <div class="homeSidebarTitle">Your Stats</div>
         <div class="homeSidebarStat">
@@ -5737,6 +5737,7 @@ class Game {
     if (this._navDirty && performance.now() - this._navBuiltAt > 2000) this._rebuildNavGrid(); // at most every 2 s
     if (this.input.wasPressed(GAME3D.collisionDebugKey)) this.world3d.toggleCollisionDebug();
     if (this.input.wasPressed(GAME3D.readoutKey)) this.world3d.toggleReadout();
+    if (this.input.wasPressed(GAME3D.styleKey)) this.world3d.renderer.toggleStyle();
   }
 
   // Gameplay layer for a 3D run: the player, zombies, pickups, projectiles and
@@ -9720,6 +9721,101 @@ function mapTilerAddBuildings(map) {
 }
 
 // ---------------------------------------------------------------------
+// Operation Peanut look (first visual pass): SNES-inspired 16-bit palette applied to the EXISTING MapTiler map.
+// Nothing is replaced: the real buildings, terrain, roads and water stay; only their paint changes (flat limited
+// colours, flat wall shading, a dark ground edge around buildings). Every original paint value is remembered, so
+// F4 (GAME3D.styleKey) switches back to the plain map at any time. Set OP_STYLE.enabled = false to start without it.
+// ---------------------------------------------------------------------
+const OP_STYLE = (() => {
+  const h = ['coalesce', ['to-number', ['get', 'render_height']], 6];
+  return {
+    enabled: true,
+    ground: '#b3a88f',                                   // plain ground / background: dusty concrete
+    fill: { water: '#4a7f86', grass: '#7a8a4b', forest: '#4f6137', sand: '#c9b98d', sidewalk: '#c4b89f', concrete: '#a39a88', ground: '#b3a88f', asphalt: '#43454d' },
+    line: { road: '#3d3f47', casing: '#23242b', path: '#cbbfa6', rail: '#2f3037', water: '#43737b' },
+    // Buildings: four muted wall colours picked per building from its height (so neighbours differ, identical towers match),
+    // and tall towers go charcoal. Roofs read lighter than walls through the flat light below.
+    buildingColor: ['case', ['>=', h, 40], '#585a63',
+      ['match', ['%', ['floor', ['*', h, 3]], 4], 0, '#8c7b66', 1, '#b3a58b', 2, '#7e8085', '#9b8a73']],
+    light: { anchor: 'viewport', color: '#fff1da', intensity: 0.62, position: [1.4, 205, 28] },   // high light: bright roofs, darker walls
+    hillshade: 0.18,                                     // terrain relief, toned down
+    edge: { color: '#14141b', opacity: 0.6 },            // dark outline / shadow ring on the ground around every building
+    buildingLayers: ['maptiler-3d-buildings', 'maptiler-3d-buildings-fade', 'game-fade-solid', 'game-fade-target'],
+  };
+})();
+
+class OperationPeanutStyle {
+  constructor(map) { this.map = map; this.on = false; this.backup = []; this.seen = new Set(); this.prevLight = null; this.stats = { skipped: [] }; }
+  _set(id, prop, value) {   // remember the original value once, then change it
+    try {
+      const key = id + '|' + prop;
+      if (!this.seen.has(key)) { this.seen.add(key); this.backup.push([id, prop, this.map.getPaintProperty(id, prop)]); }
+      this.map.setPaintProperty(id, prop, value);
+    } catch (e) { /* a property this layer type lacks: ignore */ }
+  }
+  // What a flat area layer of the basemap is, from its source-layer and name/filter (negated filters list what it is NOT, so they are ignored).
+  _fillKind(sl, txt) {
+    if (sl === 'building') return null;
+    if (sl === 'water' || (sl !== 'landuse' && /water|ocean|lake|\bsea\b|pond/.test(txt))) return 'water';
+    if (/wood|forest|tree|cemetery|wetland/.test(txt)) return 'forest';
+    if (sl === 'park' || /park|garden|golf|playground|pitch|recreation|grass|meadow|scrub|farm|crop|orchard|vineyard|heath/.test(txt)) return 'grass';
+    if (sl === 'landcover') return 'grass';
+    if (/sand|beach/.test(txt)) return 'sand';
+    if (sl === 'aeroway') return 'asphalt';
+    if (sl === 'transportation' || /pedestrian|plaza|platform/.test(txt)) return 'sidewalk';
+    if (sl === 'landuse') return /industrial|commercial|retail|railway|quarry|military/.test(txt) ? 'concrete' : 'ground';
+    return null;
+  }
+  _lineKind(sl, txt) {
+    if (sl === 'waterway' || /waterway|river|stream|canal/.test(txt)) return 'water';
+    if (sl === 'transportation' || sl === 'aeroway') {
+      if (/casing|outline|border/.test(txt)) return 'casing';
+      if (/rail|subway|tram|funicular|ferry/.test(txt)) return 'rail';
+      if (/path|footway|pedestrian|track|cycle|steps|trail|bridleway|alley/.test(txt)) return 'path';
+      return 'road';
+    }
+    return null;
+  }
+  apply() {
+    const m = this.map, S = OP_STYLE; this.stats = { skipped: [] };
+    const count = (k) => { this.stats[k] = (this.stats[k] || 0) + 1; };
+    for (const l of m.getStyle().layers) {
+      if (l.id.startsWith('maptiler-') || l.id.startsWith('game-') || ['symbol', 'custom', 'raster', 'hillshade', 'fill-extrusion', 'circle', 'heatmap'].includes(l.type)) continue;
+      const sl = l['source-layer'] || '', f = JSON.stringify(l.filter || ''), neg = /"!in"|"!="|"!"/.test(f);
+      const txt = (l.id + ' ' + (neg ? '' : f)).toLowerCase();
+      if (l.type === 'background') { this._set(l.id, 'background-color', S.ground); count('background'); }
+      else if (l.type === 'fill') {
+        const k = this._fillKind(sl, txt); if (!k) { if (sl !== 'building') this.stats.skipped.push(l.id); continue; }
+        this._set(l.id, 'fill-color', S.fill[k]); this._set(l.id, 'fill-antialias', false);
+        if (m.getPaintProperty(l.id, 'fill-pattern')) this._set(l.id, 'fill-pattern', undefined);
+        count(k);
+      } else if (l.type === 'line') {
+        const k = this._lineKind(sl, txt); if (!k) continue;
+        this._set(l.id, 'line-color', S.line[k]); count('line-' + k);
+      }
+    }
+    if (m.getLayer('maptiler-hillshade')) this._set('maptiler-hillshade', 'hillshade-exaggeration', S.hillshade);
+    for (const id of S.buildingLayers) if (m.getLayer(id)) { this._set(id, 'fill-extrusion-color', S.buildingColor); this._set(id, 'fill-extrusion-vertical-gradient', false); count('building-layer'); }
+    try { if (!this.prevLight) this.prevLight = m.getLight(); m.setLight(S.light); } catch (e) { /* no light control */ }
+    if (!m.getLayer('game-building-edge') && m.getLayer('maptiler-3d-buildings')) {
+      const src = m.getLayer('maptiler-3d-buildings').source;
+      m.addLayer({ id: 'game-building-edge', type: 'line', source: src, 'source-layer': 'building', minzoom: MAPTILER3D.buildingMinZoom,
+        filter: ['!=', ['get', 'hide_3d'], true], layout: { 'line-join': 'round' },
+        paint: { 'line-color': S.edge.color, 'line-opacity': S.edge.opacity, 'line-width': ['interpolate', ['linear'], ['zoom'], 14, 1.5, 18, 4, 20, 8] } }, 'maptiler-3d-buildings');
+    }
+    if (m.getLayer('game-building-edge')) m.setLayoutProperty('game-building-edge', 'visibility', 'visible');
+    this.on = true;
+  }
+  revert() {
+    const m = this.map;
+    for (let i = this.backup.length - 1; i >= 0; i--) { const [id, prop, v] = this.backup[i]; try { m.setPaintProperty(id, prop, v); } catch (e) { /* ignore */ } }
+    try { if (this.prevLight) m.setLight(this.prevLight); } catch (e) { /* ignore */ }
+    if (m.getLayer('game-building-edge')) m.setLayoutProperty('game-building-edge', 'visibility', 'none');
+    this.on = false;
+  }
+}
+
+// ---------------------------------------------------------------------
 // Web-Mercator math (identical formulas to MapLibre's MercatorCoordinate,
 // including its 6371008.8 m "earth radius" for meter-scale), so scene meters
 // and the map's meters are the same meters.
@@ -9852,6 +9948,7 @@ const GAME3D = {
   enterTimeoutMs: 25000,    // how long to wait for the map + terrain before falling back to 2D
   boundaryColor: 'rgba(231, 76, 60, 0.8)',
   collisionDebugKey: 'F2',  // toggles collision rectangles + footprints (debug)
+  styleKey: 'F4',           // switches the Operation Peanut look on/off (back to the plain map)
   readoutKey: 'F3',         // toggles the geographic position readout (also on with ?debug3d)
   collisionRadiusMeters: 300, // only buildings within this distance of the peanut take part in collision (covers the whole visible area + the spawn ring + a margin)
   minBuildingAreaM2: 6,       // footprints smaller than this (sheds, kiosks) don't block movement
@@ -9968,11 +10065,15 @@ class MapTilerWorldRenderer {
       try { mapTilerAddTerrain(this.map, MAP_CONFIG.maptilerApiKey, GAME3D.terrainExaggeration); this.terrainOk = true; } catch (err) { console.warn('[GameWorld3D] terrain failed:', err.message); }
       try { this.vectorSource = mapTilerAddBuildings(this.map).vectorSource; this.buildingsOk = true; } catch (err) { console.warn('[GameWorld3D] buildings failed:', err.message); }
       if (this.buildingsOk && GAME3D.fadeBuildings) { try { this.addFadeLayer(); this.fadeReady = true; } catch (err) { console.warn('[GameWorld3D] fade layer unavailable:', err.message); } }
+      this.style = new OperationPeanutStyle(this.map);
+      if (OP_STYLE.enabled) { try { this.style.apply(); } catch (err) { console.warn('[GameWorld3D] stylize failed:', err.message); } }
       this.map.addLayer(this._projectionLayer());
       this.buildingsDirty = true;
       this.loaded = true;
     });
   }
+
+  toggleStyle() { if (!this.style) return; try { if (this.style.on) this.style.revert(); else this.style.apply(); } catch (err) { console.warn('[GameWorld3D] style toggle failed:', err.message); } }
 
   _projectionLayer() {
     const self = this;
@@ -10804,6 +10905,7 @@ class WorldOverlay3D {
     const f = w.fade, rr = w.renderer;   // the building fade: what it is doing right now
     lines.push(`fade: ${f.why ? 'IDLE - ' + f.why : f.mode}   obstructing: ${f.lastObstructing || 0}   faded: ${f.ids.size} @ ${f.opacity.toFixed(2)}`);
     if (f.curInfo || f.lastTry) lines.push('building lookup: ' + (f.curInfo || f.lastTry).slice(0, 90));
+    if (rr.style) lines.push('style: ' + (rr.style.on ? 'on' : 'off') + ' (F4)  ' + JSON.stringify({ ...rr.style.stats, skipped: rr.style.stats.skipped.slice(0, 3) }).slice(0, 110));
     if (rr.lastError) lines.push('map error: ' + String(rr.lastError).slice(0, 80));
     ctx.save();
     ctx.font = '12px monospace';
