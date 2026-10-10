@@ -1434,7 +1434,7 @@ const EMBEDDED_ASSETS = {
 
     <!-- ===================== Start overlay (home page) ===================== -->
     <div id="startScreen" class="overlay homePage">
-      <div id="versionTag" class="versionTag">v3.81.1</div>
+      <div id="versionTag" class="versionTag">v3.81.2</div>
       <div id="homeSidebar" class="homeSidebar">
         <div class="homeSidebarTitle">Your Stats</div>
         <div class="homeSidebarStat">
@@ -9743,7 +9743,7 @@ const OP_STYLE = (() => {
     pattern: { grass: 'op-grass', forest: 'op-forest', water: 'op-water' },   // pixel texture only here; ground, concrete, sand, sidewalks and asphalt stay flat
     mark: { color: '#80828b', opacity: 0.8 },            // faint dashed centre line on roads
     hillshade: 0.18,                                     // terrain relief, toned down
-    shadow: { color: '#0d0d14', opacity: 0.34, bands: [[0, 5], [12, 10], [40, 17]] },   // drop shadow: footprint shifted down-right (px); taller buildings (min height m) cast longer ones
+    shadow: { color: '#0d0d14', opacity: 0.34, bands: [[0, 10], [12, 20], [40, 34]] },   // drop shadow: footprint shifted down-right (px); taller buildings (min height m) cast longer ones
     buildingLayers: ['maptiler-3d-buildings', 'maptiler-3d-buildings-fade', 'game-fade-solid', 'game-fade-target'],
   };
 })();
