@@ -1444,7 +1444,7 @@ const EMBEDDED_ASSETS = {
 
     <!-- ===================== Start overlay (home page) ===================== -->
     <div id="startScreen" class="overlay homePage">
-      <div id="versionTag" class="versionTag">v3.82.0</div>
+      <div id="versionTag" class="versionTag">v3.82.2</div>
       <div id="homeSidebar" class="homeSidebar">
         <div class="homeSidebarTitle">Your Stats</div>
         <div class="homeSidebarStat">
@@ -9747,11 +9747,12 @@ const OP_STYLE = (() => {
     line: { road: '#3d3f47', casing: '#23242b', path: '#cfcab8', pathCasing: '#847f6c', rail: '#2f3037', water: '#43737b' },
     // Buildings: four muted wall colours picked per building from its height (so neighbours differ, identical towers match),
     // and tall towers go charcoal. Roofs read lighter than walls through the flat light below.
+    buildingStyle: true,                                 // true = the stylised palette below (tan / brown / charcoal); false = the plain original light grey-beige
     buildingColor: ['case', ['>=', h, 40], '#585a63',
       ['match', ['%', ['floor', ['*', h, 3]], 4], 0, '#8c7b66', 1, '#b3a58b', 2, '#7e8085', '#9b8a73']],
     light: { anchor: 'viewport', color: '#fff1da', intensity: 0.62, position: [1.4, 205, 28] },   // high light: bright roofs, darker walls
     night: true,                                         // night look (F6 toggles): blue tint over the map + cool moonlight on buildings
-    nightLight: { anchor: 'viewport', color: '#9fb2ff', intensity: 0.55, position: [1.4, 215, 32] },
+    nightLight: { anchor: 'viewport', color: '#fff1da', intensity: 0.62, position: [1.4, 205, 28] },   // same warm light as day, so the building colours keep their hue (the blue tint over the map still darkens them)
     pixel: true,                                         // pixel-style shading on ground surfaces (F5 toggles); needs enabled
     pattern: { grass: 'op-grass', forest: 'op-forest', water: 'op-water' },   // pixel texture only here; ground, concrete, sand, sidewalks and asphalt stay flat
     mark: { color: '#80828b', opacity: 0.8 },            // faint dashed centre line on roads
@@ -9871,7 +9872,7 @@ class OperationPeanutStyle {
       m.setLayoutProperty(id, 'visibility', S.pixel ? 'visible' : 'none'); count('marks');
     }
     if (m.getLayer('maptiler-hillshade')) this._set('maptiler-hillshade', 'hillshade-exaggeration', S.hillshade);
-    for (const id of S.buildingLayers) if (m.getLayer(id)) { this._set(id, 'fill-extrusion-color', S.buildingColor); this._set(id, 'fill-extrusion-vertical-gradient', false); count('building-layer'); }
+    if (S.buildingStyle) for (const id of S.buildingLayers) if (m.getLayer(id)) { this._set(id, 'fill-extrusion-color', S.buildingColor); this._set(id, 'fill-extrusion-vertical-gradient', false); count('building-layer'); }
     try { if (!this.prevLight) this.prevLight = m.getLight(); m.setLight(S.night ? S.nightLight : S.light); } catch (e) { /* no light control */ }
     // Drop shadow: a dark translucent copy of every building footprint, shifted down-right on the ground and drawn under the
     // buildings, so only the part beyond the base shows. Three height bands give taller buildings longer shadows.
