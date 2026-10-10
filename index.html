@@ -1444,7 +1444,7 @@ const EMBEDDED_ASSETS = {
 
     <!-- ===================== Start overlay (home page) ===================== -->
     <div id="startScreen" class="overlay homePage">
-      <div id="versionTag" class="versionTag">v3.85.0</div>
+      <div id="versionTag" class="versionTag">v3.85.1</div>
       <div id="homeSidebar" class="homeSidebar">
         <div class="homeSidebarTitle">Your Stats</div>
         <div class="homeSidebarStat">
@@ -11055,7 +11055,7 @@ class WorldOverlay3D {
 const OP_DETAIL = {
   buildings: true, props: true,
   maxBuildings: 1500,      // details on up to this many buildings, nearest the peanut first as new ones stream in (the first pass was 80)
-  drawRangePx: 640, maxDrawn: 150,   // props are drawn within this distance of the peanut (game px), at most this many per frame
+  drawRangePx: 640, maxDrawn: 320,   // props are drawn within this distance of the peanut (game px), at most this many per frame
   safeSpawnPx: 150,        // no props this close to where the run starts
   caps: { tree: 440, car: 70, light: 40, sign: 22, barrier: 18, dumpster: 26, crate: 22, pallet: 12, trash: 50, debris: 30, util: 16, gen: 8, weeds: 60, crack: 45 },
 };
@@ -11297,7 +11297,7 @@ class PropField3D {
   // The props near the peanut, closest first: { decals (lying flat, drawn first), solid (standing, depth-sorted with characters) }.
   visible(px, py) {
     const out = { decals: [], solid: [] }; if (!OP_DETAIL.props) return out;
-    const R = OP_DETAIL.drawRangePx, near = [];
+    const R = Math.max(OP_DETAIL.drawRangePx, (this.world._footprintPx || 0) * 1.05), near = [];   // at least everything the camera can see
     for (const it of this.items) { const d = Math.hypot(it.x - px, it.y - py); if (d <= R) near.push([d, it]); }
     near.sort((a, b) => a[0] - b[0]); if (near.length > OP_DETAIL.maxDrawn) near.length = OP_DETAIL.maxDrawn;
     for (const [, it] of near) (it.flat ? out.decals : out.solid).push(it);
