@@ -41,6 +41,15 @@ html, body {
   z-index: 0;
   display: none;
 }
+/* Night: a cheap CSS tint between the map and the sprite canvas. It multiplies the map's colours (deep blue, with a lighter pool
+   around the peanut and darker edges) while the characters, weapons, bullets and effects on the canvas above stay fully bright. */
+#nightTint {
+  position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 0;
+  pointer-events: none; opacity: 0; transition: opacity 0.6s; mix-blend-mode: multiply;
+  background: radial-gradient(ellipse at 50% 54%, rgb(150,164,222) 0%, rgb(96,112,176) 38%, rgb(52,64,120) 78%, rgb(40,50,100) 100%);
+}
+#gameContainer:not(.world3d-active) #nightTint { display: none; }
+#nightTint.on { opacity: 1; }
 #gameContainer.world3d-active #gameCanvas { background: transparent; }
 #gameCanvas {
   position: absolute;
@@ -1394,6 +1403,7 @@ const EMBEDDED_ASSETS = {
 
   <div id="gameContainer">
     <div id="world3dMap"></div>
+    <div id="nightTint"></div>
     <canvas id="gameCanvas"></canvas>
 
     <!-- ===================== HUD (DOM overlay) ===================== -->
@@ -1434,7 +1444,7 @@ const EMBEDDED_ASSETS = {
 
     <!-- ===================== Start overlay (home page) ===================== -->
     <div id="startScreen" class="overlay homePage">
-      <div id="versionTag" class="versionTag">v3.81.2</div>
+      <div id="versionTag" class="versionTag">v3.82.0</div>
       <div id="homeSidebar" class="homeSidebar">
         <div class="homeSidebarTitle">Your Stats</div>
         <div class="homeSidebarStat">
@@ -5739,6 +5749,7 @@ class Game {
     if (this.input.wasPressed(GAME3D.readoutKey)) this.world3d.toggleReadout();
     if (this.input.wasPressed(GAME3D.styleKey)) this.world3d.renderer.toggleStyle();
     if (this.input.wasPressed(GAME3D.pixelKey)) this.world3d.renderer.togglePixel();
+    if (this.input.wasPressed(GAME3D.nightKey)) this.world3d.renderer.toggleNight();
   }
 
   // Gameplay layer for a 3D run: the player, zombies, pickups, projectiles and
@@ -9739,6 +9750,8 @@ const OP_STYLE = (() => {
     buildingColor: ['case', ['>=', h, 40], '#585a63',
       ['match', ['%', ['floor', ['*', h, 3]], 4], 0, '#8c7b66', 1, '#b3a58b', 2, '#7e8085', '#9b8a73']],
     light: { anchor: 'viewport', color: '#fff1da', intensity: 0.62, position: [1.4, 205, 28] },   // high light: bright roofs, darker walls
+    night: true,                                         // night look (F6 toggles): blue tint over the map + cool moonlight on buildings
+    nightLight: { anchor: 'viewport', color: '#9fb2ff', intensity: 0.55, position: [1.4, 215, 32] },
     pixel: true,                                         // pixel-style shading on ground surfaces (F5 toggles); needs enabled
     pattern: { grass: 'op-grass', forest: 'op-forest', water: 'op-water' },   // pixel texture only here; ground, concrete, sand, sidewalks and asphalt stay flat
     mark: { color: '#80828b', opacity: 0.8 },            // faint dashed centre line on roads
@@ -9859,7 +9872,7 @@ class OperationPeanutStyle {
     }
     if (m.getLayer('maptiler-hillshade')) this._set('maptiler-hillshade', 'hillshade-exaggeration', S.hillshade);
     for (const id of S.buildingLayers) if (m.getLayer(id)) { this._set(id, 'fill-extrusion-color', S.buildingColor); this._set(id, 'fill-extrusion-vertical-gradient', false); count('building-layer'); }
-    try { if (!this.prevLight) this.prevLight = m.getLight(); m.setLight(S.light); } catch (e) { /* no light control */ }
+    try { if (!this.prevLight) this.prevLight = m.getLight(); m.setLight(S.night ? S.nightLight : S.light); } catch (e) { /* no light control */ }
     // Drop shadow: a dark translucent copy of every building footprint, shifted down-right on the ground and drawn under the
     // buildings, so only the part beyond the base shows. Three height bands give taller buildings longer shadows.
     this.shadowIds = this.shadowIds || [];
@@ -10022,6 +10035,7 @@ const GAME3D = {
   enterTimeoutMs: 25000,    // how long to wait for the map + terrain before falling back to 2D
   boundaryColor: 'rgba(231, 76, 60, 0.8)',
   collisionDebugKey: 'F2',  // toggles collision rectangles + footprints (debug)
+  nightKey: 'F6',           // night / day
   pixelKey: 'F5',           // pixel-style shading on/off (needs the look on)
   styleKey: 'F4',           // switches the Operation Peanut look on/off (back to the plain map)
   readoutKey: 'F3',         // toggles the geographic position readout (also on with ?debug3d)
@@ -10142,12 +10156,20 @@ class MapTilerWorldRenderer {
       if (this.buildingsOk && GAME3D.fadeBuildings) { try { this.addFadeLayer(); this.fadeReady = true; } catch (err) { console.warn('[GameWorld3D] fade layer unavailable:', err.message); } }
       this.style = new OperationPeanutStyle(this.map);
       if (OP_STYLE.enabled) { try { this.style.apply(); } catch (err) { console.warn('[GameWorld3D] stylize failed:', err.message); } }
+      this.setNight(OP_STYLE.night);
       this.map.addLayer(this._projectionLayer());
       this.buildingsDirty = true;
       this.loaded = true;
     });
   }
 
+  // Day/night: the CSS tint over the map, plus the moonlight (instead of the daylight) on the buildings when the look is on.
+  setNight(on) {
+    OP_STYLE.night = !!on;
+    const el = document.getElementById('nightTint'); if (el) el.classList.toggle('on', OP_STYLE.night);
+    if (this.style && this.style.on) { try { this.map.setLight(OP_STYLE.night ? OP_STYLE.nightLight : OP_STYLE.light); } catch (e) { /* ignore */ } }
+  }
+  toggleNight() { this.setNight(!OP_STYLE.night); }
   togglePixel() { if (!this.style || !this.style.on) return; OP_STYLE.pixel = !OP_STYLE.pixel; try { this.style.revert(); this.style.apply(); } catch (err) { console.warn('[GameWorld3D] pixel toggle failed:', err.message); } }
   toggleStyle() { if (!this.style) return; try { if (this.style.on) this.style.revert(); else this.style.apply(); } catch (err) { console.warn('[GameWorld3D] style toggle failed:', err.message); } }
 
@@ -10983,7 +11005,7 @@ class WorldOverlay3D {
     if (f.curInfo || f.lastTry) lines.push('building lookup: ' + (f.curInfo || f.lastTry).slice(0, 90));
     if (rr.style) {
       const st = rr.style.stats, kinds = Object.keys(st).filter((k) => k !== 'skipped' && k !== 'roads').map((k) => k + ':' + st[k]).join(' ');
-      lines.push('style: ' + (rr.style.on ? 'on' : 'off') + ' (F4)  pixel: ' + (OP_STYLE.pixel ? 'on' : 'off') + ' (F5)  roads: ' + (st.roads || []).slice(0, 3).join(',') + '  skipped: ' + (st.skipped.slice(0, 4).join(', ') || 'none'));
+      lines.push('style: ' + (rr.style.on ? 'on' : 'off') + ' (F4)  pixel: ' + (OP_STYLE.pixel ? 'on' : 'off') + ' (F5)  night: ' + (OP_STYLE.night ? 'on' : 'off') + ' (F6)  roads: ' + (st.roads || []).slice(0, 3).join(',') + '  skipped: ' + (st.skipped.slice(0, 4).join(', ') || 'none'));
       lines.push('  restyled: ' + kinds.slice(0, 120));
       const tn = performance.now();   // once a second: is the dark building ring actually being drawn?
       if (!rr.style._eqT || tn - rr.style._eqT > 1000) { rr.style._eqT = tn; try { rr.style._eqN = (rr.style.shadowIds || []).length ? rr.map.queryRenderedFeatures({ layers: rr.style.shadowIds }).length : 'layers missing'; } catch (e) { rr.style._eqN = 'query failed'; } }
