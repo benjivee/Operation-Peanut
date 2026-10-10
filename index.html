@@ -1444,7 +1444,7 @@ const EMBEDDED_ASSETS = {
 
     <!-- ===================== Start overlay (home page) ===================== -->
     <div id="startScreen" class="overlay homePage">
-      <div id="versionTag" class="versionTag">v3.82.2</div>
+      <div id="versionTag" class="versionTag">v3.83.0</div>
       <div id="homeSidebar" class="homeSidebar">
         <div class="homeSidebarTitle">Your Stats</div>
         <div class="homeSidebarStat">
@@ -5750,6 +5750,8 @@ class Game {
     if (this.input.wasPressed(GAME3D.styleKey)) this.world3d.renderer.toggleStyle();
     if (this.input.wasPressed(GAME3D.pixelKey)) this.world3d.renderer.togglePixel();
     if (this.input.wasPressed(GAME3D.nightKey)) this.world3d.renderer.toggleNight();
+    if (this.input.wasPressed(GAME3D.detailKey)) this.world3d.detail.setEnabled(!OP_DETAIL.buildings);
+    if (this.input.wasPressed(GAME3D.propsKey)) this.world3d.props.setEnabled(!OP_DETAIL.props);
   }
 
   // Gameplay layer for a 3D run: the player, zombies, pickups, projectiles and
@@ -5775,7 +5777,9 @@ class Game {
     // the real 3D one. The player is drawn where it was when this camera frame was
     // set, not where the next game tick will move it, so sprite and map never disagree.
     const player = this.player, px = player.x, py = player.y;
-    const items = [...this.pickups, ...this.zombies, player].sort((a, b) => (a === player ? snap.py : a.y) - (b === player ? snap.py : b.y));
+    const pv = w.props ? w.props.visible(snap.px, snap.py) : { decals: [], solid: [] };
+    for (const e of pv.decals) occ.draw(ctx, k, occ.infoFor(e.x, e.y, 'prop', e.h / GAME3D.entityScale), (c) => e.draw(c, this.camera, view), { xray: 0 });   // flat ground details under everything
+    const items = [...pv.solid, ...this.pickups, ...this.zombies, player].sort((a, b) => (a === player ? snap.py : a.y) - (b === player ? snap.py : b.y));
     let obstructors = [];
     for (const e of items) {
       if (e === player) {
@@ -5784,6 +5788,8 @@ class Game {
       } else if (e instanceof Zombie) {
         const near = Math.hypot(e.x - snap.px, e.y - snap.py) <= GAME3D.zombieXrayRangePx;
         occ.draw(ctx, k, occ.infoFor(e.x, e.y, 'zombie', zombieVisualSize(e.type)), (c) => e.draw(c, this.camera, view), { xray: near ? GAME3D.xrayZombie : 0, exact: near });
+      } else if (e instanceof Prop) {
+        occ.draw(ctx, k, occ.infoFor(e.x, e.y, 'prop', e.h / GAME3D.entityScale), (c) => e.draw(c, this.camera, view), { xray: 0 });
       } else {
         occ.draw(ctx, k, occ.infoFor(e.x, e.y, 'pickup', 40), (c) => e.draw(c, this.camera, view), { xray: 0, ghost: GAME3D.pickupGhost });
       }
@@ -6205,6 +6211,7 @@ class Game {
       const x0 = Math.min(sx, ex), x1 = Math.max(sx, ex), y0 = Math.min(sy, ey), y1 = Math.max(sy, ey);
       let near = null;
       for (const o of this.obstacles) {
+        if (o.isProp) continue;   // low scenery (cars, dumpsters, barriers): shots fly over it, it only blocks walking
         const r = Math.hypot(o.halfWidth, o.halfHeight) + bullet.radius;
         if (o.x + r < x0 || o.x - r > x1 || o.y + r < y0 || o.y - r > y1) continue;
         (near || (near = [])).push(o);
@@ -6530,7 +6537,7 @@ class Game {
     if (dist < 1 || !this.world3d) return { x: tx, y: ty };
     const ppm = this.world3d.bridge.pxPerMeterX, R = 4;
     const x0 = Math.min(sx, tx), x1 = Math.max(sx, tx), y0 = Math.min(sy, ty), y1 = Math.max(sy, ty);
-    const near = this.obstacles.filter((o) => { const r = Math.hypot(o.halfWidth, o.halfHeight) + R; return !(o.x + r < x0 || o.x - r > x1 || o.y + r < y0 || o.y - r > y1); });
+    const near = this.obstacles.filter((o) => { if (o.isProp) return false; const r = Math.hypot(o.halfWidth, o.halfHeight) + R; return !(o.x + r < x0 || o.x - r > x1 || o.y + r < y0 || o.y - r > y1); });
     if (!near.length) return { x: tx, y: ty };
     const steps = Math.max(2, Math.ceil(dist / 4));
     let lastX = sx, lastY = sy;
@@ -10036,6 +10043,8 @@ const GAME3D = {
   enterTimeoutMs: 25000,    // how long to wait for the map + terrain before falling back to 2D
   boundaryColor: 'rgba(231, 76, 60, 0.8)',
   collisionDebugKey: 'F2',  // toggles collision rectangles + footprints (debug)
+  detailKey: 'F7',          // building details (windows, roofs, boarded walls) on/off
+  propsKey: 'F8',           // props (cars, dumpsters, lights ...) on/off
   nightKey: 'F6',           // night / day
   pixelKey: 'F5',           // pixel-style shading on/off (needs the look on)
   styleKey: 'F4',           // switches the Operation Peanut look on/off (back to the plain map)
@@ -11012,6 +11021,7 @@ class WorldOverlay3D {
       if (!rr.style._eqT || tn - rr.style._eqT > 1000) { rr.style._eqT = tn; try { rr.style._eqN = (rr.style.shadowIds || []).length ? rr.map.queryRenderedFeatures({ layers: rr.style.shadowIds }).length : 'layers missing'; } catch (e) { rr.style._eqN = 'query failed'; } }
       lines.push('  building shadows: ' + rr.style._eqN + ' features drawn');
     }
+    { const d = w.detail, pf = w.props; lines.push('details: ' + (OP_DETAIL.buildings ? 'on' : 'off') + ' (F7) ' + (d.feats.length) + ' buildings (layers: ' + (d.layers || 'none') + ') ' + JSON.stringify(d.counts).replace(/"/g, '') + '  props: ' + (OP_DETAIL.props ? 'on' : 'off') + ' (F8) ' + pf.items.length + ' ' + JSON.stringify(pf.count).replace(/"/g, '').slice(0, 70)); }
     if (rr.lastError) lines.push('map error: ' + String(rr.lastError).slice(0, 80));
     ctx.save();
     ctx.font = '12px monospace';
@@ -11025,6 +11035,322 @@ class WorldOverlay3D {
 }
 
 // ---- Facade -----------------------------------------------------------------------------
+// ---------------------------------------------------------------------
+// Operation Peanut detail pass: building variety + environmental props.
+// Nothing here changes a footprint, height or position of the real city. Buildings get a pattern overlay (windows / roofs /
+// boarded-up walls) chosen per building from the map's own data where it has any, else from size and height. Props are
+// sprites in the same billboard + building-occlusion pipeline as zombies and pickups; only a few of them block movement
+// (they use the existing collision list as small rectangles, and never stop bullets or grenades).
+// F7 = building details on/off, F8 = props on/off. Everything is deterministic for a given map area.
+// ---------------------------------------------------------------------
+const OP_DETAIL = {
+  buildings: true, props: true,
+  maxBuildings: 80,        // first pass: details on the buildings nearest the spawn; raise once it looks right
+  drawRangePx: 640, maxDrawn: 110,   // props are drawn within this distance of the peanut (game px), at most this many per frame
+  safeSpawnPx: 150,        // no props this close to where the run starts
+  caps: { car: 70, light: 40, sign: 22, barrier: 18, dumpster: 26, crate: 22, pallet: 12, trash: 50, debris: 30, util: 16, gen: 8, weeds: 60, crack: 45 },
+};
+
+function opHash(a, b, salt) {   // deterministic 0..1 from integers
+  let h = (Math.imul(a | 0, 374761393) ^ Math.imul(b | 0, 668265263) ^ Math.imul((salt | 0) + 1, 1274126177)) >>> 0;
+  h = Math.imul(h ^ (h >>> 13), 1274126177); return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+}
+
+// ---- pixel-art sprites for the props, drawn once from code (no image files) ----
+const OP_ART = (() => {
+  const cache = new Map(), OUT = '#14141b';
+  const rgb = (h) => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
+  const shade = (h, f) => '#' + rgb(h).map((v) => Math.max(0, Math.min(255, Math.round(v * f))).toString(16).padStart(2, '0')).join('');
+  const mk = (key, w, h, fn) => {
+    let s = cache.get(key); if (s) return s;
+    const c = document.createElement('canvas'); c.width = w; c.height = h;
+    const g = c.getContext('2d'); g.imageSmoothingEnabled = false;
+    const r = (x, y, ww, hh, col) => { g.fillStyle = col; g.fillRect(x, y, ww, hh); };
+    fn(r, g, w, h); s = { canvas: c, w, h }; cache.set(key, s); return s;
+  };
+  const CAR = ['#8a4b2e', '#5d6b3f', '#5c6670', '#4b5f78', '#a9a69a'];
+  const carSide = (r, c, state) => {
+    r(1, 5, 26, 5, OUT); r(2, 6, 24, 3, c); r(3, 6, 20, 1, shade(c, 1.2));
+    r(6, 1, 16, 5, OUT); r(7, 2, 14, 3, '#39434f'); r(13, 2, 1, 3, c);
+    r(4, 8, 5, 4, OUT); r(5, 9, 3, 2, '#2b2c33'); r(19, 8, 5, 4, OUT); r(20, 9, 3, 2, '#2b2c33');
+    r(26, 6, 1, 1, '#d8c98a'); r(1, 6, 1, 1, '#7a2a2a');
+    if (state !== 'parked') { r(9, 2, 1, 1, '#8a96a0'); r(10, 3, 1, 1, '#8a96a0'); r(16, 2, 1, 1, '#8a96a0'); r(17, 3, 1, 1, '#8a96a0'); r(10, 7, 4, 2, '#7a4a2e'); r(20, 10, 3, 1, OUT); }
+  };
+  const carEnd = (r, c, state) => {
+    r(1, 5, 12, 6, OUT); r(2, 6, 10, 4, c); r(3, 1, 8, 5, OUT); r(4, 2, 6, 3, '#39434f'); r(2, 7, 2, 1, '#8a2a2a'); r(10, 7, 2, 1, '#8a2a2a');
+    r(6, 8, 2, 1, '#c9c3a8'); r(1, 10, 3, 3, OUT); r(10, 10, 3, 3, OUT);
+    if (state !== 'parked') { r(5, 2, 1, 1, '#8a96a0'); r(6, 3, 1, 1, '#8a96a0'); r(9, 8, 3, 1, '#7a4a2e'); }
+  };
+  return {
+    car(view, ci, state) {
+      return mk('car-' + view + ci + state, view === 'side' ? 28 : 14, view === 'side' ? 12 : 13, (r, g, w, h) => {
+        const c = CAR[ci % CAR.length], draw = view === 'side' ? carSide : carEnd;
+        if (state === 'flipped') { g.save(); g.translate(0, h); g.scale(1, -1); draw(r, c, 'abandoned'); g.restore(); r(2, h - 4, w - 4, 1, '#2b2c33'); } else draw(r, c, state);
+      });
+    },
+    dumpster(v) { return mk('dump' + v, 14, 10, (r) => { const c = v ? '#3a3d44' : '#3f5a3a'; r(0, 2, 14, 8, OUT); r(1, 3, 12, 6, c); r(0, 1, 14, 3, OUT); r(1, 1, 12, 2, shade(c, 0.75)); r(4, 4, 1, 5, shade(c, 0.8)); r(9, 4, 1, 5, shade(c, 0.8)); r(1, 4, 12, 1, shade(c, 1.2)); r(2, 7, 3, 1, '#7a4a2e'); r(1, 9, 2, 1, OUT); r(11, 9, 2, 1, OUT); }); },
+    bag() { return mk('bag', 6, 5, (r) => { r(1, 1, 4, 4, OUT); r(2, 2, 2, 2, '#1c1d22'); r(2, 2, 1, 1, '#4a4c55'); r(3, 0, 1, 1, OUT); }); },
+    pile() { return mk('pile', 10, 6, (r) => { r(0, 2, 5, 4, OUT); r(1, 3, 3, 2, '#1c1d22'); r(4, 1, 5, 5, OUT); r(5, 2, 3, 3, '#2a2b31'); r(2, 3, 1, 1, '#4a4c55'); r(6, 2, 1, 1, '#555762'); r(3, 0, 1, 1, OUT); }); },
+    debris() { return mk('debris', 12, 4, (r) => { r(1, 2, 3, 2, '#6a6256'); r(5, 1, 2, 2, '#8a8070'); r(8, 2, 3, 1, '#4f4a42'); r(3, 0, 1, 1, '#9a9080'); r(10, 0, 1, 1, '#6a6256'); }); },
+    crate() { return mk('crate', 8, 8, (r) => { r(0, 0, 8, 8, OUT); r(1, 1, 6, 6, '#8a6a43'); r(1, 1, 6, 1, '#a58253'); r(1, 4, 6, 1, '#6a4e2e'); r(3, 1, 1, 6, '#6a4e2e'); r(4, 3, 1, 1, '#6a4e2e'); }); },
+    pallet() { return mk('pallet', 12, 4, (r) => { r(0, 0, 12, 4, OUT); r(1, 0, 10, 1, '#9a7a50'); r(1, 2, 10, 1, '#9a7a50'); r(1, 1, 10, 1, '#2a2018'); r(1, 3, 2, 1, '#6a4e2e'); r(9, 3, 2, 1, '#6a4e2e'); }); },
+    barrier() { return mk('barrier', 16, 7, (r) => { r(0, 6, 16, 1, OUT); r(1, 2, 14, 4, OUT); r(2, 3, 12, 3, '#9a9a96'); r(3, 0, 10, 3, OUT); r(4, 1, 8, 2, '#a8a8a3'); r(3, 4, 3, 1, '#a8643a'); r(10, 4, 3, 1, '#a8643a'); }); },
+    sign(v) { return mk('sign' + v, 8, 22, (r) => { const c = ['#8a3a35', '#b49a3a', '#3f5f7a'][v % 3]; r(3, 6, 2, 16, '#4a4b52'); r(1, 0, 6, 7, OUT); r(0, 1, 8, 5, OUT); r(1, 1, 6, 5, c); r(2, 3, 4, 1, '#cfc9b8'); r(5, 1, 1, 1, shade(c, 1.35)); }); },
+    light() { return mk('light', 8, 34, (r) => { r(3, 6, 2, 28, '#3b3c44'); r(2, 32, 4, 2, '#2f3036'); r(3, 3, 5, 1, '#3b3c44'); r(5, 2, 3, 3, '#2a2b31'); r(6, 4, 2, 1, '#e8d9a0'); }); },
+    util() { return mk('util', 7, 9, (r) => { r(0, 0, 7, 9, OUT); r(1, 1, 5, 7, '#5f6b66'); r(3, 2, 1, 6, '#3d4642'); r(5, 4, 1, 1, '#c9c3a8'); }); },
+    gen() { return mk('gen', 12, 9, (r) => { r(0, 2, 12, 7, OUT); r(1, 3, 10, 5, '#5d6b3f'); r(2, 4, 4, 3, '#2b2c33'); r(9, 0, 2, 3, '#3b3c44'); r(7, 5, 3, 3, '#8a3a2e'); r(7, 5, 3, 1, '#a8523f'); }); },
+    weeds() { return mk('weeds', 12, 4, (r) => { r(1, 2, 1, 2, '#4f6137'); r(2, 1, 1, 3, '#7a8a4b'); r(4, 2, 1, 2, '#4f6137'); r(5, 0, 1, 4, '#7a8a4b'); r(7, 1, 1, 3, '#4f6137'); r(8, 2, 1, 2, '#7a8a4b'); r(10, 1, 1, 3, '#4f6137'); r(0, 3, 12, 1, '#3d4a2b'); }); },
+    crack() { return mk('crack', 14, 3, (r) => { r(0, 1, 3, 1, '#4a463e'); r(3, 2, 3, 1, '#4a463e'); r(6, 1, 2, 1, '#4a463e'); r(8, 0, 3, 1, '#4a463e'); r(11, 1, 3, 1, '#4a463e'); }); },
+  };
+})();
+
+// A decorative object. Drawn like a pickup (sprite standing on the terrain point); `flat` ones lie on the ground.
+class Prop {
+  constructor(kind, x, y, spr, w, h, o = {}) { this.kind = kind; this.x = x; this.y = y; this.spr = spr; this.w = w; this.h = h; this.flat = !!o.flat; this.flip = !!o.flip; this.obstacle = o.obstacle || null; }
+  draw(ctx, camera, view) {
+    const p = camera.worldToScreen(this.x, this.y, view), s = this.spr;
+    ctx.save(); camera.applyEntityScale(ctx, p, false); ctx.imageSmoothingEnabled = false;
+    if (this.kind === 'light' && OP_STYLE.night) {   // a warm pool of light at night (drawn above the night tint)
+      const gl = ctx.createRadialGradient(p.x, p.y, 3, p.x, p.y, 78); gl.addColorStop(0, 'rgba(255,214,120,0.30)'); gl.addColorStop(1, 'rgba(255,214,120,0)');
+      ctx.save(); ctx.translate(p.x, p.y); ctx.scale(1, 0.6); ctx.translate(-p.x, -p.y); ctx.fillStyle = gl; ctx.fillRect(p.x - 78, p.y - 78, 156, 156); ctx.restore();
+    }
+    if (this.flat) { ctx.translate(p.x, p.y); ctx.scale(1, 0.55); ctx.drawImage(s.canvas, -this.w / 2, -this.h / 2, this.w, this.h); }
+    else if (this.flip) { ctx.translate(p.x, p.y); ctx.scale(-1, 1); ctx.drawImage(s.canvas, -this.w / 2, -this.h, this.w, this.h); }
+    else ctx.drawImage(s.canvas, p.x - this.w / 2, p.y - this.h, this.w, this.h);
+    ctx.restore();
+  }
+}
+
+// Places the props, deterministically, from the map's own data: roads (transportation lines) and the building footprints.
+class PropField3D {
+  constructor(world) {
+    this.world = world; this.items = []; this.cells = new Set(); this.count = {}; this.safe = null; this.runs = 0; this._n = -1;
+    this.segGrid = new Map(); this.propGrid = new Map(); this.water = []; this.prismDone = 0; this.removed = false; this.obstacles = [];
+  }
+  static HALF_M = { motorway: 7, trunk: 6, primary: 5, secondary: 4.5, tertiary: 4, minor: 3.5, street: 3.5, service: 2.2, track: 1.5 };
+  _room(kind) { return (this.count[kind] || 0) < OP_DETAIL.caps[kind]; }
+  _segCells(x0, y0, x1, y1, fn) { const C = 64; for (let cx = Math.floor(Math.min(x0, x1) / C); cx <= Math.floor(Math.max(x0, x1) / C); cx++) for (let cy = Math.floor(Math.min(y0, y1) / C); cy <= Math.floor(Math.max(y0, y1) / C); cy++) fn(cx + ',' + cy); }
+  _onRoad(x, y, pad) {
+    const C = 64, cx = Math.floor(x / C), cy = Math.floor(y / C);
+    for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) {
+      const a = this.segGrid.get((cx + i) + ',' + (cy + j)); if (!a) continue;
+      for (const s of a) {
+        const vx = s[2] - s[0], vy = s[3] - s[1], L = vx * vx + vy * vy || 1, t = Math.max(0, Math.min(1, ((x - s[0]) * vx + (y - s[1]) * vy) / L));
+        if (Math.hypot(x - (s[0] + vx * t), y - (s[1] + vy * t)) < s[4] + pad) return true;
+      }
+    }
+    return false;
+  }
+  _free(x, y, r) {
+    const b = this.world.bridge, col = this.world.collision;
+    if (x < 50 || y < 50 || x > b.worldW - 50 || y > b.worldH - 50) return false;
+    if (this.safe && Math.hypot(x - this.safe.x, y - this.safe.y) < OP_DETAIL.safeSpawnPx) return false;
+    if (Math.hypot(x - b.worldW / 2, y - b.worldH / 2) < 90) return false;
+    const probe = [[x, y], [x - r, y - r], [x + r, y - r], [x - r, y + r], [x + r, y + r]];
+    for (const pr of col.prismsInRect(x - r - 6, y - r - 6, x + r + 6, y + r + 6)) {
+      if (x < pr.bbox.x0 - r - 4 || x > pr.bbox.x1 + r + 4 || y < pr.bbox.y0 - r - 4 || y > pr.bbox.y1 + r + 4) continue;
+      for (const [qx, qy] of probe) if (Utils.pointInPolygon(qx, qy, pr.pts)) return false;
+    }
+    for (const w of this.water) { if (x < w.x0 - r || x > w.x1 + r || y < w.y0 - r || y > w.y1 + r) continue; for (const [qx, qy] of probe) if (Utils.pointInPolygon(qx, qy, w.pts)) return false; }
+    const k = Math.floor(x / 30) + ',' + Math.floor(y / 30);
+    for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) { const a = this.propGrid.get((Math.floor(x / 30) + i) + ',' + (Math.floor(y / 30) + j)); if (a) for (const o of a) if (Math.hypot(o.x - x, o.y - y) < r + o.r) return false; }
+    return true;
+  }
+  _add(kind, x, y, spr, w, h, r, o = {}) {
+    if (!this._room(kind) || !this._free(x, y, r)) return null;
+    const pr = new Prop(kind, x, y, spr, w, h, o);
+    if (o.coll) { const ob = new Obstacle(x, y, o.coll[0], o.coll[1], '#222222', o.rot || 0); ob.isProp = true; pr.obstacle = ob; this.obstacles.push(ob); if (!this.removed) this.world.collision.all.push(ob); }
+    this.items.push(pr); this.count[kind] = (this.count[kind] || 0) + 1;
+    const gk = Math.floor(x / 30) + ',' + Math.floor(y / 30); (this.propGrid.get(gk) || this.propGrid.set(gk, []).get(gk)).push({ x, y, r });
+    return pr;
+  }
+  _road(f) {
+    const b = this.world.bridge, pr = f.properties || {}, hwM = PropField3D.HALF_M[pr.class];
+    if (!hwM || pr.brunnel === 'tunnel' || pr.brunnel === 'bridge' || !f.geometry) return;
+    const g = f.geometry, lines = g.type === 'LineString' ? [g.coordinates] : g.type === 'MultiLineString' ? g.coordinates : [];
+    const hw = hwM * b.pxPerMeterX, cls = pr.class;
+    for (const line of lines) {
+      const pts = line.map(([lo, la]) => b.latLngToGamePx(la, lo));
+      let carry = 0;
+      for (let i = 0; i + 1 < pts.length; i++) {
+        const a = pts[i], c = pts[i + 1], dx = c.x - a.x, dy = c.y - a.y, L = Math.hypot(dx, dy); if (L < 1) continue;
+        this._segCells(a.x, a.y, c.x, c.y, (k) => { (this.segGrid.get(k) || this.segGrid.set(k, []).get(k)).push([a.x, a.y, c.x, c.y, hw]); });
+        const ux = dx / L, uy = dy / L; let d = carry;
+        while (d < L) { this._sample(a.x + ux * d, a.y + uy * d, ux, uy, cls, hw); d += 40; }
+        carry = d - L;
+      }
+    }
+  }
+  _sample(x, y, ux, uy, cls, hw) {
+    const key = Math.floor(x / 40) + ',' + Math.floor(y / 40); if (this.cells.has(key)) return; this.cells.add(key);
+    const qx = Math.floor(x / 8), qy = Math.floor(y / 8), H = (s) => opHash(qx, qy, s), nx = -uy, ny = ux, side = H(1) < 0.5 ? -1 : 1, ang = Math.atan2(uy, ux);
+    const small = cls === 'minor' || cls === 'street' || cls === 'service' || cls === 'tertiary' || cls === 'track', mid = cls === 'primary' || cls === 'secondary' || cls === 'tertiary';
+    const at = (lat, along = 0) => [x + nx * lat * side + ux * along, y + ny * lat * side + uy * along];
+    const side_view = Math.abs(ux) >= 0.55;
+    const car = (lat, state, rot) => {
+      const ci = Math.floor(H(20) * 5), spr = OP_ART.car(side_view ? 'side' : 'end', ci, state), [px, py] = at(lat);
+      return this._add('car', px, py, spr, side_view ? 46 : 20, side_view ? 20 : 22, 14, { flip: H(21) < 0.5, coll: [36, 16], rot: rot === undefined ? ang : rot });
+    };
+    if (small && H(2) < 0.07) { const r = H(3); car(hw + 14, r < 0.7 ? 'parked' : r < 0.9 ? 'abandoned' : 'flipped'); }   // beside the road, never on it
+    else if (mid && H(4) < 0.012) car(hw * 0.45, 'abandoned', ang + (H(22) - 0.5) * 0.5);                                  // the odd wreck in a wide road
+    if (cls !== 'service' && cls !== 'track' && (qx * 7 + qy * 13) % 6 === 0 && H(5) < 0.7) { const [px, py] = at(hw + 7); this._add('light', px, py, OP_ART.light(), 12, 62, 5); }
+    if (cls !== 'service' && H(6) < 0.012) { const [px, py] = at(hw + 9); this._add('sign', px, py, OP_ART.sign(Math.floor(H(23) * 3)), 12, 40, 5); }
+    if ((cls === 'service' || cls === 'minor' || cls === 'street') && H(7) < 0.02) { const [px, py] = at(hw + 8); this._add('barrier', px, py, OP_ART.barrier(), 36, 15, 12, { coll: [34, 9], rot: ang, flip: H(24) < 0.5 }); }
+    if (H(8) < 0.10 && hw > 6) { const [px, py] = at(hw * (H(25) - 0.5), 0); this._add('crack', px, py, OP_ART.crack(), 28, 6, 4, { flat: true }); }
+    if (H(9) < 0.10) { const [px, py] = at(hw + 3 + H(26) * 6); this._add('weeds', px, py, OP_ART.weeds(), 22, 8, 4, { flat: true }); }
+    if (H(10) < 0.05) { const [px, py] = at(hw + 4 + H(27) * 5); this._add('debris', px, py, OP_ART.debris(), 22, 7, 5, { flat: true }); if (H(28) < 0.5) this._add('trash', px + 12, py + 2, OP_ART.bag(), 11, 9, 5); }
+  }
+  _building(pr) {
+    const b = this.world.bridge, n = pr.pts.length, ppm = b.pxPerMeterX; if (n < 3) return;
+    let area = 0, cx = 0, cy = 0; for (let i = 0; i < n; i++) { const p = pr.pts[i], q = pr.pts[(i + 1) % n]; area += p.x * q.y - q.x * p.y; cx += p.x; cy += p.y; }
+    const sgn = area >= 0 ? 1 : -1, areaM = Math.abs(area) / 2 / (ppm * ppm); if (areaM < 60) return;
+    const qx = Math.round(pr.cLng * 1e5), qy = Math.round(pr.cLat * 1e5), H = (s) => opHash(qx, qy, 100 + s);
+    const edge = (i) => { const p = pr.pts[i], q = pr.pts[(i + 1) % n], dx = q.x - p.x, dy = q.y - p.y, L = Math.hypot(dx, dy) || 1; return { mx: (p.x + q.x) / 2, my: (p.y + q.y) / 2, tx: dx / L, ty: dy / L, nx: sgn * dy / L, ny: -sgn * dx / L, L }; };   // outward normal
+    let best = -1, bl = 0; for (let i = 0; i < n; i++) { const p = pr.pts[i], q = pr.pts[(i + 1) % n], L = Math.hypot(q.x - p.x, q.y - p.y); if (L > bl) { bl = L; best = i; } }
+    if (best < 0 || bl < 40) return;
+    const e = edge(best), put = (kind, lat, along, spr, w, h, r, o) => { const px = e.mx + e.nx * lat + e.tx * along, py = e.my + e.ny * lat + e.ty * along; if (this._onRoad(px, py, 10)) return null; return this._add(kind, px, py, spr, w, h, r, o); };
+    const rot = Math.atan2(e.ty, e.tx);
+    if (H(1) < 0.22) {   // a service corner: dumpster, bags, maybe a crate or pallet
+      put('dumpster', 15, 0, OP_ART.dumpster(H(2) < 0.5 ? 0 : 1), 26, 19, 12, { coll: [22, 13], rot });
+      const nb = 1 + Math.floor(H(3) * 3); for (let i = 0; i < nb; i++) put('trash', 11, 20 + i * 11, i === 1 ? OP_ART.pile() : OP_ART.bag(), i === 1 ? 19 : 11, i === 1 ? 11 : 9, 5);
+      if (H(4) < 0.45) put('crate', 11, -22, OP_ART.crate(), 15, 15, 7, { coll: [12, 12], rot });
+      if (H(5) < 0.3) put('pallet', 8, -40, OP_ART.pallet(), 22, 8, 7, { flat: true });
+    } else if (H(6) < 0.07) put('util', 8, 0, OP_ART.util(), 14, 18, 6, { coll: [10, 8], rot });
+    else if (areaM > 1200 && H(7) < 0.12) put('gen', 13, bl * 0.25, OP_ART.gen(), 24, 17, 10, { coll: [20, 11], rot });
+    if (H(8) < 0.15) put('weeds', 6, (H(9) - 0.5) * bl * 0.6, OP_ART.weeds(), 22, 8, 4, { flat: true });
+  }
+  _waterRings() {
+    const r = this.world.renderer, b = this.world.bridge; this.water = [];
+    let fs = []; try { fs = r.map.querySourceFeatures(r.vectorSource, { sourceLayer: 'water' }); } catch (e) { return; }
+    for (const f of fs) { const g = f.geometry; if (!g) continue; const rings = g.type === 'Polygon' ? [g.coordinates[0]] : g.type === 'MultiPolygon' ? g.coordinates.map((q) => q[0]) : [];
+      for (const rg of rings) { const pts = rg.map(([lo, la]) => b.latLngToGamePx(la, lo)); let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9; for (const p of pts) { x0 = Math.min(x0, p.x); x1 = Math.max(x1, p.x); y0 = Math.min(y0, p.y); y1 = Math.max(y1, p.y); } this.water.push({ pts, x0, y0, x1, y1 }); } }
+  }
+  refresh() {
+    const w = this.world, col = w.collision, r = w.renderer, p = w.game.player;
+    if (!OP_DETAIL.props || !r.map || !r.vectorSource || !p || !col.prisms.length) return;
+    if (this._n === col.prisms.length && this.runs >= 4) return; this.runs++; this._n = col.prisms.length;
+    if (!this.safe) this.safe = { x: p.x, y: p.y };
+    const before = this.items.length;
+    this._waterRings();
+    let fs = []; try { fs = r.map.querySourceFeatures(r.vectorSource, { sourceLayer: 'transportation' }); } catch (e) { return; }
+    for (const f of fs) this._road(f);
+    for (; this.prismDone < col.prisms.length; this.prismDone++) this._building(col.prisms[this.prismDone]);
+    if (this.items.length !== before) { col.dirty = true; if (w.onBuildingsAdded) w.onBuildingsAdded(); }
+  }
+  setEnabled(on) {
+    OP_DETAIL.props = !!on; const all = this.world.collision.all;
+    if (!on) { this.removed = true; for (let i = all.length - 1; i >= 0; i--) if (all[i].isProp) all.splice(i, 1); }
+    else if (this.removed) { this.removed = false; for (const o of this.obstacles) all.push(o); }
+    this.world.collision.dirty = true; if (this.world.onBuildingsAdded) this.world.onBuildingsAdded();
+  }
+  // The props near the peanut, closest first: { decals (lying flat, drawn first), solid (standing, depth-sorted with characters) }.
+  visible(px, py) {
+    const out = { decals: [], solid: [] }; if (!OP_DETAIL.props) return out;
+    const R = OP_DETAIL.drawRangePx, near = [];
+    for (const it of this.items) { const d = Math.hypot(it.x - px, it.y - py); if (d <= R) near.push([d, it]); }
+    near.sort((a, b) => a[0] - b[0]); if (near.length > OP_DETAIL.maxDrawn) near.length = OP_DETAIL.maxDrawn;
+    for (const [, it] of near) (it.flat ? out.decals : out.solid).push(it);
+    return out;
+  }
+}
+
+// ---- Building detail: window / roof / boarded-wall patterns on the real building shapes ----
+function opMakeBuildingPatterns(map) {
+  const ratio = Math.max(1, window.devicePixelRatio || 1), GL = '#2a3038', SILL = '#cbc0a8', OUT = '#14141b';
+  const rgb = (h) => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
+  const shade = (h, f) => '#' + rgb(h).map((v) => Math.max(0, Math.min(255, Math.round(v * f))).toString(16).padStart(2, '0')).join('');
+  const make = (name, w, h, fn) => {
+    if (map.hasImage(name)) return;
+    const c = document.createElement('canvas'); c.width = w; c.height = h; const g = c.getContext('2d');
+    const r = (x, y, ww, hh, col) => { g.fillStyle = col; g.fillRect(x, y, ww, hh); };
+    fn(r, w, h); const d = g.getImageData(0, 0, w, h);
+    map.addImage(name, { width: w, height: h, data: new Uint8Array(d.data.buffer) }, { pixelRatio: ratio });
+  };
+  const BASE = { res: ['#a3957d', '#8e7b64', '#b4a98f'], apt: ['#8f8a7c', '#a39a88', '#7d7f84'], com: ['#9b8c76', '#8a8478', '#b0a690'], ind: ['#7b7e83', '#8a8c8f', '#6d7077'], whs: ['#8c8578', '#7d8286', '#9a9384'], abn: ['#7d7466', '#6f6a60', '#827868'] };
+  for (let v = 0; v < 3; v++) {
+    const c = (t) => BASE[t][v];
+    make('op-w-res-' + v, 16, 8, (r, w, h) => { r(0, 0, w, h, c('res')); for (const x of [2, 10]) { r(x, 2, 4, 4, GL); r(x - 1, 6, 6, 1, SILL); r(x, 2, 4, 1, shade(c('res'), 0.7)); } });
+    make('op-w-apt-' + v, 16, 8, (r, w, h) => { r(0, 0, w, h, c('apt')); r(0, 0, 2, h, shade(c('apt'), 0.8)); r(5, 2, 5, 4, GL); r(4, 6, 7, 1, SILL); r(5, 2, 5, 1, shade(c('apt'), 0.7)); });
+    make('op-w-com-' + v, 32, 8, (r, w, h) => { r(0, 0, w, h, c('com')); r(0, 0, w, 1, shade(c('com'), 0.78)); r(7, 2, 18, 5, GL); r(15, 2, 2, 5, shade(c('com'), 1.1)); r(6, 7, 20, 1, SILL); });
+    make('op-w-ind-' + v, 8, 8, (r, w, h) => { r(0, 0, w, h, c('ind')); for (let x = 0; x < w; x += 4) r(x, 0, 2, h, shade(c('ind'), 0.86)); r(2, 3, 4, 2, GL); });
+    make('op-w-whs-' + v, 16, 16, (r, w, h) => { r(0, 0, w, h, c('whs')); for (let x = 0; x < w; x += 4) r(x, 0, 2, h, shade(c('whs'), 0.88)); r(3, 4, 10, 12, OUT); r(4, 5, 8, 11, shade(c('whs'), 0.62)); r(4, 9, 8, 1, shade(c('whs'), 0.5)); });
+    make('op-w-abn-' + v, 16, 8, (r, w, h) => { r(0, 0, w, h, c('abn')); r(0, 4, 5, 3, shade(c('abn'), 0.82)); for (const x of [2, 10]) { r(x, 2, 4, 4, GL); r(x, 3, 4, 1, '#7a5d3d'); r(x, 5, 4, 1, '#7a5d3d'); r(x + 1, 2, 1, 4, '#6a4e2e'); } r(8, 0, 1, 2, OUT); r(9, 2, 1, 1, OUT); r(7, 6, 1, 2, OUT); });
+  }
+  const roof = (name, base, fn) => make(name, 16, 16, (r, w, h) => { r(0, 0, w, h, base); fn(r, w, h); });
+  roof('op-r-res', '#6b5a4a', (r, w, h) => { for (let y = 0; y < h; y += 3) r(0, y, w, 1, '#5a4a3b'); });
+  roof('op-r-apt', '#55565c', (r) => { r(3, 3, 4, 4, OUT); r(4, 4, 2, 2, '#7b7d82'); r(9, 8, 6, 6, OUT); r(10, 9, 4, 4, '#8a7c68'); });
+  roof('op-r-com', '#5a5b61', (r) => { r(2, 2, 5, 4, OUT); r(3, 3, 3, 2, '#80838a'); r(10, 9, 5, 4, OUT); r(11, 10, 3, 2, '#80838a'); });
+  roof('op-r-ind', '#4f5157', (r, w, h) => { for (let y = 0; y < h; y += 4) r(0, y, w, 1, '#62646b'); r(10, 3, 4, 4, OUT); r(11, 4, 2, 2, '#80838a'); });
+  roof('op-r-whs', '#6a6a6a', (r, w, h) => { for (let y = 0; y < h; y += 3) r(0, y, w, 1, '#7c7c7a'); r(5, 6, 6, 3, OUT); r(6, 7, 4, 1, '#8fa0aa'); });
+  roof('op-r-abn', '#4a4a4f', (r) => { r(3, 4, 5, 4, '#23232a'); r(10, 10, 4, 4, '#23232a'); r(8, 2, 1, 1, '#7a7a80'); r(1, 12, 2, 1, '#7a7a80'); });
+}
+
+class BuildingDetail3D {
+  constructor(world) { this.world = world; this.ready = false; this.feats = []; this.done = new Set(); this.spawn = null; this.hidden = ''; this._ids = null; this.counts = {}; this.layers = ''; }
+  _ensure() {
+    const r = this.world.renderer, m = r.map; if (!m || !r.loaded || !r.buildingsOk) return false; if (this.ready) return true;
+    try {
+      opMakeBuildingPatterns(m);
+      m.addSource('game-detail-src', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+      const H = ['coalesce', ['to-number', ['get', 'render_height']], 0], B = ['coalesce', ['to-number', ['get', 'render_min_height']], 0], before = mapTilerFirstSymbolLayerId(m), filter = ['!', ['in', ['get', 'uid'], ['literal', []]]];
+      const add = (id, patternProp, extra) => {   // a map that rejects the ['image', ...] wrapper gets the plain property instead
+        for (const pat of [['image', ['get', patternProp]], ['get', patternProp]]) {
+          m.addLayer({ id, type: 'fill-extrusion', source: 'game-detail-src', minzoom: MAPTILER3D.buildingMinZoom, filter, paint: { 'fill-extrusion-pattern': pat, 'fill-extrusion-opacity': 1, 'fill-extrusion-vertical-gradient': false, ...extra } }, before);
+          if (m.getLayer(id)) return true;
+        }
+        return false;
+      };
+      const okW = add('game-detail-walls', 'wall', { 'fill-extrusion-height': H, 'fill-extrusion-base': B });
+      const okR = add('game-detail-roofs', 'roof', { 'fill-extrusion-height': ['+', H, 0.12], 'fill-extrusion-base': ['max', B, ['-', H, 0.35]] });
+      this.layers = (okW ? 'walls ' : '') + (okR ? 'roofs' : '');
+      if (!okW && !okR) { OP_DETAIL.buildings = false; console.warn('[detail] the map rejected the building pattern layers'); return false; }
+      this.ready = true;
+    } catch (e) { console.warn('[detail] building layers failed:', e.message); OP_DETAIL.buildings = false; return false; }
+    return true;
+  }
+  classify(pr) {
+    const b = this.world.bridge, ppm = b.pxPerMeterX, n = pr.pts.length; let a = 0;
+    for (let i = 0; i < n; i++) { const p = pr.pts[i], q = pr.pts[(i + 1) % n]; a += p.x * q.y - q.x * p.y; }
+    const area = Math.abs(a) / 2 / (ppm * ppm), h = pr.h, qx = Math.round(pr.cLng * 1e5), qy = Math.round(pr.cLat * 1e5), u = opHash(qx, qy, 77), v = Math.floor(opHash(qx, qy, 78) * 3);
+    let cls = ''; for (const [k, val] of pr.desc.props) if (/^(class|building|type|subclass|kind)$/.test(k) && typeof val === 'string') cls += ' ' + val.toLowerCase();
+    let t;
+    if (/apart|dorm/.test(cls)) t = 'apt'; else if (/resid|house|detached/.test(cls)) t = 'res'; else if (/commercial|retail|shop|office|supermarket/.test(cls)) t = 'com';
+    else if (/industrial|factory|manufact/.test(cls)) t = 'ind'; else if (/warehouse|storage|garage|hangar/.test(cls)) t = 'whs';
+    else if (h >= 28) t = 'apt'; else if (area >= 2200 && h <= 16) t = u < 0.5 ? 'whs' : 'ind'; else if (h >= 11) t = area < 1400 ? 'apt' : 'com';
+    else if (h >= 6) t = area < 500 ? 'res' : 'com'; else t = area < 260 ? 'res' : (area > 800 ? 'whs' : 'com');
+    const abn = opHash(qx, qy, 79) < 0.12 && h < 40;
+    return { type: abn ? 'abn' : t, wall: 'op-w-' + (abn ? 'abn' : t) + '-' + v, roof: 'op-r-' + (abn ? 'abn' : t), area };
+  }
+  update() {
+    if (!OP_DETAIL.buildings || !this._ensure()) return;
+    const col = this.world.collision, p = this.world.game.player; if (!p) return; if (!this.spawn) this.spawn = { x: p.x, y: p.y };
+    const room = OP_DETAIL.maxBuildings - this.feats.length; if (room <= 0) return;
+    const fresh = []; for (let i = 0; i < col.prisms.length; i++) { const pr = col.prisms[i]; if (this.done.has(i) || pr.h < 3 || pr.base > 0.5) continue; fresh.push([Math.hypot((pr.bbox.x0 + pr.bbox.x1) / 2 - this.spawn.x, (pr.bbox.y0 + pr.bbox.y1) / 2 - this.spawn.y), i]); }
+    if (!fresh.length) return; fresh.sort((a, b) => a[0] - b[0]);
+    let added = 0;
+    for (const [, i] of fresh) {
+      if (added >= room) break; const pr = col.prisms[i]; this.done.add(i); const c = this.classify(pr); if (c.area < 40) continue;
+      const ring = pr.lng.map((lo, k) => [lo, pr.lat[k]]); ring.push(ring[0]);
+      this.feats.push({ type: 'Feature', geometry: { type: 'Polygon', coordinates: [ring] }, properties: { uid: i, render_height: pr.h, render_min_height: pr.base, wall: c.wall, roof: c.roof } });
+      this.counts[c.type] = (this.counts[c.type] || 0) + 1; pr.uid = i; added++;
+    }
+    if (added) { const s = this.world.renderer.map.getSource('game-detail-src'); if (s) s.setData({ type: 'FeatureCollection', features: this.feats }); }
+  }
+  // Buildings being faded keep no pattern (the plain building fades underneath), then it returns when they stop fading.
+  syncFade() {
+    if (!this.ready) return; const f = this.world.fade; if (f.ids === this._ids) return; this._ids = f.ids;
+    const uids = []; if (f.ids && f.ids.size) for (const pr of this.world.collision.prisms) if (pr.uid !== undefined && pr.fadeKey && f.ids.has(pr.fadeKey)) uids.push(pr.uid);
+    const key = uids.join(','); if (key === this.hidden) return; this.hidden = key;
+    const m = this.world.renderer.map, flt = ['!', ['in', ['get', 'uid'], ['literal', uids]]];
+    try { m.setFilter('game-detail-walls', flt); m.setFilter('game-detail-roofs', flt); } catch (e) { /* ignore */ }
+  }
+  setEnabled(on) {
+    OP_DETAIL.buildings = !!on; if (!this.ready) return;
+    const m = this.world.renderer.map; for (const id of ['game-detail-walls', 'game-detail-roofs']) if (m.getLayer(id)) m.setLayoutProperty(id, 'visibility', on ? 'visible' : 'none');
+    if (on) this.update();
+  }
+}
+
 class MapTilerGameWorld {
   constructor(game) {
     this.game = game;
@@ -11033,6 +11359,7 @@ class MapTilerGameWorld {
     this.overlay = new WorldOverlay3D(this);
     this.occlusion = new BuildingOcclusion3D(this);
     this.fade = new BuildingFade3D(this);
+    this.detail = new BuildingDetail3D(this); this.props = new PropField3D(this); this._detailTimer = 0;
     this.onBuildingsAdded = null; // Game rebuilds its zombie nav grid when this fires
     this._buildingTimer = 0; this._footTimer = 99; this._footprintPx = 600;
   }
@@ -11113,6 +11440,9 @@ class MapTilerGameWorld {
     this._buildingTimer += dt; this._footTimer += dt;
     if (this._buildingTimer > 1) { this._buildingTimer = 0; this.refreshBuildingCollision(false); } // streaming: pick up buildings from new tiles
     if (this._footTimer > 0.5 && this.renderer.matrix) { this._footTimer = 0; this._updateFootprint(); }
+    this._detailTimer += dt;
+    if (this._detailTimer > 1.5) { this._detailTimer = 0; try { this.detail.update(); this.props.refresh(); } catch (err) { console.warn('[detail] update failed:', err.message); } }
+    this.detail.syncFade();
   }
   hasMatrix() { return !!this.renderer.matrix; }
   get snapshot() { return this.camera && this.camera.snapshot; }
