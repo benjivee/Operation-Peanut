@@ -1444,7 +1444,7 @@ const EMBEDDED_ASSETS = {
 
     <!-- ===================== Start overlay (home page) ===================== -->
     <div id="startScreen" class="overlay homePage">
-      <div id="versionTag" class="versionTag">v3.84.0</div>
+      <div id="versionTag" class="versionTag">v3.84.1</div>
       <div id="homeSidebar" class="homeSidebar">
         <div class="homeSidebarTitle">Your Stats</div>
         <div class="homeSidebarStat">
@@ -11054,9 +11054,9 @@ class WorldOverlay3D {
 const OP_DETAIL = {
   buildings: true, props: true,
   maxBuildings: 1500,      // details on up to this many buildings, nearest the peanut first as new ones stream in (the first pass was 80)
-  drawRangePx: 640, maxDrawn: 110,   // props are drawn within this distance of the peanut (game px), at most this many per frame
+  drawRangePx: 640, maxDrawn: 150,   // props are drawn within this distance of the peanut (game px), at most this many per frame
   safeSpawnPx: 150,        // no props this close to where the run starts
-  caps: { tree: 220, car: 70, light: 40, sign: 22, barrier: 18, dumpster: 26, crate: 22, pallet: 12, trash: 50, debris: 30, util: 16, gen: 8, weeds: 60, crack: 45 },
+  caps: { tree: 440, car: 70, light: 40, sign: 22, barrier: 18, dumpster: 26, crate: 22, pallet: 12, trash: 50, debris: 30, util: 16, gen: 8, weeds: 60, crack: 45 },
 };
 
 function opHash(a, b, salt) {   // deterministic 0..1 from integers
@@ -11226,7 +11226,7 @@ class PropField3D {
         const pr = f.properties || {}, cls = String(pr.class || '').toLowerCase(), g = f.geometry; if (!g) continue;
         const wood = sl === 'landcover' && /^(wood|forest)$/.test(cls);
         if (!(sl === 'park' || (sl === 'landuse' && /^(park|garden|cemetery)$/.test(cls)) || wood)) continue;
-        const sp = wood ? 120 : 170, prob = wood ? 0.8 : 0.5, rings = g.type === 'Polygon' ? [g.coordinates[0]] : g.type === 'MultiPolygon' ? g.coordinates.map((q) => q[0]) : [];
+        const sp = wood ? 85 : 170, prob = wood ? 0.8 : 1.0, rings = g.type === 'Polygon' ? [g.coordinates[0]] : g.type === 'MultiPolygon' ? g.coordinates.map((q) => q[0]) : [];
         for (const rg of rings) {
           const pts = rg.map(([lo, la]) => b.latLngToGamePx(la, lo)); let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
           for (const q of pts) { x0 = Math.min(x0, q.x); x1 = Math.max(x1, q.x); y0 = Math.min(y0, q.y); y1 = Math.max(y1, q.y); }
