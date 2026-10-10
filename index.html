@@ -1444,7 +1444,7 @@ const EMBEDDED_ASSETS = {
 
     <!-- ===================== Start overlay (home page) ===================== -->
     <div id="startScreen" class="overlay homePage">
-      <div id="versionTag" class="versionTag">v3.83.0</div>
+      <div id="versionTag" class="versionTag">v3.83.2</div>
       <div id="homeSidebar" class="homeSidebar">
         <div class="homeSidebarTitle">Your Stats</div>
         <div class="homeSidebarStat">
@@ -9760,6 +9760,7 @@ const OP_STYLE = (() => {
     light: { anchor: 'viewport', color: '#fff1da', intensity: 0.62, position: [1.4, 205, 28] },   // high light: bright roofs, darker walls
     night: true,                                         // night look (F6 toggles): blue tint over the map + cool moonlight on buildings
     nightLight: { anchor: 'viewport', color: '#fff1da', intensity: 0.62, position: [1.4, 205, 28] },   // same warm light as day, so the building colours keep their hue (the blue tint over the map still darkens them)
+    hideLabels: true,                                    // hide every map label and icon (street / place / building names, parking icons, house numbers)
     pixel: true,                                         // pixel-style shading on ground surfaces (F5 toggles); needs enabled
     pattern: { grass: 'op-grass', forest: 'op-forest', water: 'op-water' },   // pixel texture only here; ground, concrete, sand, sidewalks and asphalt stay flat
     mark: { color: '#80828b', opacity: 0.8 },            // faint dashed centre line on roads
@@ -9810,7 +9811,7 @@ function opMakePatterns(map) {
 }
 
 class OperationPeanutStyle {
-  constructor(map) { this.map = map; this.on = false; this.backup = []; this.seen = new Set(); this.prevLight = null; this.stats = { skipped: [] }; }
+  constructor(map) { this.map = map; this.on = false; this.backup = []; this.seen = new Set(); this.hiddenLayers = []; this.prevLight = null; this.stats = { skipped: [] }; }
   _set(id, prop, value) {   // remember the original value once, then change it
     try {
       const key = id + '|' + prop;
@@ -9878,6 +9879,11 @@ class OperationPeanutStyle {
       } else if (!this.markIds.includes(id)) this.markIds.push(id);
       m.setLayoutProperty(id, 'visibility', S.pixel ? 'visible' : 'none'); count('marks');
     }
+    // Map text and icons (street names, place names, POIs, parking icons ...) are all symbol layers: hidden, and shown again on revert.
+    if (S.hideLabels) for (const l of m.getStyle().layers) {
+      if (l.type !== 'symbol' || l.id.startsWith('game-')) continue;
+      try { if (m.getLayoutProperty(l.id, 'visibility') !== 'none') { m.setLayoutProperty(l.id, 'visibility', 'none'); this.hiddenLayers.push(l.id); count('labels-hidden'); } } catch (e) { /* ignore */ }
+    }
     if (m.getLayer('maptiler-hillshade')) this._set('maptiler-hillshade', 'hillshade-exaggeration', S.hillshade);
     if (S.buildingStyle) for (const id of S.buildingLayers) if (m.getLayer(id)) { this._set(id, 'fill-extrusion-color', S.buildingColor); this._set(id, 'fill-extrusion-vertical-gradient', false); count('building-layer'); }
     try { if (!this.prevLight) this.prevLight = m.getLight(); m.setLight(S.night ? S.nightLight : S.light); } catch (e) { /* no light control */ }
@@ -9906,6 +9912,8 @@ class OperationPeanutStyle {
     try { if (this.prevLight) m.setLight(this.prevLight); } catch (e) { /* ignore */ }
     for (const id of (this.shadowIds || [])) if (m.getLayer(id)) m.setLayoutProperty(id, 'visibility', 'none');
     for (const id of (this.markIds || [])) if (m.getLayer(id)) m.setLayoutProperty(id, 'visibility', 'none');
+    for (const id of this.hiddenLayers) { try { if (m.getLayer(id)) m.setLayoutProperty(id, 'visibility', 'visible'); } catch (e) { /* ignore */ } }
+    this.hiddenLayers = [];
     this.on = false;
   }
 }
@@ -11045,7 +11053,7 @@ class WorldOverlay3D {
 // ---------------------------------------------------------------------
 const OP_DETAIL = {
   buildings: true, props: true,
-  maxBuildings: 80,        // first pass: details on the buildings nearest the spawn; raise once it looks right
+  maxBuildings: 1500,      // details on up to this many buildings, nearest the peanut first as new ones stream in (the first pass was 80)
   drawRangePx: 640, maxDrawn: 110,   // props are drawn within this distance of the peanut (game px), at most this many per frame
   safeSpawnPx: 150,        // no props this close to where the run starts
   caps: { car: 70, light: 40, sign: 22, barrier: 18, dumpster: 26, crate: 22, pallet: 12, trash: 50, debris: 30, util: 16, gen: 8, weeds: 60, crack: 45 },
@@ -11325,7 +11333,7 @@ class BuildingDetail3D {
     if (!OP_DETAIL.buildings || !this._ensure()) return;
     const col = this.world.collision, p = this.world.game.player; if (!p) return; if (!this.spawn) this.spawn = { x: p.x, y: p.y };
     const room = OP_DETAIL.maxBuildings - this.feats.length; if (room <= 0) return;
-    const fresh = []; for (let i = 0; i < col.prisms.length; i++) { const pr = col.prisms[i]; if (this.done.has(i) || pr.h < 3 || pr.base > 0.5) continue; fresh.push([Math.hypot((pr.bbox.x0 + pr.bbox.x1) / 2 - this.spawn.x, (pr.bbox.y0 + pr.bbox.y1) / 2 - this.spawn.y), i]); }
+    const fresh = []; for (let i = 0; i < col.prisms.length; i++) { const pr = col.prisms[i]; if (this.done.has(i) || pr.h < 3 || pr.base > 0.5) continue; fresh.push([Math.hypot((pr.bbox.x0 + pr.bbox.x1) / 2 - p.x, (pr.bbox.y0 + pr.bbox.y1) / 2 - p.y), i]); }
     if (!fresh.length) return; fresh.sort((a, b) => a[0] - b[0]);
     let added = 0;
     for (const [, i] of fresh) {
