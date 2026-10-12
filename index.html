@@ -1446,7 +1446,7 @@ const EMBEDDED_ASSETS = {
 
     <!-- ===================== Start overlay (home page) ===================== -->
     <div id="startScreen" class="overlay homePage">
-      <div id="versionTag" class="versionTag">v3.86.1</div>
+      <div id="versionTag" class="versionTag">v3.88.1</div>
       <div id="homeSidebar" class="homeSidebar">
         <div class="homeSidebarTitle">Your Stats</div>
         <div class="homeSidebarStat">
@@ -5492,6 +5492,8 @@ const FX_MUZZLE = {
   flamethrower: { len: 6, w: 2, life: 0.06, rays: [0], cols: ['#fff4c0', '#ffb02a', '#e2501e'] },
 };
 const FX_SPARK_COLS = ['#fff2b0', '#ffc94a', '#b8b4a6', '#7a786f'];
+const FX_WOOD_COLS = ['#d2a679', '#a8825a', '#6b4f2e', '#c8bfa8'];
+const FX_METAL_COLS = ['#ffffff', '#ffe9a0', '#c8c8cc', '#8a8a90'];
 const FX_DUST_COLS = ['#a89f8a', '#8e8672', '#c4bba4'];
 const FX_HIT_COLS = ['#ffffff', '#c0392b', '#8e2a2a', '#5c1c1c'];
 const FX_PULSE = { ammo: { c: '#f1c40f', c2: '#fff2a8' }, fuel: { c: '#e67e22', c2: '#ffd27a' }, health: { c: '#2ecc71', c2: '#c9ffd9' }, weapon: { c: '#9b59b6', c2: '#e6c8ff' }, unlock: { c: '#f5c542', c2: '#ffffff' } };
@@ -5545,6 +5547,7 @@ class CombatFX {
   }
   spark(b) {   // a bullet stopped by a building / the map wall
     if (b.flame) return; const base = Math.atan2(b.vy, b.vx) + Math.PI;
+    if (b._hitFx) { const wood = b._hitFx === 'wood'; b._hitFx = null; this._push(this._burst(wood ? 6 : 8, wood ? 60 : 85, base, 2.6, wood ? FX_WOOD_COLS : FX_METAL_COLS, 0.24, { t: 'spark', x: b.x, y: b.y, g: 150 })); return; }   // metal sparks off a car / lamp, wood chips off a trunk
     this._push(this._burst(6, 70, base, 2.2, FX_SPARK_COLS, 0.22, { t: 'spark', x: b.x, y: b.y, g: 160 }));
     this._push(this._burst(3, 18, base, 2.6, FX_DUST_COLS, 0.3, { t: 'spark', x: b.x, y: b.y, g: -10, big: true }));
   }
@@ -6376,7 +6379,7 @@ class Game {
       const x0 = Math.min(sx, ex), x1 = Math.max(sx, ex), y0 = Math.min(sy, ey), y1 = Math.max(sy, ey);
       let near = null;
       for (const o of this.obstacles) {
-        if (o.isProp) continue;   // low scenery (cars, dumpsters, barriers): shots fly over it, it only blocks walking
+        if (o.isProp && !o.stopsShots) continue;   // low scenery (barriers, crates ...): shots fly over it. Cars, tree trunks and lamp posts are solid and stop shots.
         const r = Math.hypot(o.halfWidth, o.halfHeight) + bullet.radius;
         if (o.x + r < x0 || o.x - r > x1 || o.y + r < y0 || o.y - r > y1) continue;
         (near || (near = [])).push(o);
@@ -6387,7 +6390,7 @@ class Game {
       for (let i = 1; i <= steps && !hit; i++) {
         const qx = sx + (ex - sx) * i / steps, qy = sy + (ey - sy) * i / steps;
         for (const obstacle of near) {
-          if (Utils.resolveCircleRect(qx, qy, bullet.radius, obstacle)) { bullet.x = qx; bullet.y = qy; hit = true; break; }
+          if (Utils.resolveCircleRect(qx, qy, bullet.radius, obstacle)) { bullet.x = qx; bullet.y = qy; hit = true; bullet._hitFx = obstacle.hitKind || null; break; }
         }
       }
       if (hit) {
@@ -11238,6 +11241,7 @@ class WorldOverlay3D {
 // ---------------------------------------------------------------------
 const OP_DETAIL = {
   buildings: true, props: true,
+  overlayGrowM: 0.35,      // the window / roof overlay is this much larger than the wall behind it (stops z-fighting flicker)
   maxBuildings: 1500,      // details on up to this many buildings, nearest the peanut first as new ones stream in (the first pass was 80)
   drawRangePx: 640, maxDrawn: 320,   // props are drawn within this distance of the peanut (game px), at most this many per frame
   safeSpawnPx: 150,        // no props this close to where the run starts
@@ -11364,7 +11368,7 @@ class PropField3D {
   _add(kind, x, y, spr, w, h, r, o = {}) {
     if (!this._room(kind) || !this._free(x, y, r)) return null;
     const pr = new Prop(kind, x, y, spr, w, h, o);
-    if (o.coll) { const ob = new Obstacle(x, y, o.coll[0], o.coll[1], '#222222', o.rot || 0); ob.isProp = true; pr.obstacle = ob; this.obstacles.push(ob); if (!this.removed) this.world.collision.all.push(ob); }
+    if (o.coll) { const ob = new Obstacle(x, y, o.coll[0], o.coll[1], '#222222', o.rot || 0); ob.isProp = true; ob.isCar = kind === 'car'; ob.stopsShots = kind === 'car' || kind === 'tree' || kind === 'light'; ob.hitKind = kind === 'tree' ? 'wood' : (kind === 'car' || kind === 'light') ? 'metal' : null; pr.obstacle = ob; this.obstacles.push(ob); if (!this.removed) this.world.collision.all.push(ob); }
     this.items.push(pr); this.count[kind] = (this.count[kind] || 0) + 1;
     const gk = Math.floor(x / 30) + ',' + Math.floor(y / 30); (this.propGrid.get(gk) || this.propGrid.set(gk, []).get(gk)).push({ x, y, r });
     return pr;
@@ -11393,11 +11397,11 @@ class PropField3D {
     const at = (lat, along = 0) => [x + nx * lat * side + ux * along, y + ny * lat * side + uy * along];
     const car = (lat, state, rot) => {
       const spr = OP_ART.carImg(Math.floor(H(20) * OP_IMG.cars.rects.length)), [px, py] = at(lat), S = 1.25;   // each supplied vehicle drawn at 1.25x
-      return this._add('car', px, py, spr, spr.sw * S, spr.sh * S, 14, { flip: H(21) < 0.5, flipV: state === 'flipped', coll: [36, 16], rot: rot === undefined ? ang : rot });
+      return this._add('car', px, py, spr, spr.sw * S, spr.sh * S, 14, { flip: H(21) < 0.5, flipV: state === 'flipped', coll: [44, 26], rot: rot === undefined ? ang : rot });
     };
-    if (small && H(2) < 0.07) { const r = H(3); car(hw + 14, r < 0.7 ? 'parked' : r < 0.9 ? 'abandoned' : 'flipped'); }   // beside the road, never on it
+    if (small && H(2) < 0.07) { const r = H(3); car(hw + 26, r < 0.7 ? 'parked' : r < 0.9 ? 'abandoned' : 'flipped'); }   // beside the road, never on it
     else if (mid && H(4) < 0.012) car(hw * 0.45, 'abandoned', ang + (H(22) - 0.5) * 0.5);                                  // the odd wreck in a wide road
-    if (cls !== 'service' && cls !== 'track' && (qx * 7 + qy * 13) % 6 === 0 && H(5) < 0.7) { const [px, py] = at(hw + 7); this._add('light', px, py, OP_ART.light(), 16, 64, 5); }
+    if (cls !== 'service' && cls !== 'track' && (qx * 7 + qy * 13) % 6 === 0 && H(5) < 0.7) { const [px, py] = at(hw + 7); this._add('light', px, py, OP_ART.light(), 16, 64, 5, { coll: [8, 8], rot: 0 }); }
     if (cls !== 'service' && H(6) < 0.012) { const [px, py] = at(hw + 9); this._add('sign', px, py, OP_ART.sign(Math.floor(H(23) * 3)), 12, 40, 5); }
     if ((cls === 'service' || cls === 'minor' || cls === 'street') && H(7) < 0.02) { const [px, py] = at(hw + 8); this._add('barrier', px, py, OP_ART.barrier(), 36, 15, 12, { coll: [34, 9], rot: ang, flip: H(24) < 0.5 }); }
     if (H(8) < 0.10 && hw > 6) { const [px, py] = at(hw * (H(25) - 0.5), 0); this._add('crack', px, py, OP_ART.crack(), 28, 6, 4, { flat: true }); }
@@ -11431,7 +11435,7 @@ class PropField3D {
         const x = gx * sp + (opHash(gx, gy, 201) - 0.5) * sp * 0.6, y = gy * sp + (opHash(gx, gy, 202) - 0.5) * sp * 0.6;
         if (!Utils.pointInPolygon(x, y, pl.pts)) continue;   // not inside this one: another polygon (or a later tile) may still own the cell
         this.cells.add(key); if (opHash(gx, gy, 203) > prob || this._onRoad(x, y, 16)) continue;
-        this._add('tree', x, y, OP_ART.tree(), 64, 72, 20, { coll: [12, 9], rot: 0 });
+        this._add('tree', x, y, OP_ART.tree(), 64, 72, 20, { coll: [16, 12], rot: 0 });
       }
     }
   }
@@ -11544,6 +11548,22 @@ class BuildingDetail3D {
     } catch (e) { console.warn('[detail] building layers failed:', e.message); OP_DETAIL.buildings = false; return false; }
     return true;
   }
+  // The pattern overlay used to sit EXACTLY on the original walls; two surfaces at the same depth flip back and forth per pixel as the
+  // camera moves (z-fighting), which shows up as flickering windows. The overlay outline is grown outward by OP_DETAIL.overlayGrowM
+  // metres (a few cm of apparent size at gameplay zoom), so the pattern is always cleanly in front of the plain wall behind it.
+  _grown(pr) {
+    const b = this.world.bridge, d = OP_DETAIL.overlayGrowM * b.pxPerMeterX, P = pr.pts, n = P.length; let a = 0;
+    for (let i = 0; i < n; i++) { const p = P[i], q = P[(i + 1) % n]; a += p.x * q.y - q.x * p.y; }
+    const sgn = a >= 0 ? 1 : -1, out = [];
+    const nrm = (p, q) => { const dx = q.x - p.x, dy = q.y - p.y, L = Math.hypot(dx, dy) || 1; return { x: sgn * dy / L, y: -sgn * dx / L }; };
+    for (let i = 0; i < n; i++) {
+      const p = P[i], n1 = nrm(P[(i + n - 1) % n], p), n2 = nrm(p, P[(i + 1) % n]); let vx = n1.x + n2.x, vy = n1.y + n2.y; const L = Math.hypot(vx, vy);
+      if (L < 1e-6) { vx = n1.x; vy = n1.y; } else { vx /= L; vy /= L; }
+      const k = 1 / Math.max(0.5, vx * n1.x + vy * n1.y);   // mitre, limited so sharp corners do not spike
+      const ll = b.gamePxToLatLng(p.x + vx * d * k, p.y + vy * d * k); out.push([ll.lng, ll.lat]);
+    }
+    return out;
+  }
   classify(pr) {
     const b = this.world.bridge, ppm = b.pxPerMeterX, n = pr.pts.length; let a = 0;
     for (let i = 0; i < n; i++) { const p = pr.pts[i], q = pr.pts[(i + 1) % n]; a += p.x * q.y - q.x * p.y; }
@@ -11566,7 +11586,7 @@ class BuildingDetail3D {
     let added = 0;
     for (const [, i] of fresh) {
       if (added >= room) break; const pr = col.prisms[i]; this.done.add(i); const c = this.classify(pr); if (c.area < 40) continue;
-      const ring = pr.lng.map((lo, k) => [lo, pr.lat[k]]); ring.push(ring[0]);
+      const ring = this._grown(pr); ring.push(ring[0]);
       this.feats.push({ type: 'Feature', geometry: { type: 'Polygon', coordinates: [ring] }, properties: { uid: i, render_height: pr.h, render_min_height: pr.base, wall: c.wall, roof: c.roof } });
       this.counts[c.type] = (this.counts[c.type] || 0) + 1; pr.uid = i; added++;
     }
