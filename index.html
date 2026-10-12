@@ -41,6 +41,8 @@ html, body {
   z-index: 0;
   display: none;
 }
+/* Red frame while the peanut is hurt (stepped, crisp: no blur). Sits above the map and canvas, below the HUD. */
+#hurtVignette { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; opacity: 0; box-shadow: inset 0 0 0 10px rgba(220,40,40,0.6), inset 0 0 0 22px rgba(220,40,40,0.22); }
 /* Night: a cheap CSS tint between the map and the sprite canvas. It multiplies the map's colours (deep blue, with a lighter pool
    around the peanut and darker edges) while the characters, weapons, bullets and effects on the canvas above stay fully bright. */
 #nightTint {
@@ -1444,7 +1446,7 @@ const EMBEDDED_ASSETS = {
 
     <!-- ===================== Start overlay (home page) ===================== -->
     <div id="startScreen" class="overlay homePage">
-      <div id="versionTag" class="versionTag">v3.85.2</div>
+      <div id="versionTag" class="versionTag">v3.86.0</div>
       <div id="homeSidebar" class="homeSidebar">
         <div class="homeSidebarTitle">Your Stats</div>
         <div class="homeSidebarStat">
@@ -4686,6 +4688,7 @@ class Player extends Entity {
     }
     this.currentWeapon.update(dt);
     if (this.invulnTimer > 0) this.invulnTimer -= dt;
+    if (this.hurtTimer > 0) this.hurtTimer -= dt;
 
     // Walking backward = moving against the direction the character is
     // facing (more than 90° away from it). Strafing sideways (exactly 90°)
@@ -4715,6 +4718,7 @@ class Player extends Entity {
     if (this.invulnTimer > 0) return;
     this.health = Utils.clamp(this.health - amount, 0, this.maxHealth);
     this.invulnTimer = 0.4;
+    this.hurtTimer = 0.28; this.hurtAmount = amount;   // visual feedback only (see Game._updateHurtFx)
     if (this.health <= 0) this.alive = false;
   }
 
@@ -4820,6 +4824,14 @@ class Player extends Entity {
         ctx.fillRect(cx - size / 2, cy - size / 2, size, size);
         ctx.restore();
       }
+      if (this.hurtTimer > 0.16) {   // first moments after a hit: the peanut flushes red
+        ctx.save();
+        ctx.globalCompositeOperation = 'source-atop';
+        ctx.globalAlpha = 0.55;
+        ctx.fillStyle = '#ff3b30';
+        ctx.fillRect(cx - size / 2, cy - size / 2, size, size);
+        ctx.restore();
+      }
     } else {
       // Fallback placeholder if the sprite assets haven't loaded (or
       // failed to load) — the game should never be unplayable/invisible
@@ -4916,6 +4928,7 @@ class Zombie extends Entity {
 
   update(dt, player, obstacles, worldWidth, worldHeight, navGrid) {
     if (this.hitFlashTimer > 0) this.hitFlashTimer -= dt;
+    if (this.flinchT > 0) this.flinchT -= dt;
     if (this.attackTimer > 0) this.attackTimer -= dt;
 
     const dist = Utils.distance(this.x, this.y, player.x, player.y);
@@ -5073,6 +5086,12 @@ class Zombie extends Entity {
     }
   }
 
+  // Visual-only recoil: the sprite is nudged away from the hit for a moment. Position, speed and attacks are untouched.
+  flinch(dx, dy) {
+    const L = Math.hypot(dx, dy) || 1, f = this.type.isBoss ? 0.5 : 1;
+    this.flinchX = dx / L * 4 * f; this.flinchY = dy / L * 2.4 * f; this.flinchT = 0.12;
+  }
+
   takeDamage(amount) {
     this.health -= amount;
     this.hitFlashTimer = 0.08;
@@ -5091,6 +5110,7 @@ class Zombie extends Entity {
     const visualSize = zombieVisualSize(this.type); // spriteDisplaySize x this type's *_ZOMBIE_SCALE (visual only)
     const cullMargin = Math.max(50, visualSize);
     const g0 = { x: p.x, y: p.y, depthScale: p.depthScale }; // the ground point (scale pivot)
+    if (this.flinchT > 0) { const fl = this.flinchT / 0.12; p.x += this.flinchX * fl; p.y += this.flinchY * fl; }   // flinch (drawing only)
     if (camera.rig3d && GAME3D.feetAnchor) p.y -= visualSize * 0.35; // 3D: stand the feet on the ground point
     if (p.x < -cullMargin || p.x > canvas.width + cullMargin || p.y < -cullMargin || p.y > canvas.height + cullMargin) return;
 
@@ -5455,6 +5475,143 @@ function _explosionPixelColor(dist) {
   return [70, 62, 56, 0.6]; // outer jagged fringe — smoke/ash, already-fainter regardless of the blast's own fade
 }
 
+// ---------------------------------------------------------------------
+// Combat feedback (visual only). One small manager for every short-lived effect: muzzle flashes, bullet impacts, zombie hits and
+// deaths, melee and chainsaw sparks, explosion shockwaves, pickup pulses. It only READS what the existing systems already decide
+// (a shot was fired, a bullet hit, a zombie died, a pickup was collected) - it never changes damage, fire rate, ammo, health or
+// collision. Effects are plain objects in one list (capped, expired every frame); particles are 2-px squares in a small palette.
+// ---------------------------------------------------------------------
+const FX_MUZZLE = {
+  pistol: { len: 7, w: 1, life: 0.05, rays: [0], cols: ['#fff7d0', '#ffd24a', '#e8902a'] },
+  shotgun: { len: 10, w: 2, life: 0.07, rays: [0, 0.32, -0.32], cols: ['#fff7d0', '#ffc94a', '#e8902a'] },
+  smg: { len: 6, w: 1, life: 0.04, rays: [0], cols: ['#fff7d0', '#ffd24a', '#e8902a'] },
+  rifle: { len: 9, w: 2, life: 0.05, rays: [0], cols: ['#ffffff', '#ffd24a', '#e8902a'] },
+  rpg: { len: 9, w: 3, life: 0.09, rays: [0], cols: ['#ffffff', '#ffc94a', '#e0701e'], smoke: true },
+  flamethrower: { len: 6, w: 2, life: 0.06, rays: [0], cols: ['#fff4c0', '#ffb02a', '#e2501e'] },
+};
+const FX_SPARK_COLS = ['#fff2b0', '#ffc94a', '#b8b4a6', '#7a786f'];
+const FX_DUST_COLS = ['#a89f8a', '#8e8672', '#c4bba4'];
+const FX_HIT_COLS = ['#ffffff', '#c0392b', '#8e2a2a', '#5c1c1c'];
+const FX_PULSE = { ammo: { c: '#f1c40f', c2: '#fff2a8' }, fuel: { c: '#e67e22', c2: '#ffd27a' }, health: { c: '#2ecc71', c2: '#c9ffd9' }, weapon: { c: '#9b59b6', c2: '#e6c8ff' }, unlock: { c: '#f5c542', c2: '#ffffff' } };
+
+class ZombieDeathFx {
+  constructor(zombie) {
+    this.zombie = zombie; this.x = zombie.x; this.y = zombie.y; this.age = 0; this.life = zombie.type.isBoss ? 0.75 : 0.5; this.isDeath = true;
+    const n = zombie.type.isBoss ? 14 : 7, cols = [zombie.type.color, '#2c3e1f', '#6b2a2a', '#9a9a96'];
+    this.debris = []; for (let i = 0; i < n; i++) { const a = Math.random() * Math.PI * 2, s = 30 + Math.random() * 60; this.debris.push({ vx: Math.cos(a) * s, vy: Math.sin(a) * s * 0.6 - 55, c: cols[i % cols.length] }); }
+  }
+  draw(ctx, camera, view) {
+    const z = this.zombie, t = this.age, ds = camera.worldToScreen(this.x, this.y, view);
+    const size = zombieVisualSize(z.type), g0 = { x: ds.x, y: ds.y, depthScale: ds.depthScale }, p = { x: ds.x, y: ds.y };
+    if (camera.rig3d && GAME3D.feetAnchor) p.y -= size * 0.35;
+    const sprite = pickSpriteFrame(ZOMBIE_SPRITES[z.type.id], z.facing, false, 0), flash = t < 0.09, ph = Math.max(0, (t - 0.09) / (this.life - 0.09));
+    if (isSpriteReady(sprite) && ph < 1) {
+      const sz = spriteScaledSize(ZOMBIE_SPRITES[z.type.id], sprite, size), feet = p.y + sz / 2, a = [1, 0.8, 0.55, 0.3, 0.12][Math.min(4, Math.floor(ph * 5))];
+      ctx.save(); camera.applyEntityScale(ctx, g0); ctx.imageSmoothingEnabled = false; ctx.globalAlpha = flash ? 1 : a;
+      ctx.translate(p.x, feet); ctx.scale(1 + ph * 0.15, flash ? 1 : Math.max(0.12, 1 - ph * 0.85)); ctx.translate(-p.x, -feet);   // crumples toward the ground
+      ctx.drawImage(sprite, p.x - sz / 2, p.y - sz / 2, sz, sz);
+      if (flash) { ctx.globalCompositeOperation = 'source-atop'; ctx.globalAlpha = 0.85; ctx.fillStyle = '#ffffff'; ctx.fillRect(p.x - sz / 2, p.y - sz / 2, sz, sz); }
+      ctx.restore();
+    }
+    // a few chunky pixels of debris thrown out of the body (no gore)
+    const dsc = ds.depthScale || 1, cy = camera.rig3d ? ds.y - size * 0.35 * GAME3D.entityScale * dsc : ds.y, u = 2 * dsc;
+    for (let i = 0; i < this.debris.length; i++) {
+      const d = this.debris[i]; if (t > this.life * 0.9 || (t > this.life * 0.6 && i % 2)) continue;
+      ctx.fillStyle = d.c; ctx.fillRect(Math.round((ds.x + d.vx * t * dsc) / u) * u, Math.round((cy + (d.vy * t + 130 * t * t) * dsc) / u) * u, u, u);
+    }
+  }
+}
+
+class CombatFX {
+  constructor() { this.list = []; this.deaths = []; this.max = 150; }
+  _push(f) { f.age = 0; this.list.push(f); if (this.list.length > this.max) this.list.shift(); return f; }
+  _burst(n, speed, base, spread, cols, life, extra) {   // n particles flung around angle `base` (screen space is resolved when drawn)
+    const ps = []; for (let i = 0; i < n; i++) { const a = base + (Math.random() - 0.5) * spread, s = speed * (0.5 + Math.random() * 0.7); ps.push({ a, s, c: cols[(Math.random() * cols.length) | 0] }); }
+    return Object.assign({ ps, life }, extra);
+  }
+  update(dt) {
+    let w = 0; for (let i = 0; i < this.list.length; i++) { const f = this.list[i]; f.age += dt; if (f.age < f.life) this.list[w++] = f; } this.list.length = w;
+    w = 0; for (let i = 0; i < this.deaths.length; i++) { const f = this.deaths[i]; f.age += dt; if (f.age < f.life) this.deaths[w++] = f; } this.deaths.length = w;
+  }
+  clear() { this.list.length = 0; this.deaths.length = 0; }
+  // --- creation (called from the existing combat code, after it has decided what happened) ---
+  muzzle(cfg, player, spec) {
+    if (!cfg || cfg.melee || cfg.thrown || !spec) return;
+    const m = FX_MUZZLE[cfg.id] || { len: 7, w: 1, life: 0.05, rays: [0], cols: ['#fff7d0', '#ffd24a', '#e8902a'] };
+    this._push({ t: 'muzzle', m, ox: spec.x - player.x, oy: spec.y - player.y, ang: spec.angle, life: m.life });   // stored relative to the player so it follows the weapon
+    if (m.smoke) this._push(this._burst(5, 40, spec.angle + Math.PI, 1.2, ['#c8c4b8', '#8e8a80', '#5f5c55'], 0.3, { t: 'smoke', x: spec.x, y: spec.y, rel: player, ox: spec.x - player.x, oy: spec.y - player.y }));
+  }
+  spark(b) {   // a bullet stopped by a building / the map wall
+    if (b.flame) return; const base = Math.atan2(b.vy, b.vx) + Math.PI;
+    this._push(this._burst(6, 70, base, 2.2, FX_SPARK_COLS, 0.22, { t: 'spark', x: b.x, y: b.y, g: 160 }));
+    this._push(this._burst(3, 18, base, 2.6, FX_DUST_COLS, 0.3, { t: 'spark', x: b.x, y: b.y, g: -10, big: true }));
+  }
+  dust(b) { this._dustN = (this._dustN || 0) + 1; if (this._dustN % 2) return; this._push(this._burst(3, 14, -Math.PI / 2, 2.4, FX_DUST_COLS, 0.26, { t: 'spark', x: b.x, y: b.y, g: -6, big: true })); }   // a shot landing on the ground at the end of its range
+  hit(b, z) {   // a bullet / flame striking a zombie
+    if (b.flame) { const n = performance.now(); if ((z._fxT || 0) > n) return; z._fxT = n + 110; this._push(this._burst(3, 40, Math.atan2(b.vy, b.vx), 2.4, ['#ffd24a', '#e2501e', '#fff4c0'], 0.18, { t: 'spark', x: z.x, y: z.y, g: -30, body: z })); return; }
+    this._push(this._burst(6, 55, Math.atan2(b.vy, b.vx), 1.6, FX_HIT_COLS, 0.18, { t: 'spark', x: b.x, y: b.y, g: 120, body: z }));
+  }
+  meleeHit(z, weapon, player) {   // a knife swing / chainsaw tick that connected
+    const n = performance.now(), saw = !!weapon.config.fuelTank;
+    if (saw) { if ((z._fxT || 0) > n) return; z._fxT = n + 90; }
+    const a = Math.atan2(z.y - player.y, z.x - player.x);
+    this._push(this._burst(saw ? 4 : 6, saw ? 50 : 60, a, saw ? 2.6 : 1.8, saw ? ['#fff2b0', '#ffc94a', '#8e2a2a'] : ['#ffffff', '#dfe6e9', '#c0392b'], saw ? 0.14 : 0.16, { t: 'spark', x: z.x, y: z.y, g: 100, body: z }));
+    if (!saw) this._push({ t: 'slash', x: z.x, y: z.y, ang: a, life: 0.1, body: z });
+  }
+  death(z) { this.deaths.push(new ZombieDeathFx(z)); if (this.deaths.length > 40) this.deaths.shift(); }
+  blast(x, y, r) { this._push({ t: 'blast', x, y, r, life: 0.35 }); this._push(this._burst(7, 26, -Math.PI / 2, 2.8, ['#8a867c', '#5f5c55', '#3a3833'], 0.7, { t: 'spark', x, y, g: -22, big: true })); }
+  pulse(x, y, kind) { this._push({ t: 'pulse', x, y, kind, life: kind === 'weapon' || kind === 'unlock' ? 0.6 : 0.42 }); }
+  // --- drawing (inside the already-scaled world context) ---
+  draw(ctx, camera, view, occ, k, anchor, withDeaths) {
+    if (withDeaths) for (const d of this.deaths) d.draw(ctx, camera, view);
+    if (!this.list.length) return;
+    const rig = camera.rig3d, lift = rig ? BUILDING_OCCLUSION_CONFIG.playerFeetOffset * PLAYER_SCALE * GAME3D.entityScale : 0;
+    ctx.save(); ctx.imageSmoothingEnabled = false;
+    for (const f of this.list) {
+      const t = f.age / f.life;
+      let gx = f.x, gy = f.y; if (f.t === 'muzzle') { gx = anchor.x + f.ox; gy = anchor.y + f.oy; } else if (f.rel) { gx = anchor.x + f.ox; gy = anchor.y + f.oy; }
+      if (f.body && f.body.alive !== undefined) { gx = f.body.x; gy = f.body.y; }
+      let vis = 1;
+      if (occ && f.t !== 'muzzle' && f.t !== 'pulse' && f.t !== 'smoke') { vis = occ.bulletVisibility({ x: gx, y: gy }, lift * k); if (vis < 0.2) continue; }   // never through a solid building
+      const p = camera.worldToScreen(gx, gy, view), ds = p.depthScale || 1, u = 2 * ds, ground = { x: p.x, y: p.y };
+      if (rig && f.t !== 'blast' && f.t !== 'pulse') p.y -= (f.body ? zombieVisualSize(f.body.type) * 0.3 * GAME3D.entityScale : lift) * ds;
+      const sq = (x, y, c, s = u) => { ctx.fillStyle = c; ctx.fillRect(Math.round(x / s) * s, Math.round(y / s) * s, s, s); };
+      ctx.globalAlpha = vis;
+      if (f.t === 'muzzle') {
+        const q = camera.worldToScreen(gx + Math.cos(f.ang) * 12, gy + Math.sin(f.ang) * 12, view); let dx = q.x - ground.x, dy = q.y - ground.y; const L = Math.hypot(dx, dy) || 1; dx /= L; dy /= L;
+        const m = f.m, shrink = t < 0.6 ? 1 : 0.55;
+        for (const r of m.rays) {
+          const c = Math.cos(r), s = Math.sin(r), rx = dx * c - dy * s, ry = dx * s + dy * c, n = Math.round(m.len * (r ? 0.7 : 1) * shrink);
+          for (let i = 0; i < n; i++) { const hw = Math.round(m.w * (1 - i / n)), col = i < n * 0.35 ? m.cols[0] : i < n * 0.7 ? m.cols[1] : m.cols[2];
+            for (let j = -hw; j <= hw; j++) sq(p.x + (rx * i - ry * j) * u * 0.9, p.y + (ry * i + rx * j) * u * 0.9, col); }
+        }
+      } else if (f.t === 'spark' || f.t === 'smoke') {
+        const sz = f.big ? u * 1.5 : u, grav = f.g || 0;
+        for (let i = 0; i < f.ps.length; i++) { const q = f.ps[i]; if (t > 0.65 && i % 2) continue;   // dissolves in steps, no alpha blur
+          sq(p.x + Math.cos(q.a) * q.s * f.age * ds, p.y + (Math.sin(q.a) * q.s * f.age + 0.5 * grav * f.age * f.age) * ds * (f.t === 'smoke' ? 1 : 0.8), q.c, sz); }
+      } else if (f.t === 'slash') {
+        const q = camera.worldToScreen(gx + Math.cos(f.ang) * 12, gy + Math.sin(f.ang) * 12, view); let dx = q.x - ground.x, dy = q.y - ground.y; const L = Math.hypot(dx, dy) || 1; dx /= L; dy /= L;
+        for (let i = -3; i <= 3; i++) sq(p.x + (dx * (8 - Math.abs(i) * 1.5) - dy * i * 1.6) * u * 0.8, p.y + (dy * (8 - Math.abs(i) * 1.5) + dx * i * 1.6) * u * 0.8, t < 0.5 ? '#ffffff' : '#dfe6e9');
+      } else if (f.t === 'blast') {   // a crisp pixel shockwave ring on the ground, plus a short flash at the centre
+        const rr = f.r * (0.25 + 0.75 * t), n = 20;
+        if (t < 0.18) { ctx.fillStyle = '#fff4c0'; const w = u * 5 * (1 - t / 0.18); ctx.fillRect(Math.round((ground.x - w / 2) / u) * u, Math.round((ground.y - w / 3) / u) * u, w, w * 0.66); }
+        ctx.globalAlpha = vis * (1 - t * 0.8);
+        for (let i = 0; i < n; i++) { const a = (i / n) * Math.PI * 2, e = camera.worldToScreen(gx + Math.cos(a) * rr, gy + Math.sin(a) * rr, view), eds = e.depthScale || 1; sq(e.x, e.y, t < 0.5 ? '#ffd24a' : '#b8b4a6', 2 * eds); }
+      } else if (f.t === 'pulse') {
+        const col = FX_PULSE[f.kind], rr = (f.kind === 'weapon' || f.kind === 'unlock' ? 30 : 22) * (0.3 + 0.7 * t), n = 16; ctx.globalAlpha = 1 - t * 0.85;
+        const base = rig ? { x: ground.x, y: ground.y - 6 * ds } : ground;
+        for (let i = 0; i < n; i++) { const a = (i / n) * Math.PI * 2; sq(base.x + Math.cos(a) * rr * ds, base.y + Math.sin(a) * rr * 0.55 * ds, i % 2 ? col.c : col.c2); }
+        const rise = 14 * t * ds;
+        if (f.kind === 'health') { for (let i = -2; i <= 2; i++) { sq(base.x + i * u, base.y - 14 * ds - rise, col.c2); if (i) sq(base.x, base.y - 14 * ds - rise + i * u, col.c2); } }
+        else if (f.kind === 'ammo') { for (let i = -1; i <= 1; i += 2) for (let j = 0; j < 3; j++) sq(base.x + i * 7 * ds, base.y - (8 + j * 4) * ds - rise, j ? col.c : col.c2); }
+        else if (f.kind === 'fuel') { for (let i = -2; i <= 2; i++) sq(base.x + i * 4 * ds, base.y - (6 + (i & 1 ? 7 : 12)) * ds - rise, i & 1 ? col.c : col.c2); }
+        else { for (let i = 0; i < 8; i++) { const a = (i / 8) * Math.PI * 2; for (let j = 1; j <= 2; j++) sq(base.x + Math.cos(a) * (rr * 0.6 + j * 5 * t * 4) * ds, base.y + Math.sin(a) * (rr * 0.35 + j * 3 * t * 4) * ds - rise * 0.5, j === 1 ? col.c2 : col.c); } }
+      }
+    }
+    ctx.restore();
+  }
+}
+
 class Game {
   constructor() {
     this.canvas = document.getElementById('gameCanvas');
@@ -5648,6 +5805,7 @@ class Game {
     this.pickups = [];
     this.floatingTexts = [];
     this.explosions = [];
+    this.fx = this.fx || new CombatFX(); this.fx.clear();   // combat feedback effects (muzzle flashes, impacts, hit / death / pickup effects)
     // 3D run: no map-generated / synthetic obstacles and no old extruded-block system —
     // collision comes from the MapTiler buildings (see NearbyCollision); this list is
     // filled in place by it. 2D fallback: exactly as before.
@@ -5779,7 +5937,7 @@ class Game {
     const player = this.player, px = player.x, py = player.y;
     const pv = w.props ? w.props.visible(snap.px, snap.py) : { decals: [], solid: [] };
     for (const e of pv.decals) occ.draw(ctx, k, occ.infoFor(e.x, e.y, 'prop', e.h / GAME3D.entityScale), (c) => e.draw(c, this.camera, view), { xray: 0 });   // flat ground details under everything
-    const items = [...pv.solid, ...this.pickups, ...this.zombies, player].sort((a, b) => (a === player ? snap.py : a.y) - (b === player ? snap.py : b.y));
+    const items = [...pv.solid, ...this.pickups, ...this.fx.deaths, ...this.zombies, player].sort((a, b) => (a === player ? snap.py : a.y) - (b === player ? snap.py : b.y));
     let obstructors = [];
     for (const e of items) {
       if (e === player) {
@@ -5788,6 +5946,8 @@ class Game {
       } else if (e instanceof Zombie) {
         const near = Math.hypot(e.x - snap.px, e.y - snap.py) <= GAME3D.zombieXrayRangePx;
         occ.draw(ctx, k, occ.infoFor(e.x, e.y, 'zombie', zombieVisualSize(e.type)), (c) => e.draw(c, this.camera, view), { xray: near ? GAME3D.xrayZombie : 0, exact: near });
+      } else if (e instanceof ZombieDeathFx) {
+        occ.draw(ctx, k, occ.infoFor(e.x, e.y, 'zombie', zombieVisualSize(e.zombie.type)), (c) => e.draw(c, this.camera, view), { xray: 0 });
       } else if (e instanceof Prop) {
         occ.draw(ctx, k, occ.infoFor(e.x, e.y, 'prop', e.h / GAME3D.entityScale), (c) => e.draw(c, this.camera, view, player), { xray: 0 });
       } else {
@@ -5801,6 +5961,7 @@ class Game {
       else if (vis >= 0.05) { ctx.save(); ctx.globalAlpha = Math.max(vis, 0.55); b.draw(ctx, this.camera, view); ctx.restore(); }
     }
     this._drawGrenades(ctx, view);
+    this.fx.draw(ctx, this.camera, view, occ, k, { x: snap.px, y: snap.py }, false);
     this._drawExplosions(ctx, view);
     this._drawFloatingTexts(ctx, view);
     ctx.restore();
@@ -6142,6 +6303,7 @@ class Game {
         const specs = this.player.tryShoot(); // array of bullet specs (1 per pellet) or null
         if (specs) {
           for (const spec of specs) this.bullets.push(new Bullet(spec));
+          this.fx.muzzle(weapon.config, this.player, specs[0]);
           Sound.shoot(weapon.config.id);
         }
       }
@@ -6184,6 +6346,7 @@ class Game {
             this._explodeBullet(bullet);
           } else {
             const died = zombie.takeDamage(bullet.damage);
+            this.fx.hit(bullet, zombie); zombie.flinch(bullet.vx, bullet.vy);
             bullet.alive = false;
             if (died) this._onZombieKilled(zombie);
             else Sound.zombieHit();
@@ -6227,7 +6390,7 @@ class Game {
       }
       if (hit) {
         if (bullet.explosive) this._explodeBullet(bullet);
-        else bullet.alive = false;
+        else { bullet.alive = false; this.fx.spark(bullet); }
       }
     }
 
@@ -6247,7 +6410,7 @@ class Game {
           bullet.x = Utils.clamp(bullet.x, minX, maxX);
           bullet.y = Utils.clamp(bullet.y, minY, maxY);
           if (bullet.explosive) this._explodeBullet(bullet);
-          else bullet.alive = false;
+          else { bullet.alive = false; this.fx.spark(bullet); }
         }
       }
     }
@@ -6266,7 +6429,7 @@ class Game {
           const added = current.config.fuelTank ? 0 : current.addReserveAmmo(pickup.amount);
           if (added > 0) {
             pickup.alive = false;
-            this._addFloatingText(pickup.x, pickup.y, `+${added} AMMO`, '#f1c40f');
+            this._addFloatingText(pickup.x, pickup.y, `+${added} AMMO`, '#f1c40f'); this.fx.pulse(pickup.x, pickup.y, 'ammo');
             Sound.pickup('ammo');
           }
           // If reserve is already full, leave the pickup on the ground
@@ -6279,14 +6442,14 @@ class Game {
           const added = held.config.fuelTank ? held.refuel() : 0; // refuses (pickup stays) when the tank is already full
           if (added > 0) {
             pickup.alive = false;
-            this._addFloatingText(pickup.x, pickup.y, 'GAS TANK REFILLED', '#e67e22');
+            this._addFloatingText(pickup.x, pickup.y, 'GAS TANK REFILLED', '#e67e22'); this.fx.pulse(pickup.x, pickup.y, 'fuel');
             Sound.pickup('ammo');
           }
         } else if (pickup.kind === 'health') {
           const healed = this.player.heal(pickup.amount);
           if (healed > 0) {
             pickup.alive = false;
-            this._addFloatingText(pickup.x, pickup.y, `+${healed} HP`, '#2ecc71');
+            this._addFloatingText(pickup.x, pickup.y, `+${healed} HP`, '#2ecc71'); this.fx.pulse(pickup.x, pickup.y, 'health');
             Sound.pickup('health');
           }
           // If health is already full, leave the medkit for later.
@@ -6295,7 +6458,7 @@ class Game {
           const added = this.player.addWeapon(weaponConfig);
           if (added) {
             pickup.alive = false;
-            this._addFloatingText(pickup.x, pickup.y, `${weaponConfig.name} EQUIPPED`, '#9b59b6');
+            this._addFloatingText(pickup.x, pickup.y, `${weaponConfig.name} EQUIPPED`, '#9b59b6'); this.fx.pulse(pickup.x, pickup.y, 'weapon');
             Sound.pickup('weapon');
           }
           // addWeapon() only returns false if somehow already owned —
@@ -6314,6 +6477,7 @@ class Game {
       obstacles: this.obstaclesAll || this.obstacles, // 3D: place unlock pickups outside ALL buildings, not just nearby ones
     });
     const newlyUnlocked = this.weaponUnlocks.consumeAnnouncements();
+    if (newlyUnlocked.length) this.fx.pulse(this.player.x, this.player.y, 'unlock');   // a weapon just unlocked
     if (newlyUnlocked.length === 1) {
       this.hud.showWeaponUnlockBanner(`New weapon unlocked: ${newlyUnlocked[0].name}! Find it on the map.`);
       this.weaponUnlockBannerTimer = 3.5;
@@ -6349,6 +6513,10 @@ class Game {
     }
     this.explosions = this.explosions.filter((e) => e.life > 0);
 
+    for (const b of this.bullets) if (!b.alive && b.life <= 0 && !b.flame && !b.explosive) this.fx.dust(b);   // expired in flight (not hit anything)
+    this.fx.update(dt);
+    this._updateHurtFx();
+
     // --- Cleanup dead entities ---
     this.bullets = this.bullets.filter((b) => b.alive);
     this.zombies = this.zombies.filter((z) => z.alive);
@@ -6383,6 +6551,7 @@ class Game {
   // Shared by both an ordinary direct-hit kill and an explosive splash
   // kill, so drop odds/floating feedback stay identical either way.
   _onZombieKilled(zombie) {
+    this.fx.death(zombie);   // short death effect (the zombie itself is removed from play as before)
     this.player.kills += 1;
     const drop = rollZombieDrop(zombie.x, zombie.y, this.player);
     if (drop) this.pickups.push(drop);
@@ -6444,6 +6613,16 @@ class Game {
     Sound.explosion();
   }
 
+  // Brief red frame around the screen while the peanut is hurt (set by Player.takeDamage only when damage really landed).
+  _updateHurtFx() {
+    if (!this._hurtEl) {
+      const el = document.createElement('div'); el.id = 'hurtVignette'; const hud = document.getElementById('hud');
+      if (hud && hud.parentNode) hud.parentNode.insertBefore(el, hud); else document.body.appendChild(el); this._hurtEl = el;
+    }
+    const p = this.player, t = p && p.hurtTimer > 0 ? p.hurtTimer / 0.28 : 0;
+    if (t !== this._hurtT) { this._hurtT = t; this._hurtEl.style.opacity = t ? Math.min(1, t * (0.55 + Math.min(0.45, (p.hurtAmount || 0) / 40))).toFixed(2) : '0'; }
+  }
+
   // Handles an explosive bullet (currently just the RPG) on impact.
   _explodeBullet(bullet) {
     bullet.alive = false;
@@ -6468,6 +6647,7 @@ class Game {
       if (Math.abs(Utils.angleDiff(angleToZombie, player.aimAngle)) > halfArc) continue;
 
       const died = zombie.takeDamage(weapon.config.damage);
+      this.fx.meleeHit(zombie, weapon, player); zombie.flinch(zombie.x - player.x, zombie.y - player.y);
       if (died) this._onZombieKilled(zombie);
       else if (!weapon.config.fuelTank) Sound.zombieHit(); // the chainsaw ticks 15x/s — its own buzz is enough, a hit sound per tick would be noise
     }
@@ -6659,6 +6839,7 @@ class Game {
   // before: recomputed-per-frame noise would just read as flicker, not
   // a shape smoothly growing outward.
   _addExplosion(x, y, maxRadius) {
+    this.fx.blast(x, y, maxRadius);   // shockwave ring + flash + smoke on top of the pixel burst below
     const GRID = 15; // odd, so there's a true center cell
     const half = Math.floor(GRID / 2);
     const cells = [];
@@ -6721,6 +6902,7 @@ class Game {
     this._drawWorldBounds(ctx, canvas);
     this._renderWorldObjects(ctx, canvas);
     this._drawGrenades(ctx, canvas);
+    this.fx.draw(ctx, this.camera, canvas, null, zoom, { x: this.player.x, y: this.player.y }, true);
     this._drawExplosions(ctx, canvas);
     this._drawFloatingTexts(ctx, canvas);
     ctx.restore();
