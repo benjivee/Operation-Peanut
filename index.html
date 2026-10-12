@@ -1446,7 +1446,7 @@ const EMBEDDED_ASSETS = {
 
     <!-- ===================== Start overlay (home page) ===================== -->
     <div id="startScreen" class="overlay homePage">
-      <div id="versionTag" class="versionTag">v3.88.1</div>
+      <div id="versionTag" class="versionTag">v3.88.3</div>
       <div id="homeSidebar" class="homeSidebar">
         <div class="homeSidebarTitle">Your Stats</div>
         <div class="homeSidebarStat">
@@ -2163,6 +2163,8 @@ const Utils = {
   },
 
   resolveCircleRect(cx, cy, radius, rect) {
+    // Water (see WaterZones3D): the river polygon decides, and bridges are walkable.
+    if (rect.isWater) return rect.body.resolve(cx, cy, radius, rect.waterZone);
     // Extruded buildings collide as the exact SHAPE the player sees — the
     // real footprint polygon swept up by the block height — instead of the
     // old bounding rectangle (see BuildingCollision, applyBuildingExtrusion).
@@ -2850,6 +2852,7 @@ class InputManager {
 // player, weapons, bullets, effects) is drawn relative to the screen.
 // 1.0 = original scale, >1 zooms in (sees less map), <1 zooms out.
 // Live tweak from the browser console:  game.camera.zoom = 1.5
+// (This is the flat 2D fallback's zoom. The 3D city has its own: CAMERA_ZOOM_3D.)
 const CAMERA_ZOOM = 1.25;
 
 // Visual-only character scales, applied on top of the camera zoom.
@@ -4598,7 +4601,7 @@ class Player extends Entity {
       this.canSprint = true;
     }
 
-    const speed = this.isSprinting ? this.speed * CONFIG.PLAYER.sprintSpeedMultiplier : this.speed;
+    const speed = (this.isSprinting ? this.speed * CONFIG.PLAYER.sprintSpeedMultiplier : this.speed) * (this.waterSlow || 1);   // waterSlow < 1 while wading through a stream (WaterZones3D)
     this.x += move.x * speed * dt;
     this.y += move.y * speed * dt;
 
@@ -5004,8 +5007,9 @@ class Zombie extends Entity {
       }
 
       const dir = Utils.directionTo(this.x, this.y, targetX, targetY);
-      this.x += dir.x * this.speed * dt;
-      this.y += dir.y * this.speed * dt;
+      const chaseSpeed = this.speed * (this.waterSlow || 1);   // slower while wading through a stream (WaterZones3D)
+      this.x += dir.x * chaseSpeed * dt;
+      this.y += dir.y * chaseSpeed * dt;
 
       if (obstacles) {
         for (const obstacle of obstacles) {
@@ -5564,6 +5568,9 @@ class CombatFX {
     if (!saw) this._push({ t: 'slash', x: z.x, y: z.y, ang: a, life: 0.1, body: z });
   }
   death(z) { this.deaths.push(new ZombieDeathFx(z)); if (this.deaths.length > 40) this.deaths.shift(); }
+  splash(x, y, n = 4) {   // little blue pixels kicked up by feet in a stream (WaterZones3D)
+    this._push(this._burst(n, 46, -Math.PI / 2, 2.8, FX_WATER_COLS, 0.34, { t: 'spark', x, y, g: 170, ground: true }));
+  }
   blast(x, y, r) { this._push({ t: 'blast', x, y, r, life: 0.35 }); this._push(this._burst(7, 26, -Math.PI / 2, 2.8, ['#8a867c', '#5f5c55', '#3a3833'], 0.7, { t: 'spark', x, y, g: -22, big: true })); }
   pulse(x, y, kind) { this._push({ t: 'pulse', x, y, kind, life: kind === 'weapon' || kind === 'unlock' ? 0.6 : 0.42 }); }
   // --- drawing (inside the already-scaled world context) ---
@@ -5579,7 +5586,7 @@ class CombatFX {
       let vis = 1;
       if (occ && f.t !== 'muzzle' && f.t !== 'pulse' && f.t !== 'smoke') { vis = occ.bulletVisibility({ x: gx, y: gy }, lift * k); if (vis < 0.2) continue; }   // never through a solid building
       const p = camera.worldToScreen(gx, gy, view), ds = p.depthScale || 1, u = 2 * ds, ground = { x: p.x, y: p.y };
-      if (rig && f.t !== 'blast' && f.t !== 'pulse') p.y -= (f.body ? zombieVisualSize(f.body.type) * 0.3 * GAME3D.entityScale : lift) * ds;
+      if (rig && f.t !== 'blast' && f.t !== 'pulse' && !f.ground) p.y -= (f.body ? zombieVisualSize(f.body.type) * 0.3 * GAME3D.entityScale : lift) * ds;
       const sq = (x, y, c, s = u) => { ctx.fillStyle = c; ctx.fillRect(Math.round(x / s) * s, Math.round(y / s) * s, s, s); };
       ctx.globalAlpha = vis;
       if (f.t === 'muzzle') {
@@ -6232,6 +6239,7 @@ class Game {
   _update(dt) {
     const world = CONFIG.WORLD;
     if (this.world3d) this._world3dPreUpdate(); // 3D run: refresh the nearby-building collision list + debug keys
+    if (this.world3d && this.world3d.water) this.world3d.water.tick(dt, this); // streams: slow whoever wades in them + splash pixels
     this.survivalTime += dt;
 
     // --- Player ---
@@ -6379,7 +6387,7 @@ class Game {
       const x0 = Math.min(sx, ex), x1 = Math.max(sx, ex), y0 = Math.min(sy, ey), y1 = Math.max(sy, ey);
       let near = null;
       for (const o of this.obstacles) {
-        if (o.isProp && !o.stopsShots) continue;   // low scenery (barriers, crates ...): shots fly over it. Cars, tree trunks and lamp posts are solid and stop shots.
+        if (o.isWater || (o.isProp && !o.stopsShots)) continue;   // low scenery (barriers, crates ...): shots fly over it. Cars, tree trunks and lamp posts are solid and stop shots.
         const r = Math.hypot(o.halfWidth, o.halfHeight) + bullet.radius;
         if (o.x + r < x0 || o.x - r > x1 || o.y + r < y0 || o.y - r > y1) continue;
         (near || (near = [])).push(o);
@@ -6722,7 +6730,7 @@ class Game {
     if (dist < 1 || !this.world3d) return { x: tx, y: ty };
     const ppm = this.world3d.bridge.pxPerMeterX, R = 4;
     const x0 = Math.min(sx, tx), x1 = Math.max(sx, tx), y0 = Math.min(sy, ty), y1 = Math.max(sy, ty);
-    const near = this.obstacles.filter((o) => { if (o.isProp) return false; const r = Math.hypot(o.halfWidth, o.halfHeight) + R; return !(o.x + r < x0 || o.x - r > x1 || o.y + r < y0 || o.y - r > y1); });
+    const near = this.obstacles.filter((o) => { if (o.isProp || o.isWater) return false; const r = Math.hypot(o.halfWidth, o.halfHeight) + R; return !(o.x + r < x0 || o.x - r > x1 || o.y + r < y0 || o.y - r > y1); });
     if (!near.length) return { x: tx, y: ty };
     const steps = Math.max(2, Math.ceil(dist / 4));
     let lastX = sx, lastY = sy;
@@ -10221,12 +10229,17 @@ class MapTilerCoordinateBridge {
  */
 
 // ---- Gameplay camera (3D). Everything about the camera lives here. ----------------
-const CAMERA_DISTANCE = 240;     // m: camera -> peanut distance at CAMERA_ZOOM 1 (for a 720 px tall window)
+const CAMERA_DISTANCE = 240;     // m: camera -> peanut distance at zoom 1 (for a 720 px tall window)
+// CAMERA_ZOOM_3D: how close the gameplay camera is in the 3D city. This ONE number scales the whole view together:
+// the map, buildings, roads, trees, cars, zombies, the peanut, bullets and effects, so their proportions to each other never change.
+// 1.25 = the old (too far out) view, 2.0 = close-up default, 2.4 = closer, 1.6 = a bit farther. Live tweak from the browser console:  CAMERA_ZOOM_3D = 2.4
+// (the character size RELATIVE to the city is a separate setting: GAME3D.entityScale; leave it alone unless the proportions themselves need to change)
+let CAMERA_ZOOM_3D = 2.0;
 const CAMERA_PITCH = 60;         // degrees from straight down: 0 = top-down, 60 = 3/4 action-shooter angle
 const CAMERA_FOLLOW_SPEED = 10;  // 1/s: how tightly the camera tracks the peanut (higher = snappier, 0 = rigid)
-// CAMERA_ZOOM (defined with the 2D camera) scales the whole view: 1.25 = 25% closer.
+// CAMERA_ZOOM_3D (just above) scales the whole 3D view: 2.0 = twice as close as zoom 1. (CAMERA_ZOOM near the top is the flat 2D fallback's zoom.)
 // CAMERA_HEIGHT is derived, not set: camera height above the ground = distance * cos(pitch).
-function cameraHeightMeters() { return (CAMERA_DISTANCE / CAMERA_ZOOM) * Math.cos(CAMERA_PITCH * Math.PI / 180); }
+function cameraHeightMeters() { return (CAMERA_DISTANCE / CAMERA_ZOOM_3D) * Math.cos(CAMERA_PITCH * Math.PI / 180); }
 
 const GAME3D = {
   // Master switch. Also: add ?mode=2d to the URL to force the original 2D map.
@@ -10479,12 +10492,12 @@ class GameplayCamera3D {
 
   // CAMERA_DISTANCE -> map zoom. MapLibre's vertical field of view has
   // tan(fov/2) = 1/3, so a camera D meters from its target for a 720 px window sees
-  // 720 / (2 * D / 3) screen px per meter at the target; CAMERA_ZOOM multiplies that.
+  // 720 / (2 * D / 3) screen px per meter at the target; CAMERA_ZOOM_3D multiplies that.
   // (Independent of the window height, so the art keeps its size on any screen.)
   // World size = tileSize * 2^z px per Mercator unit => px per meter = tileSize*2^z*unitsPerMeter.
   targetZoom() {
     const b = this.bridge;
-    const pxPerMeter = (720 / (2 * CAMERA_DISTANCE / 3)) * CAMERA_ZOOM;
+    const pxPerMeter = (720 / (2 * CAMERA_DISTANCE / 3)) * CAMERA_ZOOM_3D;
     return Math.log2(pxPerMeter / (GAME3D.tileSizePx * Mercator.unitsPerMeter(b.originLat)));
   }
 
@@ -11607,6 +11620,201 @@ class BuildingDetail3D {
   }
 }
 
+// ---------------------------------------------------------------------
+// Water: big water blocks, small streams slow you down.
+// Built from the same MapTiler vector tiles the map is painted from, so what you see is what you collide with:
+//   - 'water' polygons (rivers, lakes, ponds)  -> solid ground-level obstacles for the peanut and every zombie
+//                                                 (bullets and grenades fly over water; spawns and pickups avoid it)
+//   - 'waterway' lines (streams, ditches ...)  -> shallow water: walking in it is slower and kicks up little blue pixels
+//   - bridges ('transportation', brunnel = bridge) can be walked over water, and a stream under a bridge does nothing
+// Tune everything in WATER. Set WATER.enabled = false to switch the whole system off.
+// ---------------------------------------------------------------------
+const WATER = {
+  enabled: true,
+  riverBlocks: true,          // false = big water no longer blocks movement
+  streamSpeedMult: 0.5,       // movement speed while standing in a stream (1 = no slowdown, 0.5 = half speed)
+  slowZombies: true,          // zombies wading through a stream are slowed the same way
+  streamHalfWidthM: 2.0,      // how far from a stream's line still counts as "in it" (metres, each side) ...
+  streamMinHalfWidthPx: 10,   // ... but never narrower than this (px), so thin lines are still easy to step into
+  minPondAreaM2: 12,          // water bodies smaller than this (puddles) do not block
+  bridgeMinHalfWidthM: 2.5,   // narrowest bridge deck that can be crossed (metres, each side of its centre line)
+  bridgeMarginPx: 20,         // stepping off a bridge into the water pushes you back onto the deck inside this margin
+  splash: { playerEvery: 0.06, idleEvery: 0.38, zombieEvery: 0.18, zombieRange: 900, maxFx: 100, count: 4, idleCount: 2 },
+};
+const FX_WATER_COLS = ['#bfe6ff', '#7cc4f5', '#e8f7ff', '#4d9de0'];   // little pixels: light spray, mid blue, white glint, deeper blue
+
+// One water polygon with a lazy coarse grid, so a circle only ever looks at the few edges next to it
+// (a river can have hundreds of vertices; every zombie asks every frame).
+class WaterBody {
+  constructor(pts) {
+    this.pts = pts; this.cs = 48; this.edges = new Map(); this.cls = new Map();
+    let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
+    for (const p of pts) { if (p.x < x0) x0 = p.x; if (p.x > x1) x1 = p.x; if (p.y < y0) y0 = p.y; if (p.y > y1) y1 = p.y; }
+    this.x0 = x0; this.y0 = y0; this.x1 = x1; this.y1 = y1;
+    const n = pts.length, cs = this.cs;
+    for (let i = 0; i < n; i++) {
+      const a = pts[i], b = pts[(i + 1) % n];
+      for (let gx = Math.floor(Math.min(a.x, b.x) / cs); gx <= Math.floor(Math.max(a.x, b.x) / cs); gx++)
+        for (let gy = Math.floor(Math.min(a.y, b.y) / cs); gy <= Math.floor(Math.max(a.y, b.y) / cs); gy++) {
+          const k = (gx + 5000) * 10000 + (gy + 5000); let l = this.edges.get(k); if (!l) this.edges.set(k, l = []); l.push(i);
+        }
+    }
+  }
+  // 0 = open ground, 1 = fully water, 2 = the shoreline passes through this cell
+  cell(gx, gy) {
+    const k = (gx + 5000) * 10000 + (gy + 5000); let c = this.cls.get(k);
+    if (c === undefined) { c = this.edges.has(k) ? 2 : (Utils.pointInPolygon((gx + 0.5) * this.cs, (gy + 0.5) * this.cs, this.pts) ? 1 : 0); this.cls.set(k, c); }
+    return c;
+  }
+  _scan(cx, cy, i) {   // distance^2 from (cx, cy) to edge i; the nearest point lands in this._qx/_qy
+    const pts = this.pts, a = pts[i], b = pts[(i + 1) % pts.length], ex = b.x - a.x, ey = b.y - a.y, l2 = ex * ex + ey * ey;
+    let u = l2 > 0 ? ((cx - a.x) * ex + (cy - a.y) * ey) / l2 : 0; u = u < 0 ? 0 : u > 1 ? 1 : u;
+    const px = a.x + ex * u, py = a.y + ey * u, d2 = (cx - px) * (cx - px) + (cy - py) * (cy - py);
+    if (d2 < this._best) { this._best = d2; this._qx = px; this._qy = py; this._edge = i; }
+  }
+  // Same contract as Utils.resolveCircleRect: null if the circle is clear, otherwise the centre moved out of the water.
+  resolve(cx, cy, r, zone) {
+    if (cx + r < this.x0 || cx - r > this.x1 || cy + r < this.y0 || cy - r > this.y1) return null;
+    const cs = this.cs, g0 = Math.floor((cx - r) / cs), g1 = Math.floor((cx + r) / cs), h0 = Math.floor((cy - r) / cs), h1 = Math.floor((cy + r) / cs);
+    let has = 0;
+    for (let gx = g0; gx <= g1; gx++) for (let gy = h0; gy <= h1; gy++) has |= 1 << this.cell(gx, gy);
+    if (!(has & 6)) return null;                       // every cell around the circle is open ground
+    const cc = this.cell(Math.floor(cx / cs), Math.floor(cy / cs));
+    const inside = cc === 1 ? true : cc === 0 ? false : Utils.pointInPolygon(cx, cy, this.pts);
+    this._best = Infinity; this._qx = 0; this._qy = 0; this._edge = 0;
+    if (has & 4) for (let gx = g0; gx <= g1; gx++) for (let gy = h0; gy <= h1; gy++) { const l = this.edges.get((gx + 5000) * 10000 + (gy + 5000)); if (l) for (const i of l) this._scan(cx, cy, i); }
+    if (inside && !(this._best <= r * r)) { this._best = Infinity; for (let i = 0; i < this.pts.length; i++) this._scan(cx, cy, i); }   // deep in the water: the shore is further than the local cells
+    if (!inside && !(this._best < r * r)) return null;
+    if (zone) {   // bridges: walkable over the water; the deck edges act as rails
+      const bi = zone.nearBridge(cx, cy);
+      if (bi) {
+        if (bi.d <= bi.hw) return null;
+        if (inside) { const k = bi.hw / bi.d; return { x: bi.qx + (cx - bi.qx) * k, y: bi.qy + (cy - bi.qy) * k }; }
+      }
+    }
+    const d = Math.sqrt(this._best), qx = this._qx, qy = this._qy;
+    if (inside) {
+      let nx, ny;
+      if (d > 1e-6) { nx = (qx - cx) / d; ny = (qy - cy) / d; }
+      else { const a = this.pts[this._edge], b = this.pts[(this._edge + 1) % this.pts.length], ex = b.x - a.x, ey = b.y - a.y, l = Math.hypot(ex, ey) || 1; nx = -ey / l; ny = ex / l; if (Utils.pointInPolygon(qx + nx * 0.5, qy + ny * 0.5, this.pts)) { nx = -nx; ny = -ny; } }
+      return { x: qx + nx * r, y: qy + ny * r };
+    }
+    const push = r - d; return { x: cx + ((cx - qx) / d) * push, y: cy + ((cy - qy) / d) * push };
+  }
+}
+
+class WaterZones3D {
+  constructor(world) {
+    this.world = world; this.keys = new Set(); this.streamGrid = new Map(); this.bridgeGrid = new Map();
+    this.stats = { bodies: 0, streams: 0, bridges: 0 }; this.runs = 0; this._prisms = -1; this._n = 0; this.t = { p: 0, z: 0 }; this.streamReach = null;
+  }
+  _k(cx, cy) { return (cx + 5000) * 10000 + (cy + 5000); }
+  _put(grid, ax, ay, bx, by, reach, item) {   // register a segment in every 64 px cell it can reach
+    const C = 64;
+    for (let cx = Math.floor((Math.min(ax, bx) - reach) / C); cx <= Math.floor((Math.max(ax, bx) + reach) / C); cx++)
+      for (let cy = Math.floor((Math.min(ay, by) - reach) / C); cy <= Math.floor((Math.max(ay, by) + reach) / C); cy++) {
+        const k = this._k(cx, cy); let a = grid.get(k); if (!a) grid.set(k, a = []); a.push(item);
+      }
+  }
+  _near(grid, x, y) {   // the closest segment whose reach covers (x, y): { d, hw, qx, qy } or null
+    const a = grid.get(this._k(Math.floor(x / 64), Math.floor(y / 64))); if (!a) return null;
+    let best = null;
+    for (const s of a) {
+      const vx = s[2] - s[0], vy = s[3] - s[1], L = vx * vx + vy * vy || 1, t = Math.max(0, Math.min(1, ((x - s[0]) * vx + (y - s[1]) * vy) / L));
+      const qx = s[0] + vx * t, qy = s[1] + vy * t, d = Math.hypot(x - qx, y - qy);
+      if (d <= s[4] && (!best || d - s[5] < best.d - best.hw)) best = { d, hw: s[5], qx, qy };
+    }
+    return best;
+  }
+  nearBridge(x, y) { return this.bridgeGrid.size ? this._near(this.bridgeGrid, x, y) : null; }
+  onBridge(x, y) { const b = this.nearBridge(x, y); return !!b && b.d <= b.hw; }
+  streamAt(x, y) { const s = this._near(this.streamGrid, x, y); return !!s && !this.onBridge(x, y); }
+
+  _lines(g) { return !g ? [] : g.type === 'LineString' ? [g.coordinates] : g.type === 'MultiLineString' ? g.coordinates : []; }
+  _fresh(kind, line) { const a = line[0], z = line[line.length - 1], k = kind + '|' + line.length + '|' + a[0].toFixed(6) + ',' + a[1].toFixed(6) + '|' + z[0].toFixed(6) + ',' + z[1].toFixed(6); if (this.keys.has(k)) return false; this.keys.add(k); return true; }
+  _bridge(f) {
+    const pr = f.properties || {}; if (pr.brunnel !== 'bridge') return;
+    const b = this.world.bridge, ppm = b.pxPerMeterX, hwM = Math.max(PropField3D.HALF_M[pr.class] || 0, WATER.bridgeMinHalfWidthM), hw = hwM * ppm, reach = hw + WATER.bridgeMarginPx;
+    for (const line of this._lines(f.geometry)) {
+      if (line.length < 2 || !this._fresh('b', line)) continue;
+      const pts = line.map(([lo, la]) => b.latLngToGamePx(la, lo));
+      for (let i = 0; i + 1 < pts.length; i++) { const a = pts[i], c = pts[i + 1]; this._put(this.bridgeGrid, a.x, a.y, c.x, c.y, reach, [a.x, a.y, c.x, c.y, reach, hw]); this.stats.bridges++; }
+    }
+  }
+  _stream(f) {
+    const pr = f.properties || {}; if (pr.brunnel === 'tunnel') return;   // culverts / piped streams
+    const b = this.world.bridge, ppm = b.pxPerMeterX, hw = Math.max(WATER.streamHalfWidthM * ppm, WATER.streamMinHalfWidthPx);
+    for (const line of this._lines(f.geometry)) {
+      if (line.length < 2 || !this._fresh('s', line)) continue;
+      const pts = line.map(([lo, la]) => b.latLngToGamePx(la, lo));
+      for (let i = 0; i + 1 < pts.length; i++) { const a = pts[i], c = pts[i + 1]; this._put(this.streamGrid, a.x, a.y, c.x, c.y, hw, [a.x, a.y, c.x, c.y, hw, hw]); this.stats.streams++; }
+    }
+  }
+  static _simplify(pts, tol) {   // Douglas-Peucker: fewer vertices, same shape
+    if (pts.length < 8) return pts;
+    const keep = new Uint8Array(pts.length); keep[0] = keep[pts.length - 1] = 1;
+    const stack = [[0, pts.length - 1]];
+    while (stack.length) {
+      const [s, e] = stack.pop(); const a = pts[s], b = pts[e], vx = b.x - a.x, vy = b.y - a.y, L = Math.hypot(vx, vy) || 1;
+      let md = 0, mi = -1;
+      for (let i = s + 1; i < e; i++) { const d = Math.abs((pts[i].x - a.x) * vy - (pts[i].y - a.y) * vx) / L; if (d > md) { md = d; mi = i; } }
+      if (mi >= 0 && md > tol) { keep[mi] = 1; stack.push([s, mi], [mi, e]); }
+    }
+    return pts.filter((_, i) => keep[i]);
+  }
+  _river(f) {
+    const g = f.geometry; if (!g) return 0;
+    const rings = g.type === 'Polygon' ? [g.coordinates[0]] : g.type === 'MultiPolygon' ? g.coordinates.map((q) => q[0]) : [];
+    const w = this.world, b = w.bridge, col = w.collision, ppm = b.pxPerMeterX; let added = 0;
+    for (const ring of rings) {
+      if (!ring || ring.length < 4) continue;
+      const line = ring.slice(0, -1); if (!this._fresh('w', ring)) continue;
+      let pts = line.map(([lo, la]) => b.latLngToGamePx(la, lo));
+      let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9, area = 0;
+      for (let i = 0; i < pts.length; i++) { const p = pts[i], q = pts[(i + 1) % pts.length]; x0 = Math.min(x0, p.x); x1 = Math.max(x1, p.x); y0 = Math.min(y0, p.y); y1 = Math.max(y1, p.y); area += p.x * q.y - q.x * p.y; }
+      if (x1 < -200 || x0 > b.worldW + 200 || y1 < -200 || y0 > b.worldH + 200) continue;          // nowhere near the playable area
+      if (Math.abs(area) / 2 / (ppm * b.pxPerMeterY) < WATER.minPondAreaM2) continue;                // a puddle
+      pts = WaterZones3D._simplify(pts, Math.max(0.4 * ppm, 0.75));
+      if (pts.length < 3) continue;
+      const body = new WaterBody(pts), bnd = BuildingCollision._bounds(pts);
+      const o = new Obstacle((bnd.minX + bnd.maxX) / 2, (bnd.minY + bnd.maxY) / 2, bnd.maxX - bnd.minX, bnd.maxY - bnd.minY, '#4a7f86', 0);
+      o.isWater = true; o.body = body; o.waterZone = this; o.draw = () => {};   // never painted (the map already shows the water); the F-key collision debug still outlines it
+      o.collisionPieces = [{ pts, bounds: bnd }]; o.collisionBounds = bnd;
+      col.all.push(o); added++; this.stats.bodies++;
+    }
+    return added;
+  }
+  refresh() {
+    const w = this.world, r = w.renderer, col = w.collision;
+    if (!WATER.enabled || !r.map || !r.vectorSource || !col || !w.bridge) return;
+    this._n++;
+    const changed = col.prisms.length !== this._prisms; this._prisms = col.prisms.length;
+    if (this.runs >= 6 && !changed && this._n % 5) return;   // new tiles stream in as the peanut moves: look again when buildings arrive
+    this.runs++;
+    const q = (layer) => { try { return r.map.querySourceFeatures(r.vectorSource, { sourceLayer: layer }); } catch (e) { return []; } };
+    for (const f of q('transportation')) this._bridge(f);
+    for (const f of q('waterway')) this._stream(f);
+    let added = 0; if (WATER.riverBlocks) for (const f of q('water')) added += this._river(f);
+    if (added) { col.dirty = true; if (w.onBuildingsAdded) w.onBuildingsAdded(); console.log('[water] ' + this.stats.bodies + ' water bodies block, ' + this.stats.streams + ' stream segments slow, ' + this.stats.bridges + ' bridge segments'); }
+  }
+  // Every frame (3D runs): slow whoever stands in a stream and kick up little blue pixels around their feet.
+  tick(dt, game) {
+    const p = game.player; if (!WATER.enabled || !p) return;
+    if (!this.streamGrid.size) { p.waterSlow = 1; for (const z of game.zombies) z.waterSlow = 1; return; }
+    const S = WATER.splash, fx = game.fx, inP = this.streamAt(p.x, p.y);
+    p.waterSlow = inP ? WATER.streamSpeedMult : 1;
+    this.t.p -= dt;
+    if (inP && this.t.p <= 0) { this.t.p = p.isMoving ? S.playerEvery : S.idleEvery; fx.splash(p.x, p.y, p.isMoving ? S.count : S.idleCount); }
+    this.t.z -= dt; const zGo = this.t.z <= 0; if (zGo) this.t.z = S.zombieEvery;
+    for (const z of game.zombies) {
+      if (z.alive === false) { z.waterSlow = 1; continue; }
+      const inZ = this.streamAt(z.x, z.y);
+      z.waterSlow = inZ && WATER.slowZombies ? WATER.streamSpeedMult : 1;
+      if (inZ && zGo && z.isMoving && fx.list.length < S.maxFx && Math.hypot(z.x - p.x, z.y - p.y) < S.zombieRange) fx.splash(z.x, z.y, 2);
+    }
+  }
+}
+
 class MapTilerGameWorld {
   constructor(game) {
     this.game = game;
@@ -11615,7 +11823,7 @@ class MapTilerGameWorld {
     this.overlay = new WorldOverlay3D(this);
     this.occlusion = new BuildingOcclusion3D(this);
     this.fade = new BuildingFade3D(this);
-    this.detail = new BuildingDetail3D(this); this.props = new PropField3D(this); this._detailTimer = 0;
+    this.detail = new BuildingDetail3D(this); this.props = new PropField3D(this); this.water = new WaterZones3D(this); this._detailTimer = 0;
     this.onBuildingsAdded = null; // Game rebuilds its zombie nav grid when this fires
     this._buildingTimer = 0; this._footTimer = 99; this._footprintPx = 600;
   }
@@ -11697,7 +11905,8 @@ class MapTilerGameWorld {
     if (this._buildingTimer > 1) { this._buildingTimer = 0; this.refreshBuildingCollision(false); } // streaming: pick up buildings from new tiles
     if (this._footTimer > 0.5 && this.renderer.matrix) { this._footTimer = 0; this._updateFootprint(); }
     this._detailTimer += dt;
-    if (this._detailTimer > 1.5) { this._detailTimer = 0; try { this.detail.update(); this.props.refresh(); } catch (err) { console.warn('[detail] update failed:', err.message); } }
+    if (this._detailTimer > 1.5) { this._detailTimer = 0; try { this.detail.update(); this.props.refresh(); } catch (err) { console.warn('[detail] update failed:', err.message); }
+      try { this.water.refresh(); } catch (err) { console.warn('[water] update failed:', err.message); } }
     this.detail.syncFade();
   }
   hasMatrix() { return !!this.renderer.matrix; }
@@ -11753,11 +11962,11 @@ class MapTilerGameWorld {
       origin: { lat: b.originLat, lng: b.originLng },
       mapZoom: this.map ? this.map.getZoom() : null,
       pixelsPerGamePixel: p ? this.camera.pixelScaleAt(p.x, p.y, null) : null,
-      expectedPixelsPerGamePixel: CAMERA_ZOOM,
+      expectedPixelsPerGamePixel: CAMERA_ZOOM_3D,
       centerErrorPx: this.camera.centerErr,
       terrainOk: this.renderer.terrainOk, buildingsOk: this.renderer.buildingsOk,
       collision: { total: this.collision.all.length, active: this.collision.active.length, rebuilds: this.collision.rebuilds, skipped: this.collision.skipped },
-      camera: { distance: CAMERA_DISTANCE, effectiveDistance: CAMERA_DISTANCE / CAMERA_ZOOM, pitch: CAMERA_PITCH, followSpeed: CAMERA_FOLLOW_SPEED, heightMeters: cameraHeightMeters() },
+      camera: { distance: CAMERA_DISTANCE, effectiveDistance: CAMERA_DISTANCE / CAMERA_ZOOM_3D, pitch: CAMERA_PITCH, followSpeed: CAMERA_FOLLOW_SPEED, heightMeters: cameraHeightMeters() },
       depth: { prisms: this.collision.prisms.length, ...this.occlusion.stats, fadeMode: this.fade.mode, buildingsThatCannotFade: this.fade.unfadable, fadedBuildings: this.fade.ids.size, fadeOpacity: this.fade.opacity },
     };
   }
