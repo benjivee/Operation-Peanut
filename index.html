@@ -1446,7 +1446,7 @@ const EMBEDDED_ASSETS = {
 
     <!-- ===================== Start overlay (home page) ===================== -->
     <div id="startScreen" class="overlay homePage">
-      <div id="versionTag" class="versionTag">v3.88.4</div>
+      <div id="versionTag" class="versionTag">v3.88.5</div>
       <div id="homeSidebar" class="homeSidebar">
         <div class="homeSidebarTitle">Your Stats</div>
         <div class="homeSidebarStat">
@@ -11255,7 +11255,7 @@ class WorldOverlay3D {
 const OP_DETAIL = {
   buildings: true, props: true,
   overlayGrowM: 0.35,      // the window / roof overlay is this much larger than the wall behind it (stops z-fighting flicker)
-  pixelSize: 2,            // how chunky the building pixels are: 1 = fine (the old look), 2 = chunky (same pixel size as the ground textures), 4 = very chunky. The windows stay the same size and spacing; only the pixels get bigger (and the tiniest details drop out).
+  pixelSize: 1,            // how chunky the building pixels are: 1 = fine (the old look), 2 = chunky (same pixel size as the ground textures), 4 = very chunky. The windows stay the same size and spacing; only the pixels get bigger (and the tiniest details drop out).
   maxBuildings: 1500,      // details on up to this many buildings, nearest the peanut first as new ones stream in (the first pass was 80)
   drawRangePx: 640, maxDrawn: 320,   // props are drawn within this distance of the peanut (game px), at most this many per frame
   safeSpawnPx: 150,        // no props this close to where the run starts
