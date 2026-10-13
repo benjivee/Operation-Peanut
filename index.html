@@ -1446,7 +1446,7 @@ const EMBEDDED_ASSETS = {
 
     <!-- ===================== Start overlay (home page) ===================== -->
     <div id="startScreen" class="overlay homePage">
-      <div id="versionTag" class="versionTag">v3.88.5</div>
+      <div id="versionTag" class="versionTag">v3.88.6</div>
       <div id="homeSidebar" class="homeSidebar">
         <div class="homeSidebarTitle">Your Stats</div>
         <div class="homeSidebarStat">
@@ -9957,7 +9957,9 @@ const OP_STYLE = (() => {
     nightLight: { anchor: 'viewport', color: '#fff1da', intensity: 0.62, position: [1.4, 205, 28] },   // same warm light as day, so the building colours keep their hue (the blue tint over the map still darkens them)
     hideLabels: true,                                    // hide every map label and icon (street / place / building names, parking icons, house numbers)
     pixel: true,                                         // pixel-style shading on ground surfaces (F5 toggles); needs enabled
-    pattern: { grass: 'op-grass', forest: 'op-forest', water: 'op-water' },   // pixel texture only here; ground, concrete, sand, sidewalks and asphalt stay flat
+    pattern: { grass: 'op-grass', forest: 'op-forest', water: 'op-water', ground: 'op-ground', concrete: 'op-concrete', sidewalk: 'op-sidewalk', sand: 'op-sand' },   // pixel textures; roads and asphalt stay flat
+    roadMark: { center: '#b9a24a', centerOpacity: 0.42, edge: '#cfc9b4', edgeOpacity: 0.2 },   // faded paint on major roads: double yellow centre line + thin edge lines (minor streets keep the faint dashed centre line)
+    edge: { grass: '#3f4a2c', forest: '#323d20', opacity: 0.75 },   // thin darker outline round parks and woods, so they read as a clear edge against pavement
     mark: { color: '#80828b', opacity: 0.8 },            // faint dashed centre line on roads
     hillshade: 0.18,                                     // terrain relief, toned down
     shadow: { color: '#0d0d14', opacity: 0.34, bands: [[0, 10], [12, 20], [40, 34]] },   // drop shadow: footprint shifted down-right (px); taller buildings (min height m) cast longer ones
@@ -9983,9 +9985,9 @@ function opMakePatterns(map) {
   };
   const speckle = (dark, light, pd, pl) => (art, n, base) => { for (let i = 0; i < art.length; i++) { const r = rnd(); if (r < pd) art[i] = tone(base, dark); else if (r < pd + pl) art[i] = tone(base, light); } };
   const f = S.fill;
-  make('op-ground', f.ground, 16, speckle(0.9, 1.07, 0.09, 0.05));
-  make('op-concrete', f.concrete, 16, speckle(0.88, 1.07, 0.08, 0.05));
-  make('op-sand', f.sand, 16, speckle(0.92, 1.06, 0.07, 0.05));
+  make('op-ground', f.ground, 16, speckle(0.94, 1.045, 0.07, 0.04));   // ground / concrete / sand / sidewalk speckle is kept deliberately gentle
+  make('op-concrete', f.concrete, 16, speckle(0.92, 1.05, 0.07, 0.04));
+  make('op-sand', f.sand, 16, speckle(0.94, 1.04, 0.06, 0.04));
   make('op-asphalt', f.asphalt, 16, speckle(0.85, 1.15, 0.08, 0.06));
   make('op-grass', f.grass, 16, (art, n, base) => {
     speckle(0.84, 1.1, 0.12, 0.07)(art, n, base);
@@ -10005,7 +10007,34 @@ function opMakePatterns(map) {
   });
 }
 
+// Evaluates a map-style number that depends only on zoom (a plain number, a 'interpolate' on zoom, or an old-style {stops} function).
+// Anything fancier returns null and the caller falls back to a default.
+function opEvalZoomNumber(e, z) {
+  if (typeof e === 'number') return e;
+  const lerp = (st, kind, base) => {
+    if (!st.length) return null; if (z <= st[0][0]) return st[0][1]; if (z >= st[st.length - 1][0]) return st[st.length - 1][1];
+    for (let i = 0; i + 1 < st.length; i++) if (z <= st[i + 1][0]) {
+      const [z0, v0] = st[i], [z1, v1] = st[i + 1], t = kind === 'exponential' && base && base !== 1 ? (Math.pow(base, z - z0) - 1) / (Math.pow(base, z1 - z0) - 1) : (z - z0) / (z1 - z0);
+      return v0 + (v1 - v0) * t;
+    }
+    return null;
+  };
+  if (e && !Array.isArray(e) && Array.isArray(e.stops)) { const st = e.stops.map(([a, b]) => [a, typeof b === 'number' ? b : NaN]); return st.some((q) => !isFinite(q[0] + q[1])) ? null : lerp(st, e.base && e.base !== 1 ? 'exponential' : 'linear', e.base); }
+  if (Array.isArray(e) && e[0] === 'interpolate' && Array.isArray(e[2]) && e[2][0] === 'zoom') {
+    const st = []; for (let i = 3; i + 1 < e.length; i += 2) { const v = opEvalZoomNumber(e[i + 1], z); if (typeof e[i] !== 'number' || v === null) return null; st.push([e[i], v]); }
+    return lerp(st, e[1][0], e[1][1]);
+  }
+  return null;
+}
+
 class OperationPeanutStyle {
+  roadWidthM(cls, zoom, lat) {   // how wide the map DRAWS a road of this class at this zoom, in metres (null if the style's width can't be read)
+    for (const l of (this.roadLayerInfo || [])) {
+      if (!l.txt.includes(cls) || l.width === undefined) continue;
+      const px = opEvalZoomNumber(l.width, zoom); if (px && px > 0) return px / (512 * Math.pow(2, zoom) * Mercator.unitsPerMeter(lat));
+    }
+    return null;
+  }
   constructor(map) { this.map = map; this.on = false; this.backup = []; this.seen = new Set(); this.hiddenLayers = []; this.treeLayers = []; this.prevLight = null; this.stats = { skipped: [] }; }
   _set(id, prop, value) {   // remember the original value once, then change it
     try {
@@ -10041,7 +10070,7 @@ class OperationPeanutStyle {
     const m = this.map, S = OP_STYLE; this.stats = { skipped: [] }; this.treeLayers = [];
     const count = (k) => { this.stats[k] = (this.stats[k] || 0) + 1; };
     if (S.pixel) { try { opMakePatterns(m); } catch (e) { console.warn('[style] pixel patterns failed:', e.message); S.pixel = false; } }
-    const roadLayers = [];
+    const roadLayers = [], edgeLayers = []; this.hiddenMarks = new Set();
     for (const l of m.getStyle().layers) {
       if (l.id.startsWith('maptiler-') || l.id.startsWith('game-') || ['symbol', 'custom', 'raster', 'hillshade', 'fill-extrusion', 'circle', 'heatmap'].includes(l.type)) continue;
       const sl = l['source-layer'] || '', f = JSON.stringify(l.filter || ''), neg = /"!in"|"!="|"!"/.test(f);
@@ -10049,7 +10078,7 @@ class OperationPeanutStyle {
       if (l.type === 'background') { this._set(l.id, 'background-color', S.ground); if (S.pixel && S.pattern.ground) this._set(l.id, 'background-pattern', S.pattern.ground); count('background'); }
       else if (l.type === 'fill') {
         const k = this._fillKind(sl, txt); if (!k) { if (sl !== 'building') this.stats.skipped.push(l.id); continue; }
-        if (k === 'grass' || k === 'forest') this.treeLayers.push({ source: l.source, sl, filter: l.filter, kind: k });   // trees follow what is painted green
+        if (k === 'grass' || k === 'forest') { this.treeLayers.push({ source: l.source, sl, filter: l.filter, kind: k }); edgeLayers.push({ l, k }); }   // trees follow what is painted green
         this._set(l.id, 'fill-color', S.fill[k]); this._set(l.id, 'fill-antialias', false);
         if (S.pixel && S.pattern[k]) this._set(l.id, 'fill-pattern', S.pattern[k]);
         else if (m.getPaintProperty(l.id, 'fill-pattern')) this._set(l.id, 'fill-pattern', undefined);
@@ -10075,6 +10104,41 @@ class OperationPeanutStyle {
       } else if (!this.markIds.includes(id)) this.markIds.push(id);
       m.setLayoutProperty(id, 'visibility', S.pixel ? 'visible' : 'none'); count('marks');
     }
+    // What the style says about road widths (used to keep markings and wear on the DRAWN road) and where the topmost road layer is.
+    this.roadLayerInfo = roadLayers.map((l) => ({ id: l.id, txt: (l.id + ' ' + JSON.stringify(l.filter || '')).toLowerCase(), width: m.getPaintProperty(l.id, 'line-width') }));
+    this.roadLast = roadLayers.length ? roadLayers[roadLayers.length - 1].id : null;
+    const after = (id) => { const cur = m.getStyle().layers; let j = cur.findIndex((x) => x.id === id) + 1; while (j < cur.length && /^game-(mark|edge|center)/.test(cur[j].id)) j++; return cur[j] ? cur[j].id : undefined; };   // the layer just above `id` (past my own paint layers)
+    // Park and wood boundaries: a thin darker outline round every green area.
+    for (const { l, k } of edgeLayers) {
+      const id = 'game-edge-' + l.id;
+      if (!m.getLayer(id)) {
+        const spec = { id, type: 'line', source: l.source, 'source-layer': l['source-layer'], minzoom: Math.max(l.minzoom || 0, 15), layout: { 'line-join': 'round' },
+          paint: { 'line-color': k === 'forest' ? S.edge.forest : S.edge.grass, 'line-opacity': S.edge.opacity, 'line-width': ['interpolate', ['linear'], ['zoom'], 15, 0.6, 18, 1.4, 20, 2.4] } };
+        if (l.filter) spec.filter = l.filter; if (l.maxzoom) spec.maxzoom = l.maxzoom;
+        try { m.addLayer(spec, after(l.id)); } catch (e) { continue; }
+      }
+      if (!this.markIds.includes(id)) this.markIds.push(id); count('park-edges');
+    }
+    // Major roads (the layers called primary / secondary / trunk / motorway / major): a faded yellow double centre line instead of the
+    // faint dash, plus thin faded edge lines. 'line-gap-width' = the road's own width draws the edge lines exactly at the road edge.
+    for (const l of roadLayers) {
+      if (/service|track|alley|parking|link|ramp|tunnel/i.test(l.id) || !/primary|secondary|trunk|motorway|major/i.test(l.id)) continue;
+      const w = m.getPaintProperty(l.id, 'line-width');
+      const mkLine = (id, layout, paint) => {
+        if (!m.getLayer(id)) {
+          const spec = { id, type: 'line', source: l.source, 'source-layer': l['source-layer'], minzoom: Math.max(l.minzoom || 0, 16), layout, paint };
+          if (l.filter) spec.filter = l.filter; if (l.maxzoom) spec.maxzoom = l.maxzoom;
+          try { m.addLayer(spec, after(l.id)); } catch (e) { return; }
+        }
+        if (!this.markIds.includes(id)) this.markIds.push(id); count('road-paint');
+      };
+      this.hiddenMarks.add('game-mark-' + l.id);
+      for (const sg of [-1, 1]) mkLine('game-center' + (sg < 0 ? 'a-' : 'b-') + l.id, { 'line-cap': 'butt' }, { 'line-color': S.roadMark.center, 'line-opacity': S.roadMark.centerOpacity,
+        'line-width': ['interpolate', ['linear'], ['zoom'], 15, 0.5, 18, 0.9, 20, 1.5], 'line-offset': ['interpolate', ['linear'], ['zoom'], 15, sg * 0.8, 18, sg * 1.3, 20, sg * 2.2] });
+      if (w !== undefined) mkLine('game-edge-r-' + l.id, { 'line-cap': 'butt', 'line-join': 'round' }, { 'line-color': S.roadMark.edge, 'line-opacity': S.roadMark.edgeOpacity,
+        'line-width': ['interpolate', ['linear'], ['zoom'], 15, 0.5, 18, 1, 20, 1.6], 'line-gap-width': w });
+    }
+    for (const id of this.markIds) if (m.getLayer(id)) m.setLayoutProperty(id, 'visibility', S.pixel && !this.hiddenMarks.has(id) ? 'visible' : 'none');
     // Map text and icons (street names, place names, POIs, parking icons ...) are all symbol layers: hidden, and shown again on revert.
     if (S.hideLabels) for (const l of m.getStyle().layers) {
       if (l.type !== 'symbol' || l.id.startsWith('game-')) continue;
@@ -11257,10 +11321,10 @@ const OP_DETAIL = {
   overlayGrowM: 0.35,      // the window / roof overlay is this much larger than the wall behind it (stops z-fighting flicker)
   pixelSize: 1,            // how chunky the building pixels are: 1 = fine (the old look), 2 = chunky (same pixel size as the ground textures), 4 = very chunky. The windows stay the same size and spacing; only the pixels get bigger (and the tiniest details drop out).
   maxBuildings: 1500,      // details on up to this many buildings, nearest the peanut first as new ones stream in (the first pass was 80)
-  drawRangePx: 640, maxDrawn: 320,   // props are drawn within this distance of the peanut (game px), at most this many per frame
+  drawRangePx: 640, maxDrawn: 420,   // props are drawn within this distance of the peanut (game px), at most this many per frame
   safeSpawnPx: 150,        // no props this close to where the run starts
-  // How many of each prop to place. Only trees, cars and lamps are on for now; a 0 switches a kind off (give it a number to bring it back).
-  caps: { tree: 440, car: 70, light: 40, sign: 0, barrier: 0, dumpster: 0, crate: 0, pallet: 0, trash: 0, debris: 0, util: 0, gen: 0, weeds: 0, crack: 0 },
+  // How many of each prop to place across the loaded map (a 0 switches a kind off).
+  caps: { tree: 440, car: 70, light: 40, sign: 60, barrier: 36, dumpster: 24, crate: 28, pallet: 16, trash: 150, debris: 110, util: 14, gen: 6, weeds: 280, crack: 400, cone: 60, cart: 24, cardboard: 100, stain: 140, patch: 110 },
 };
 
 function opHash(a, b, salt) {   // deterministic 0..1 from integers
@@ -11320,12 +11384,19 @@ const OP_ART = (() => {
     gen() { return mk('gen', 12, 9, (r) => { r(0, 2, 12, 7, OUT); r(1, 3, 10, 5, '#5d6b3f'); r(2, 4, 4, 3, '#2b2c33'); r(9, 0, 2, 3, '#3b3c44'); r(7, 5, 3, 3, '#8a3a2e'); r(7, 5, 3, 1, '#a8523f'); }); },
     weeds() { return mk('weeds', 12, 4, (r) => { r(1, 2, 1, 2, '#4f6137'); r(2, 1, 1, 3, '#7a8a4b'); r(4, 2, 1, 2, '#4f6137'); r(5, 0, 1, 4, '#7a8a4b'); r(7, 1, 1, 3, '#4f6137'); r(8, 2, 1, 2, '#7a8a4b'); r(10, 1, 1, 3, '#4f6137'); r(0, 3, 12, 1, '#3d4a2b'); }); },
     crack() { return mk('crack', 14, 3, (r) => { r(0, 1, 3, 1, '#4a463e'); r(3, 2, 3, 1, '#4a463e'); r(6, 1, 2, 1, '#4a463e'); r(8, 0, 3, 1, '#4a463e'); r(11, 1, 3, 1, '#4a463e'); }); },
+    crackY() { return mk('crackY', 14, 6, (r) => { const c = 'rgba(40,38,34,0.85)'; r(0, 3, 3, 1, c); r(3, 2, 3, 1, c); r(6, 3, 2, 1, c); r(8, 2, 3, 1, c); r(11, 3, 3, 1, c); r(5, 0, 1, 2, c); r(4, 4, 1, 2, c); r(9, 4, 1, 2, c); }); },
+    patch() { return mk('patch', 24, 10, (r) => { r(1, 1, 22, 8, 'rgba(18,19,24,0.42)'); r(1, 1, 22, 1, 'rgba(150,150,158,0.16)'); r(1, 8, 22, 1, 'rgba(150,150,158,0.12)'); r(1, 1, 1, 8, 'rgba(150,150,158,0.12)'); r(22, 1, 1, 8, 'rgba(150,150,158,0.12)'); r(6, 4, 3, 1, 'rgba(0,0,0,0.18)'); r(15, 5, 4, 1, 'rgba(0,0,0,0.18)'); }); },
+    stain(v) { return mk('stain' + (v % 3), 24, 10, (r) => { const c = ['rgba(14,14,20,0.34)', 'rgba(28,38,58,0.38)', 'rgba(70,42,28,0.30)'][v % 3], rows = [[8, 8], [5, 14], [3, 18], [2, 20], [3, 18], [5, 14], [8, 8]]; rows.forEach(([x, w], i) => r(x, 1 + i, w, 1, c)); r(9, 4, 6, 1, 'rgba(0,0,0,0.12)'); }); },
+    cone() { return mk('cone', 7, 10, (r) => { r(0, 8, 7, 2, OUT); r(1, 8, 5, 1, '#7a5a3a'); r(1, 3, 5, 5, OUT); r(2, 2, 3, 6, '#b8622c'); r(2, 2, 3, 1, '#d17a38'); r(2, 4, 3, 1, '#cfc9b8'); r(2, 1, 3, 1, OUT); }); },
+    coneDown() { return mk('coneD', 11, 6, (r) => { r(0, 1, 9, 4, OUT); r(1, 2, 7, 2, '#b8622c'); r(3, 2, 1, 2, '#cfc9b8'); r(9, 0, 2, 6, OUT); r(9, 1, 1, 4, '#7a5a3a'); }); },
+    cart() { return mk('cart', 14, 12, (r) => { r(0, 1, 3, 1, OUT); r(0, 1, 1, 4, OUT); r(2, 3, 11, 6, OUT); r(3, 4, 9, 4, '#6f767e'); r(3, 5, 9, 1, '#a3aab1'); r(6, 4, 1, 4, OUT); r(9, 4, 1, 4, OUT); r(3, 9, 3, 2, OUT); r(10, 9, 3, 2, OUT); r(4, 9, 1, 1, '#2b2c33'); r(11, 9, 1, 1, '#2b2c33'); }); },
+    cardboard() { return mk('cardboard', 15, 9, (r) => { r(0, 1, 9, 7, OUT); r(1, 2, 7, 5, '#9a8058'); r(1, 2, 7, 1, '#b39a6e'); r(4, 2, 1, 5, '#6b5a3c'); r(8, 4, 6, 5, OUT); r(9, 5, 4, 3, '#85704c'); r(9, 5, 4, 1, '#a58b60'); r(12, 0, 2, 1, '#6b5a3c'); }); },
   };
 })();
 
 // A decorative object. Drawn like a pickup (sprite standing on the terrain point); `flat` ones lie on the ground.
 class Prop {
-  constructor(kind, x, y, spr, w, h, o = {}) { this.kind = kind; this.x = x; this.y = y; this.spr = spr; this.w = w; this.h = h; this.flat = !!o.flat; this.flip = !!o.flip; this.flipV = !!o.flipV; this.obstacle = o.obstacle || null; }
+  constructor(kind, x, y, spr, w, h, o = {}) { this.kind = kind; this.x = x; this.y = y; this.spr = spr; this.w = w; this.h = h; this.flat = !!o.flat; this.flip = !!o.flip; this.flipV = !!o.flipV; this.obstacle = o.obstacle || null; this.fr = o.fr || 0; this.alpha = o.alpha === undefined ? 1 : o.alpha; this.tilt = o.tilt || 0; }   // fr = turn of a flat decal on the ground (radians), alpha = fade, tilt = lean of a standing prop
   draw(ctx, camera, view, focus) {
     const p = camera.worldToScreen(this.x, this.y, view), s = this.spr;
     ctx.save(); camera.applyEntityScale(ctx, p, false); ctx.imageSmoothingEnabled = false;
@@ -11337,11 +11408,23 @@ class Prop {
       const gl = ctx.createRadialGradient(p.x, p.y, 3, p.x, p.y, 78); gl.addColorStop(0, 'rgba(255,214,120,0.30)'); gl.addColorStop(1, 'rgba(255,214,120,0)');
       ctx.save(); ctx.translate(p.x, p.y); ctx.scale(1, 0.6); ctx.translate(-p.x, -p.y); ctx.fillStyle = gl; ctx.fillRect(p.x - 78, p.y - 78, 156, 156); ctx.restore();
     }
+    if (this.alpha !== 1) ctx.globalAlpha = this.alpha;
     const blit = (dx, dy, dw, dh) => { if (s.sw) ctx.drawImage(s.canvas, s.sx, s.sy, s.sw, s.sh, dx, dy, dw, dh); else ctx.drawImage(s.canvas, dx, dy, dw, dh); };
-    if (this.flat) { ctx.translate(p.x, p.y); ctx.scale(1, 0.55); blit(-this.w / 2, -this.h / 2, this.w, this.h); }
-    else { ctx.translate(p.x, p.y); ctx.scale(this.flip ? -1 : 1, this.flipV ? -1 : 1); blit(-this.w / 2, this.flipV ? 0 : -this.h, this.w, this.h); }   // flipV = turned over, still standing on the ground point
+    if (this.flat) { ctx.translate(p.x, p.y); ctx.scale(1, 0.55); if (this.fr) ctx.rotate(this.fr); blit(-this.w / 2, -this.h / 2, this.w, this.h); }
+    else { ctx.translate(p.x, p.y); if (this.tilt) ctx.rotate(this.tilt); ctx.scale(this.flip ? -1 : 1, this.flipV ? -1 : 1); blit(-this.w / 2, this.flipV ? 0 : -this.h, this.w, this.h); }   // flipV = turned over, still standing on the ground point
     ctx.restore();
   }
+}
+
+// How wide the map actually DRAWS each road class (half width, metres), used when the style's own width can't be read.
+// Decals, markings and wear are placed against this, never against the real-world width, so they stay on the painted road.
+const OP_DRAWN_HALF_M = { motorway: 2.6, trunk: 2.4, primary: 2.1, secondary: 1.9, tertiary: 1.6, minor: 1.2, street: 1.2, service: 0.8, track: 0.7 };
+function opDrawnHalfM(world, cls) {
+  world._dh = world._dh || {}; if (world._dh[cls] !== undefined) return world._dh[cls];
+  let v = OP_DRAWN_HALF_M[cls] || 1.2, read = false; const st = world.renderer && world.renderer.style;
+  try { if (st && st.roadLayerInfo && world.camera) { read = true; const m = st.roadWidthM(cls, world.camera.targetZoom(), world.bridge.originLat); if (m && m > 0.6) v = Math.min(6, m / 2); } } catch (e) { /* keep the default */ }
+  if (read) world._dh[cls] = v;
+  return v;
 }
 
 // Places the props, deterministically, from the map's own data: roads (transportation lines) and the building footprints.
@@ -11360,6 +11443,17 @@ class PropField3D {
       for (const s of a) {
         const vx = s[2] - s[0], vy = s[3] - s[1], L = vx * vx + vy * vy || 1, t = Math.max(0, Math.min(1, ((x - s[0]) * vx + (y - s[1]) * vy) / L));
         if (Math.hypot(x - (s[0] + vx * t), y - (s[1] + vy * t)) < s[4] + pad) return true;
+      }
+    }
+    return false;
+  }
+  _onPainted(x, y) {   // is this point on the PAINTED surface of any road? (the real-width test above is far wider than what the map draws)
+    const C = 64, cx = Math.floor(x / C), cy = Math.floor(y / C);
+    for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) {
+      const a = this.segGrid.get((cx + i) + ',' + (cy + j)); if (!a) continue;
+      for (const s of a) {
+        const vx = s[2] - s[0], vy = s[3] - s[1], L = vx * vx + vy * vy || 1, t = Math.max(0, Math.min(1, ((x - s[0]) * vx + (y - s[1]) * vy) / L));
+        if (Math.hypot(x - (s[0] + vx * t), y - (s[1] + vy * t)) < s[5] + 1) return true;
       }
     }
     return false;
@@ -11387,24 +11481,26 @@ class PropField3D {
     const gk = Math.floor(x / 30) + ',' + Math.floor(y / 30); (this.propGrid.get(gk) || this.propGrid.set(gk, []).get(gk)).push({ x, y, r });
     return pr;
   }
-  _road(f) {
+  _road(f, place) {   // two passes over the same roads: first register every segment (place = false), then place props along them (place = true), so a prop can tell whether ANY road is under it
     const b = this.world.bridge, pr = f.properties || {}, hwM = PropField3D.HALF_M[pr.class];
     if (!hwM || pr.brunnel === 'tunnel' || pr.brunnel === 'bridge' || !f.geometry) return;
     const g = f.geometry, lines = g.type === 'LineString' ? [g.coordinates] : g.type === 'MultiLineString' ? g.coordinates : [];
-    const hw = hwM * b.pxPerMeterX, cls = pr.class;
+    const hw = hwM * b.pxPerMeterX, cls = pr.class, dhw = opDrawnHalfM(this.world, cls) * b.pxPerMeterX;
     for (const line of lines) {
+      if (line.length < 2) continue;
+      if (!place) { this.regKeys = this.regKeys || new Set(); const lk = line.length + '|' + line[0][0] + ',' + line[0][1] + '|' + cls; if (this.regKeys.has(lk)) continue; this.regKeys.add(lk); }
       const pts = line.map(([lo, la]) => b.latLngToGamePx(la, lo));
       let carry = 0;
       for (let i = 0; i + 1 < pts.length; i++) {
         const a = pts[i], c = pts[i + 1], dx = c.x - a.x, dy = c.y - a.y, L = Math.hypot(dx, dy); if (L < 1) continue;
-        this._segCells(a.x, a.y, c.x, c.y, (k) => { (this.segGrid.get(k) || this.segGrid.set(k, []).get(k)).push([a.x, a.y, c.x, c.y, hw]); });
+        if (!place) { this._segCells(a.x, a.y, c.x, c.y, (k) => { (this.segGrid.get(k) || this.segGrid.set(k, []).get(k)).push([a.x, a.y, c.x, c.y, hw, dhw]); }); continue; }
         const ux = dx / L, uy = dy / L; let d = carry;
-        while (d < L) { this._sample(a.x + ux * d, a.y + uy * d, ux, uy, cls, hw); d += 40; }
+        while (d < L) { this._sample(a.x + ux * d, a.y + uy * d, ux, uy, cls, hw, dhw); d += 40; }
         carry = d - L;
       }
     }
   }
-  _sample(x, y, ux, uy, cls, hw) {
+  _sample(x, y, ux, uy, cls, hw, dhw) {   // hw = real half width (px), dhw = half width of the PAINTED road (px)
     const key = Math.floor(x / 40) + ',' + Math.floor(y / 40); if (this.cells.has(key)) return; this.cells.add(key);
     const qx = Math.floor(x / 8), qy = Math.floor(y / 8), H = (s) => opHash(qx, qy, s), nx = -uy, ny = ux, side = H(1) < 0.5 ? -1 : 1, ang = Math.atan2(uy, ux);
     const small = cls === 'minor' || cls === 'street' || cls === 'service' || cls === 'tertiary' || cls === 'track', mid = cls === 'primary' || cls === 'secondary' || cls === 'tertiary';
@@ -11416,11 +11512,24 @@ class PropField3D {
     if (small && H(2) < 0.07) { const r = H(3); car(hw + 26, r < 0.7 ? 'parked' : r < 0.9 ? 'abandoned' : 'flipped'); }   // beside the road, never on it
     else if (mid && H(4) < 0.012) car(hw * 0.45, 'abandoned', ang + (H(22) - 0.5) * 0.5);                                  // the odd wreck in a wide road
     if (cls !== 'service' && cls !== 'track' && (qx * 7 + qy * 13) % 6 === 0 && H(5) < 0.7) { const [px, py] = at(hw + 7); this._add('light', px, py, OP_ART.light(), 16, 64, 5, { coll: [8, 8], rot: 0 }); }
-    if (cls !== 'service' && H(6) < 0.012) { const [px, py] = at(hw + 9); this._add('sign', px, py, OP_ART.sign(Math.floor(H(23) * 3)), 12, 40, 5); }
+    if (cls !== 'service' && H(6) < 0.02) { const [px, py] = at(hw + 9); this._add('sign', px, py, OP_ART.sign(Math.floor(H(23) * 3)), 12, 40, 5, { tilt: H(31) < 0.6 ? (H(32) - 0.5) * 0.9 : 0 }); }   // some lean over: damaged
     if ((cls === 'service' || cls === 'minor' || cls === 'street') && H(7) < 0.02) { const [px, py] = at(hw + 8); this._add('barrier', px, py, OP_ART.barrier(), 36, 15, 12, { coll: [34, 9], rot: ang, flip: H(24) < 0.5 }); }
-    if (H(8) < 0.10 && hw > 6) { const [px, py] = at(hw * (H(25) - 0.5), 0); this._add('crack', px, py, OP_ART.crack(), 28, 6, 4, { flat: true }); }
-    if (H(9) < 0.10) { const [px, py] = at(hw + 3 + H(26) * 6); this._add('weeds', px, py, OP_ART.weeds(), 22, 8, 4, { flat: true }); }
-    if (H(10) < 0.05) { const [px, py] = at(hw + 4 + H(27) * 5); this._add('debris', px, py, OP_ART.debris(), 22, 7, 5, { flat: true }); if (H(28) < 0.5) this._add('trash', px + 12, py + 2, OP_ART.bag(), 11, 9, 5); }
+    // Wear on the painted road only (lateral position stays inside 70% of the drawn half width), turned to follow the road.
+    if (dhw >= 4) {
+      const fr = ang + (H(33) - 0.5) * 0.5, lane = () => at((H(25) - 0.5) * 2 * dhw * 0.7);
+      if (H(8) < 0.16) { const [px, py] = lane(), y2 = H(34) < 0.35; this._add('crack', px, py, y2 ? OP_ART.crackY() : OP_ART.crack(), 28, y2 ? 12 : 6, 4, { flat: true, fr, alpha: 0.9 }); }
+      if (dhw >= 6 && H(11) < 0.04) { const [px, py] = at((H(36) - 0.5) * 2 * dhw * 0.6); this._add('patch', px, py, OP_ART.patch(), 24, 10, 4, { flat: true, fr }); }
+      if (H(12) < 0.035) { const [px, py] = at((H(37) - 0.5) * 2 * dhw * 0.6); this._add('stain', px, py, OP_ART.stain(Math.floor(H(35) * 3)), 26, 11, 4, { flat: true, fr: fr + H(38) * 3 }); }
+      if (H(13) < 0.012 && (small || mid)) {   // a few traffic cones at the road edge (no collision: they never block a lane)
+        const lat = dhw * 0.8, tipped = H(39) < 0.3;
+        for (let i = -1; i <= 1; i++) { const [px, py] = at(lat, i * 10); if (tipped && i === 0) this._add('cone', px, py, OP_ART.coneDown(), 14, 8, 3, { flip: H(40) < 0.5 }); else this._add('cone', px, py, OP_ART.cone(), 8, 11, 3); }
+      }
+    }
+    const off = (kind, px, py, ...rest) => this._onPainted(px, py) ? null : this._add(kind, px, py, ...rest);   // pavement-side items never land on another road
+    if (H(9) < 0.12) { const [px, py] = at(dhw + 2 + H(26) * 7); off('weeds', px, py, OP_ART.weeds(), 22, 8, 4, { flat: true, fr: ang }); }   // weeds pushing through at the pavement edge
+    if (H(10) < 0.05) { const [px, py] = at(dhw + 6 + H(27) * 9); off('debris', px, py, OP_ART.debris(), 22, 7, 5, { flat: true, fr: H(41) * 6.28 }); if (H(28) < 0.5) off('trash', px + 12, py + 2, OP_ART.bag(), 11, 9, 5); }
+    if (cls !== 'service' && H(14) < 0.012) { const [px, py] = at(dhw + 6 + H(42) * 6); off('cart', px, py, OP_ART.cart(), 16, 14, 6, { flip: H(43) < 0.5 }); }   // an abandoned shopping cart on the pavement
+    if (H(15) < 0.03) { const [px, py] = at(dhw + 5 + H(44) * 8); off('cardboard', px, py, OP_ART.cardboard(), 15, 9, 5, { flat: true, fr: H(45) * 6.28 }); }
   }
   // Trees: inside park polygons (sparse) and wooded areas (denser), on a fixed world grid so the result never depends on tile order.
   _parks() {
@@ -11461,7 +11570,7 @@ class PropField3D {
     const edge = (i) => { const p = pr.pts[i], q = pr.pts[(i + 1) % n], dx = q.x - p.x, dy = q.y - p.y, L = Math.hypot(dx, dy) || 1; return { mx: (p.x + q.x) / 2, my: (p.y + q.y) / 2, tx: dx / L, ty: dy / L, nx: sgn * dy / L, ny: -sgn * dx / L, L }; };   // outward normal
     let best = -1, bl = 0; for (let i = 0; i < n; i++) { const p = pr.pts[i], q = pr.pts[(i + 1) % n], L = Math.hypot(q.x - p.x, q.y - p.y); if (L > bl) { bl = L; best = i; } }
     if (best < 0 || bl < 40) return;
-    const e = edge(best), put = (kind, lat, along, spr, w, h, r, o) => { const px = e.mx + e.nx * lat + e.tx * along, py = e.my + e.ny * lat + e.ty * along; if (this._onRoad(px, py, 10)) return null; return this._add(kind, px, py, spr, w, h, r, o); };
+    const e = edge(best), put = (kind, lat, along, spr, w, h, r, o) => { const px = e.mx + e.nx * lat + e.tx * along, py = e.my + e.ny * lat + e.ty * along; if (this._onRoad(px, py, 10) || this._onPainted(px, py)) return null; return this._add(kind, px, py, spr, w, h, r, o); };
     const rot = Math.atan2(e.ty, e.tx);
     if (H(1) < 0.22) {   // a service corner: dumpster, bags, maybe a crate or pallet
       put('dumpster', 15, 0, OP_ART.dumpster(H(2) < 0.5 ? 0 : 1), 26, 19, 12, { coll: [22, 13], rot });
@@ -11470,7 +11579,12 @@ class PropField3D {
       if (H(5) < 0.3) put('pallet', 8, -40, OP_ART.pallet(), 22, 8, 7, { flat: true });
     } else if (H(6) < 0.07) put('util', 8, 0, OP_ART.util(), 14, 18, 6, { coll: [10, 8], rot });
     else if (areaM > 1200 && H(7) < 0.12) put('gen', 13, bl * 0.25, OP_ART.gen(), 24, 17, 10, { coll: [20, 11], rot });
-    if (H(8) < 0.15) put('weeds', 6, (H(9) - 0.5) * bl * 0.6, OP_ART.weeds(), 22, 8, 4, { flat: true });
+    if (H(8) < 0.15) put('weeds', 6, (H(9) - 0.5) * bl * 0.6, OP_ART.weeds(), 22, 8, 4, { flat: true, fr: rot });
+    // Odds and ends against the wall: a cart, flattened boxes, a stain on the pavement, a stray bag.
+    if (H(10) < 0.10) put('cart', 10, (H(11) - 0.5) * bl * 0.7, OP_ART.cart(), 16, 14, 6, { flip: H(12) < 0.5 });
+    if (H(13) < 0.16) put('cardboard', 8, (H(14) - 0.5) * bl * 0.7, OP_ART.cardboard(), 15, 9, 5, { flat: true, fr: rot + (H(15) - 0.5) * 0.8 });
+    if (H(16) < 0.14) put('stain', 5, (H(17) - 0.5) * bl * 0.6, OP_ART.stain(Math.floor(H(18) * 3)), 26, 11, 5, { flat: true, fr: rot });
+    if (H(19) < 0.07) put('trash', 9, (H(20) - 0.5) * bl * 0.7, OP_ART.bag(), 11, 9, 5);
   }
   _waterRings() {
     const r = this.world.renderer, b = this.world.bridge; this.water = [];
@@ -11486,7 +11600,8 @@ class PropField3D {
     const before = this.items.length;
     this._waterRings();
     let fs = []; try { fs = r.map.querySourceFeatures(r.vectorSource, { sourceLayer: 'transportation' }); } catch (e) { return; }
-    for (const f of fs) this._road(f);
+    for (const f of fs) this._road(f, false);
+    for (const f of fs) this._road(f, true);
     this._parks();
     for (; this.prismDone < col.prisms.length; this.prismDone++) this._building(col.prisms[this.prismDone]);
     if (this.items.length !== before) { col.dirty = true; if (w.onBuildingsAdded) w.onBuildingsAdded(); }
@@ -11837,6 +11952,93 @@ class WaterZones3D {
   }
 }
 
+// ---------------------------------------------------------------------
+// Crosswalks: faded zebra bars across the main roads where roads meet.
+// Found from the map's own road lines: a point where at least two road lines meet and the roads leave it in 3 or more different
+// directions is a junction (T or crossing). On each arm that is a main road, a short set of pale bars is laid across the PAINTED road
+// (width read from the map style), just back from the junction. They are map polygons, so the map's own depth handling keeps them
+// under buildings and the camera needs nothing extra. The map has no crosswalk data, so these follow the junction geometry only.
+// ---------------------------------------------------------------------
+const OP_XWALK = {
+  enabled: true, color: '#d9d3bf', opacity: 0.34,
+  classes: ['trunk', 'primary', 'secondary', 'tertiary'],   // arms of these road classes get a crosswalk
+  barPx: 2.6, pitchPx: 4.6, depthPx: 11, setbackPx: 5,       // game px: bar width, bar spacing, crosswalk depth, gap between the junction and the crosswalk
+  fade: 0.12,                                                // share of bars left out, so the paint looks worn
+  maxCrosswalks: 260,
+};
+
+class RoadMarks3D {
+  constructor(world) { this.world = world; this.runs = 0; this._n = -1; this._tick = 0; this.ready = false; this.count = 0; }
+  _ensure() {
+    const r = this.world.renderer, m = r.map, st = r.style; if (!m || !st || !st.roadLast) return false;
+    if (this.ready && m.getSource('game-xwalk-src') && m.getLayer('game-xwalk')) return true;
+    try {
+      if (!m.getSource('game-xwalk-src')) m.addSource('game-xwalk-src', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+      if (!m.getLayer('game-xwalk')) {
+        const all = m.getStyle().layers; let i = all.findIndex((x) => x.id === st.roadLast) + 1; while (i < all.length && /^game-(mark|edge|center|xwalk)/.test(all[i].id)) i++;
+        m.addLayer({ id: 'game-xwalk', type: 'fill', source: 'game-xwalk-src', minzoom: 16, paint: { 'fill-color': OP_XWALK.color, 'fill-opacity': OP_XWALK.opacity, 'fill-antialias': false } }, all[i] ? all[i].id : undefined);
+        if (st.markIds && !st.markIds.includes('game-xwalk')) st.markIds.push('game-xwalk');
+      }
+      m.setLayoutProperty('game-xwalk', 'visibility', OP_STYLE.pixel ? 'visible' : 'none');
+      this.ready = true; return true;
+    } catch (e) { console.warn('[xwalk] layer failed:', e.message); return false; }
+  }
+  refresh() {
+    const w = this.world, r = w.renderer, st = r.style, col = w.collision, b = w.bridge;
+    if (!OP_XWALK.enabled || !r.map || !r.vectorSource || !st || !st.on || !col || !col.prisms.length || !b) return;
+    this._tick++; const changed = col.prisms.length !== this._n; this._n = col.prisms.length;
+    if (this.runs >= 5 && !changed && this._tick % 6) return;
+    if (!this._ensure()) return; this.runs++;
+    let fs = []; try { fs = r.map.querySourceFeatures(r.vectorSource, { sourceLayer: 'transportation' }); } catch (e) { return; }
+    const ppm = b.pxPerMeterX, nodes = new Map(), seen = new Set(); let li = 0;
+    for (const f of fs) {   // every vertex of every road line is a possible junction: T junctions sit on the middle of the through road
+      const pr = f.properties || {}, cls = pr.class;
+      if (!PropField3D.HALF_M[cls] || cls === 'service' || cls === 'track' || cls === 'motorway' || pr.brunnel === 'tunnel' || pr.brunnel === 'bridge' || !f.geometry) continue;
+      const g = f.geometry, lines = g.type === 'LineString' ? [g.coordinates] : g.type === 'MultiLineString' ? g.coordinates : [];
+      for (const line of lines) {
+        if (line.length < 2) continue;
+        const a = line[0], z = line[line.length - 1], key = line.length + '|' + a[0].toFixed(6) + ',' + a[1].toFixed(6) + '|' + z[0].toFixed(6) + ',' + z[1].toFixed(6);
+        if (seen.has(key)) continue; seen.add(key); li++;
+        const pts = line.map(([lo, la]) => b.latLngToGamePx(la, lo));
+        for (let i = 0; i < pts.length; i++) {
+          const p = pts[i], nk = Math.round(p.x / 8) + ',' + Math.round(p.y / 8);
+          for (const step of [-1, 1]) {
+            let q = null; for (let k = i + step; k >= 0 && k < pts.length; k += step) if (Math.hypot(pts[k].x - p.x, pts[k].y - p.y) >= 6) { q = pts[k]; break; }
+            if (!q) continue;
+            const L = Math.hypot(q.x - p.x, q.y - p.y); let n = nodes.get(nk); if (!n) nodes.set(nk, n = { x: 0, y: 0, c: 0, lines: new Set(), ends: [] });
+            n.x += p.x; n.y += p.y; n.c++; n.lines.add(li); n.ends.push({ ux: (q.x - p.x) / L, uy: (q.y - p.y) / L, cls });
+          }
+        }
+      }
+    }
+    const feats = [], done = new Set();
+    for (const n of nodes.values()) {
+      if (n.lines.size < 2) continue;
+      const cl = [];
+      for (const e of n.ends) {   // group the directions the roads leave in (within ~25 degrees = the same arm)
+        const ang = Math.atan2(e.uy, e.ux); let c = cl.find((q) => Math.abs(Math.atan2(Math.sin(ang - q.a), Math.cos(ang - q.a))) < 0.45);
+        if (!c) cl.push(c = { a: ang, ux: e.ux, uy: e.uy, cls: e.cls, w: 0 });
+        const hh = opDrawnHalfM(w, e.cls); if (hh > c.w) { c.w = hh; c.cls = e.cls; }
+      }
+      if (cl.length < 3) continue;
+      const cx = n.x / n.c, cy = n.y / n.c; let R = 0; for (const c of cl) R = Math.max(R, c.w * ppm);
+      for (const c of cl) {
+        if (!OP_XWALK.classes.includes(c.cls) || feats.length >= OP_XWALK.maxCrosswalks * 4) continue;
+        const s = R + OP_XWALK.setbackPx, px = cx + c.ux * s, py = cy + c.uy * s, nx = -c.uy, ny = c.ux, span = c.w * ppm * 0.9;
+        const ck = Math.round(px / 6) + ',' + Math.round(py / 6); if (done.has(ck)) continue; done.add(ck);
+        const nb = Math.max(4, Math.round(2 * span / OP_XWALK.pitchPx)), bw = OP_XWALK.barPx / 2, dd = OP_XWALK.depthPx / 2;
+        for (let k = 0; k < nb; k++) {
+          if (opHash(Math.round(px), Math.round(py), 300 + k) < OP_XWALK.fade) continue;
+          const o = (k - (nb - 1) / 2) * OP_XWALK.pitchPx, bx = px + nx * o, by = py + ny * o;
+          const ring = [[-1, -1], [1, -1], [1, 1], [-1, 1], [-1, -1]].map(([sa, sb]) => { const ll = b.gamePxToLatLng(bx + nx * bw * sa + c.ux * dd * sb, by + ny * bw * sa + c.uy * dd * sb); return [ll.lng, ll.lat]; });
+          feats.push({ type: 'Feature', properties: {}, geometry: { type: 'Polygon', coordinates: [ring] } });
+        }
+      }
+    }
+    try { r.map.getSource('game-xwalk-src').setData({ type: 'FeatureCollection', features: feats }); this.count = done.size; } catch (e) { console.warn('[xwalk] update failed:', e.message); }
+  }
+}
+
 class MapTilerGameWorld {
   constructor(game) {
     this.game = game;
@@ -11845,7 +12047,7 @@ class MapTilerGameWorld {
     this.overlay = new WorldOverlay3D(this);
     this.occlusion = new BuildingOcclusion3D(this);
     this.fade = new BuildingFade3D(this);
-    this.detail = new BuildingDetail3D(this); this.props = new PropField3D(this); this.water = new WaterZones3D(this); this._detailTimer = 0;
+    this.detail = new BuildingDetail3D(this); this.props = new PropField3D(this); this.water = new WaterZones3D(this); this.marks = new RoadMarks3D(this); this._detailTimer = 0;
     this.onBuildingsAdded = null; // Game rebuilds its zombie nav grid when this fires
     this._buildingTimer = 0; this._footTimer = 99; this._footprintPx = 600;
   }
@@ -11928,7 +12130,8 @@ class MapTilerGameWorld {
     if (this._footTimer > 0.5 && this.renderer.matrix) { this._footTimer = 0; this._updateFootprint(); }
     this._detailTimer += dt;
     if (this._detailTimer > 1.5) { this._detailTimer = 0; try { this.detail.update(); this.props.refresh(); } catch (err) { console.warn('[detail] update failed:', err.message); }
-      try { this.water.refresh(); } catch (err) { console.warn('[water] update failed:', err.message); } }
+      try { this.water.refresh(); } catch (err) { console.warn('[water] update failed:', err.message); }
+      try { this.marks.refresh(); } catch (err) { console.warn('[xwalk] update failed:', err.message); } }
     this.detail.syncFade();
   }
   hasMatrix() { return !!this.renderer.matrix; }
