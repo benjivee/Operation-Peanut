@@ -1446,7 +1446,7 @@ const EMBEDDED_ASSETS = {
 
     <!-- ===================== Start overlay (home page) ===================== -->
     <div id="startScreen" class="overlay homePage">
-      <div id="versionTag" class="versionTag">v3.88.6</div>
+      <div id="versionTag" class="versionTag">v3.88.7</div>
       <div id="homeSidebar" class="homeSidebar">
         <div class="homeSidebarTitle">Your Stats</div>
         <div class="homeSidebarStat">
@@ -7264,9 +7264,15 @@ const MAP_CONFIG = {
   // configurable-sized area to check against) — that's a Phase 4+ concern,
   // once real geographic data is actually being fetched for an area.
   // ------------------------------------------------------------------
+  // WORLD SCALE (read this before resizing any asset): CONFIG.WORLD is 3600 px square, so this span decides how many game px make one
+  // real metre: 3600 px / 400 m = 9 px per metre. The PixelLab art (cars ~45 px long, trees 96 x 108, lamps 80 px tall, characters 84 px
+  // canvases) was drawn for roughly 9 px per metre. At the old 800 m span (4.5 px per metre) the same art stood about twice as big next
+  // to the real roads and buildings, which is why props looked too large for the streets. Everything that has a real size (roads,
+  // buildings, props, vehicles, trees, crosswalks, water, camera zoom) is derived from this one mapping through OP_SCALE (props)
+  // or the coordinate bridge (map features), so changing it re-scales them together.
   PLAYABLE_MAP_SIZE: {
-    widthMeters: 800,   // real-world meters the generated map will span
-    heightMeters: 800,
+    widthMeters: 400,   // real-world meters the generated map will span (was 800)
+    heightMeters: 400,
     maxWidthMeters: 3000,  // ceiling a future "larger areas" setting must respect
     maxHeightMeters: 3000,
   },
@@ -9962,7 +9968,7 @@ const OP_STYLE = (() => {
     edge: { grass: '#3f4a2c', forest: '#323d20', opacity: 0.75 },   // thin darker outline round parks and woods, so they read as a clear edge against pavement
     mark: { color: '#80828b', opacity: 0.8 },            // faint dashed centre line on roads
     hillshade: 0.18,                                     // terrain relief, toned down
-    shadow: { color: '#0d0d14', opacity: 0.34, bands: [[0, 10], [12, 20], [40, 34]] },   // drop shadow: footprint shifted down-right (px); taller buildings (min height m) cast longer ones
+    shadow: { color: '#0d0d14', opacity: 0.34, bands: [[0, 1.1], [12, 2.2], [40, 3.8]] },   // drop shadow: footprint shifted down-right by this many METRES (converted to screen px when applied); taller buildings (min height m) cast longer ones
     buildingLayers: ['maptiler-3d-buildings', 'maptiler-3d-buildings-fade', 'game-fade-solid', 'game-fade-target'],
   };
 })();
@@ -10005,6 +10011,16 @@ function opMakePatterns(map) {
     speckle(0.93, 1.05, 0.05, 0.03)(art, n, base);
     for (let i = 0; i < n; i++) { art[i * n + (n - 1)] = tone(base, 0.86); art[(n - 1) * n + i] = tone(base, 0.86); }   // slab joints
   });
+}
+
+// Real-world road widths (kerb to kerb, metres) per map road class, taken from the game's own table (Road.WIDTH_METERS_BY_TYPE) so the 2D and 3D
+// maps agree. The map style paints roads in screen pixels that do not follow the zoom, which at gameplay zoom left them about half their real
+// width next to real-size buildings; the style is now told each road's width in METRES, so roads, buildings and props share one scale.
+const OP_ROAD_WIDTH_M = (() => { const T = Road.WIDTH_METERS_BY_TYPE; return { motorway: T.motorway, trunk: T.trunk, primary: T.primary, secondary: T.secondary, tertiary: T.tertiary, minor: T.residential, street: T.living_street, service: T.service, track: 3 }; })();
+function opRoadClassOfLayer(txt) { for (const c of ['motorway', 'trunk', 'primary', 'secondary', 'tertiary', 'minor', 'street', 'service', 'track']) if (txt.includes(c)) return c; return null; }
+function opRoadWidthExpr(m, cls, casing, link) {   // line-width that equals the road's real width in metres at every zoom (exponential base 2 = how the map itself scales)
+  const W = OP_ROAD_WIDTH_M[cls] * (link ? 0.6 : 1) + (casing ? 0.5 : 0), upm = Mercator.unitsPerMeter(m.getCenter().lat), f = (z) => W * GAME3D.tileSizePx * Math.pow(2, z) * upm;
+  return ['interpolate', ['exponential', 2], ['zoom'], 12, f(12), 22, f(22)];
 }
 
 // Evaluates a map-style number that depends only on zoom (a plain number, a 'interpolate' on zoom, or an old-style {stops} function).
@@ -10086,6 +10102,7 @@ class OperationPeanutStyle {
       } else if (l.type === 'line') {
         const k = this._lineKind(sl, txt); if (!k) continue;
         this._set(l.id, 'line-color', S.line[k]); count('line-' + k);
+        if (k === 'road' || k === 'casing') { const rc = opRoadClassOfLayer(txt); if (rc) { this._set(l.id, 'line-width', opRoadWidthExpr(m, rc, k === 'casing', /link|ramp/.test(l.id))); count('road-width'); } }   // real width in metres
         if (k === 'road') roadLayers.push(l);
       }
     }
@@ -10152,7 +10169,9 @@ class OperationPeanutStyle {
     this.shadowIds = this.shadowIds || [];
     if (m.getLayer('maptiler-3d-buildings')) {
       const src = m.getLayer('maptiler-3d-buildings').source, H = ['coalesce', ['to-number', ['get', 'render_height']], 6];
-      S.shadow.bands.forEach(([minH, d], i) => {
+      const spm = GAME3D.tileSizePx * Math.pow(2, typeof m.getZoom === 'function' ? m.getZoom() : 18.9) * Mercator.unitsPerMeter(m.getCenter().lat);   // screen px per metre now
+      S.shadow.bands.forEach(([minH, dM], i) => {
+        const d = dM * spm;
         const id = 'game-building-shadow-' + i, maxH = i + 1 < S.shadow.bands.length ? S.shadow.bands[i + 1][0] : 1e9;
         if (!m.getLayer(id)) {
           m.addLayer({ id, type: 'fill', source: src, 'source-layer': 'building', minzoom: MAPTILER3D.buildingMinZoom,
@@ -10285,7 +10304,7 @@ class MapTilerCoordinateBridge {
  * it jumpTo()s the map to follow the peanut.
  *
  * Coordinates (all conversions go through MapTilerCoordinateBridge):
- *   gameplay (game px, 3600 x 3600 = 800 m, y grows south)  <- movement,
+ *   gameplay (game px, 3600 x 3600 = 400 m, y grows south)  <- movement,
  *        collision and the existing obstacles live here, unchanged
  *   <-> local meters (east, north) <-> lat/lng              (CoordinateConverter)
  *   <-> Mercator (+ terrain altitude in meters)             -> screen via the map matrix
@@ -10293,9 +10312,12 @@ class MapTilerCoordinateBridge {
  */
 
 // ---- Gameplay camera (3D). Everything about the camera lives here. ----------------
-const CAMERA_DISTANCE = 240;     // m: camera -> peanut distance at zoom 1 (for a 720 px tall window)
+// The camera distance is derived, not chosen: CAMERA_ZOOM_3D screen px per game px, at the game's px-per-metre, fixes how many screen px a metre
+// takes (zoom x px/m), and the camera sits where MapLibre's 36.9 degree vertical field of view (tan = 1/3) gives that scale for a 720 px tall window.
+function cameraDistanceMeters(ppm) { return (720 * 1.5) / (CAMERA_ZOOM_3D * ppm); }   // m: camera -> peanut
 // CAMERA_ZOOM_3D: how close the gameplay camera is in the 3D city. This ONE number scales the whole view together:
 // the map, buildings, roads, trees, cars, zombies, the peanut, bullets and effects, so their proportions to each other never change.
+// It means SCREEN PIXELS PER GAME PIXEL, so it stays right whatever real-world span the map covers (see MAP_CONFIG.PLAYABLE_MAP_SIZE).
 // 1.25 = the old (too far out) view, 2.0 = close-up default, 2.4 = closer, 1.6 = a bit farther. Live tweak from the browser console:  CAMERA_ZOOM_3D = 2.4
 // (the character size RELATIVE to the city is a separate setting: GAME3D.entityScale; leave it alone unless the proportions themselves need to change)
 let CAMERA_ZOOM_3D = 2.0;
@@ -10303,7 +10325,7 @@ const CAMERA_PITCH = 60;         // degrees from straight down: 0 = top-down, 60
 const CAMERA_FOLLOW_SPEED = 10;  // 1/s: how tightly the camera tracks the peanut (higher = snappier, 0 = rigid)
 // CAMERA_ZOOM_3D (just above) scales the whole 3D view: 2.0 = twice as close as zoom 1. (CAMERA_ZOOM near the top is the flat 2D fallback's zoom.)
 // CAMERA_HEIGHT is derived, not set: camera height above the ground = distance * cos(pitch).
-function cameraHeightMeters() { return (CAMERA_DISTANCE / CAMERA_ZOOM_3D) * Math.cos(CAMERA_PITCH * Math.PI / 180); }
+function cameraHeightMeters(ppm) { return cameraDistanceMeters(ppm) * Math.cos(CAMERA_PITCH * Math.PI / 180); }
 
 const GAME3D = {
   // Master switch. Also: add ?mode=2d to the URL to force the original 2D map.
@@ -10561,7 +10583,7 @@ class GameplayCamera3D {
   // World size = tileSize * 2^z px per Mercator unit => px per meter = tileSize*2^z*unitsPerMeter.
   targetZoom() {
     const b = this.bridge;
-    const pxPerMeter = (720 / (2 * CAMERA_DISTANCE / 3)) * CAMERA_ZOOM_3D;
+    const pxPerMeter = CAMERA_ZOOM_3D * b.pxPerMeterX;   // screen px per metre = (screen px per game px) x (game px per metre)
     return Math.log2(pxPerMeter / (GAME3D.tileSizePx * Mercator.unitsPerMeter(b.originLat)));
   }
 
@@ -11394,6 +11416,56 @@ const OP_ART = (() => {
   };
 })();
 
+// ---------------------------------------------------------------------
+// OP_SCALE: the size of every prop, vehicle, tree and lamp, in METRES, turned into game px through the ONE world mapping
+// (CONFIG.WORLD px / MAP_CONFIG.PLAYABLE_MAP_SIZE metres). Three different sizes are kept apart for each kind:
+//   shown  w x h : how big the sprite is DRAWN (readable pixel art, deliberately a little larger than life; the smaller the thing,
+//                  the bigger the boost: cones and bags ~1.7-2.4x, carts and barriers ~2x, signs ~1.8x, cars ~1.1x, trees ~1x)
+//   real         : the true size, kept here as documentation of how large the boost is
+//   foot  [l, w] : the PHYSICAL footprint on the ground = the collision box (never the drawn size; kinds without one never block anyone)
+//   r            : personal space between props, so they do not stack on each other
+//   behind       : the footprint sits under the drawn base, not on the sprite's bottom-centre anchor (the anchor is the near edge of a standing object)
+// Ground contact: standing sprites are anchored bottom-centre on their ground point, flat decals are centred on it, and depth order comes
+// from that same point, for every kind. Characters keep their own settings (CONFIG.PLAYER / zombie types: spriteDisplaySize, *_SCALE,
+// GAME3D.entityScale for the drawn size and `radius` for the physical one) and are listed in the audit notes, not resized here.
+// ---------------------------------------------------------------------
+const OP_SCALE = {
+  pxPerM() { return CONFIG.WORLD.width / MAP_CONFIG.PLAYABLE_MAP_SIZE.widthMeters; },
+  px(m) { return m * this.pxPerM(); },
+  carLengthM: 5.0,           // drawn length of a vehicle sprite (real cars ~4.5 m, vans ~5.5 m): the whole supplied sheet is scaled by ONE factor so cars stay smaller than vans
+  kinds: {
+    tree:      { w: 7.1, h: 8.0, real: 9,   r: 2.2,  foot: [1.0, 0.8] },                        // the trunk blocks you; the crown never does
+    light:     { w: 1.8, h: 7.1, real: 7,   r: 0.55, foot: [0.7, 0.7] },
+    car:       {                real: 4.5, r: 1.6,  foot: [4.6, 2.0], behind: true },            // sprite size comes from carLengthM
+    sign:      { w: 1.3, h: 4.4, real: 2.5, r: 0.55 },
+    barrier:   { w: 4.0, h: 1.7, real: 2.0, r: 1.3,  foot: [3.8, 1.0], behind: true },
+    dumpster:  { w: 2.9, h: 2.1, real: 2.0, r: 1.3,  foot: [2.4, 1.4], behind: true },
+    crate:     { w: 1.7, h: 1.7, real: 1.0, r: 0.8,  foot: [1.3, 1.3], behind: true },
+    pallet:    { w: 2.4, h: 0.9, real: 1.2, r: 0.8 },
+    util:      { w: 1.6, h: 2.0, real: 1.4, r: 0.7,  foot: [1.1, 0.9], behind: true },
+    gen:       { w: 2.7, h: 1.9, real: 1.5, r: 1.1,  foot: [2.2, 1.2], behind: true },
+    bag:       { w: 1.2, h: 1.0, real: 0.5, r: 0.55 },
+    pile:      { w: 2.1, h: 1.2, real: 1.0, r: 0.55 },
+    debris:    { w: 2.4, h: 0.8, real: 1.0, r: 0.55 },
+    weeds:     { w: 2.4, h: 0.9, real: 1.0, r: 0.45 },
+    crack:     { w: 3.1, h: 0.7, real: 3.0, r: 0.45 },
+    crackY:    { w: 3.1, h: 1.3, real: 3.0, r: 0.45 },
+    patch:     { w: 2.7, h: 1.1, real: 2.5, r: 0.45 },
+    stain:     { w: 2.9, h: 1.2, real: 2.0, r: 0.5 },
+    cone:      { w: 0.9, h: 1.2, real: 0.7, r: 0.35 },
+    coneDown:  { w: 1.6, h: 0.9, real: 0.7, r: 0.35 },
+    cart:      { w: 1.8, h: 1.6, real: 1.0, r: 0.7 },
+    cardboard: { w: 1.7, h: 1.0, real: 1.0, r: 0.55 },
+  },
+  size(key) { const k = this.kinds[key]; return [Math.round(this.px(k.w)), Math.round(this.px(k.h)), Math.round(this.px(k.r))]; },   // [drawn w, drawn h, spacing r] in game px
+  r(key) { return Math.round(this.px(this.kinds[key].r)); },
+  foot(key) { const f = this.kinds[key].foot; return f ? [this.px(f[0]), this.px(f[1])] : null; },   // physical footprint [length, width] in game px
+  carScale() {   // one factor for the whole vehicle sheet, from the mean sprite width
+    if (this._cs === undefined) { const rs = OP_IMG.cars.rects; this._cs = this.px(this.carLengthM) / (rs.reduce((a, r) => a + r[2], 0) / rs.length); }
+    return this._cs;
+  },
+};
+
 // A decorative object. Drawn like a pickup (sprite standing on the terrain point); `flat` ones lie on the ground.
 class Prop {
   constructor(kind, x, y, spr, w, h, o = {}) { this.kind = kind; this.x = x; this.y = y; this.spr = spr; this.w = w; this.h = h; this.flat = !!o.flat; this.flip = !!o.flip; this.flipV = !!o.flipV; this.obstacle = o.obstacle || null; this.fr = o.fr || 0; this.alpha = o.alpha === undefined ? 1 : o.alpha; this.tilt = o.tilt || 0; }   // fr = turn of a flat decal on the ground (radians), alpha = fade, tilt = lean of a standing prop
@@ -11416,9 +11488,9 @@ class Prop {
   }
 }
 
-// How wide the map actually DRAWS each road class (half width, metres), used when the style's own width can't be read.
+// How wide the map DRAWS each road class (half width, metres): read from the style when possible, else the real width / 2.
 // Decals, markings and wear are placed against this, never against the real-world width, so they stay on the painted road.
-const OP_DRAWN_HALF_M = { motorway: 2.6, trunk: 2.4, primary: 2.1, secondary: 1.9, tertiary: 1.6, minor: 1.2, street: 1.2, service: 0.8, track: 0.7 };
+const OP_DRAWN_HALF_M = Object.fromEntries(Object.entries(OP_ROAD_WIDTH_M).map(([c, w]) => [c, w / 2]));   // roads are painted at their real width, so this is just half of it
 function opDrawnHalfM(world, cls) {
   world._dh = world._dh || {}; if (world._dh[cls] !== undefined) return world._dh[cls];
   let v = OP_DRAWN_HALF_M[cls] || 1.2, read = false; const st = world.renderer && world.renderer.style;
@@ -11433,7 +11505,7 @@ class PropField3D {
     this.world = world; this.items = []; this.cells = new Set(); this.count = {}; this.safe = null; this.runs = 0; this._n = -1;
     this.segGrid = new Map(); this.propGrid = new Map(); this.water = []; this.prismDone = 0; this.removed = false; this.obstacles = [];
   }
-  static HALF_M = { motorway: 7, trunk: 6, primary: 5, secondary: 4.5, tertiary: 4, minor: 3.5, street: 3.5, service: 2.2, track: 1.5 };
+  static HALF_M = Object.fromEntries(Object.entries(OP_ROAD_WIDTH_M).map(([c, w]) => [c, w / 2]));   // half the real road width (m), the same table the map paints the roads from
   _room(kind) { return (this.count[kind] || 0) < OP_DETAIL.caps[kind]; }
   _segCells(x0, y0, x1, y1, fn) { const C = 64; for (let cx = Math.floor(Math.min(x0, x1) / C); cx <= Math.floor(Math.max(x0, x1) / C); cx++) for (let cy = Math.floor(Math.min(y0, y1) / C); cy <= Math.floor(Math.max(y0, y1) / C); cy++) fn(cx + ',' + cy); }
   _onRoad(x, y, pad) {
@@ -11473,10 +11545,20 @@ class PropField3D {
     for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) { const a = this.propGrid.get((Math.floor(x / 30) + i) + ',' + (Math.floor(y / 30) + j)); if (a) for (const o of a) if (Math.hypot(o.x - x, o.y - y) < r + o.r) return false; }
     return true;
   }
+  _footClear(cx, cy, fw, fh, rot) {   // is the whole collision rectangle (corners, edge middles, centre) off every building and every stretch of water?
+    const col = this.world.collision, c = Math.cos(rot || 0), sn = Math.sin(rot || 0), hw = fw / 2, hh = fh / 2, pts = [];
+    for (const [u, v] of [[-1, -1], [1, -1], [1, 1], [-1, 1], [0, -1], [1, 0], [0, 1], [-1, 0], [0, 0]]) pts.push([cx + u * hw * c - v * hh * sn, cy + u * hw * sn + v * hh * c]);
+    const R = Math.max(hw, hh) + 2;
+    for (const pr of col.prismsInRect(cx - R, cy - R, cx + R, cy + R)) for (const [qx, qy] of pts) if (Utils.pointInPolygon(qx, qy, pr.pts)) return false;
+    for (const w of this.water) { if (cx < w.x0 - R || cx > w.x1 + R || cy < w.y0 - R || cy > w.y1 + R) continue; for (const [qx, qy] of pts) if (Utils.pointInPolygon(qx, qy, w.pts)) return false; }
+    return true;
+  }
   _add(kind, x, y, spr, w, h, r, o = {}) {
     if (!this._room(kind) || !this._free(x, y, r)) return null;
+    const dy = o.coll && OP_SCALE.kinds[kind] && OP_SCALE.kinds[kind].behind ? -Math.min(o.coll[0], o.coll[1]) / 2 : 0;   // footprint under the drawn base (see OP_SCALE)
+    if (o.coll && !this._footClear(x, y + dy, o.coll[0], o.coll[1], o.rot)) return null;   // the physical footprint itself must be clear of buildings and water
     const pr = new Prop(kind, x, y, spr, w, h, o);
-    if (o.coll) { const ob = new Obstacle(x, y, o.coll[0], o.coll[1], '#222222', o.rot || 0); ob.isProp = true; ob.isCar = kind === 'car'; ob.stopsShots = kind === 'car' || kind === 'tree' || kind === 'light'; ob.hitKind = kind === 'tree' ? 'wood' : (kind === 'car' || kind === 'light') ? 'metal' : null; pr.obstacle = ob; this.obstacles.push(ob); if (!this.removed) this.world.collision.all.push(ob); }
+    if (o.coll) { const ob = new Obstacle(x, y + dy, o.coll[0], o.coll[1], '#222222', o.rot || 0); ob.isProp = true; ob.isCar = kind === 'car'; ob.stopsShots = kind === 'car' || kind === 'tree' || kind === 'light'; ob.hitKind = kind === 'tree' ? 'wood' : (kind === 'car' || kind === 'light') ? 'metal' : null; pr.obstacle = ob; this.obstacles.push(ob); if (!this.removed) this.world.collision.all.push(ob); }
     this.items.push(pr); this.count[kind] = (this.count[kind] || 0) + 1;
     const gk = Math.floor(x / 30) + ',' + Math.floor(y / 30); (this.propGrid.get(gk) || this.propGrid.set(gk, []).get(gk)).push({ x, y, r });
     return pr;
@@ -11506,30 +11588,30 @@ class PropField3D {
     const small = cls === 'minor' || cls === 'street' || cls === 'service' || cls === 'tertiary' || cls === 'track', mid = cls === 'primary' || cls === 'secondary' || cls === 'tertiary';
     const at = (lat, along = 0) => [x + nx * lat * side + ux * along, y + ny * lat * side + uy * along];
     const car = (lat, state, rot) => {
-      const spr = OP_ART.carImg(Math.floor(H(20) * OP_IMG.cars.rects.length)), [px, py] = at(lat), S = 1.25;   // each supplied vehicle drawn at 1.25x
-      return this._add('car', px, py, spr, spr.sw * S, spr.sh * S, 14, { flip: H(21) < 0.5, flipV: state === 'flipped', coll: [44, 26], rot: rot === undefined ? ang : rot });
+      const spr = OP_ART.carImg(Math.floor(H(20) * OP_IMG.cars.rects.length)), [px, py] = at(lat), S = OP_SCALE.carScale();   // the whole supplied sheet at one scale: ~5 m long at the world mapping
+      return this._add('car', px, py, spr, spr.sw * S, spr.sh * S, OP_SCALE.r('car'), { flip: H(21) < 0.5, flipV: state === 'flipped', coll: OP_SCALE.foot('car'), rot: 0 });   // the sprite never turns, so its footprint does not either
     };
     if (small && H(2) < 0.07) { const r = H(3); car(hw + 26, r < 0.7 ? 'parked' : r < 0.9 ? 'abandoned' : 'flipped'); }   // beside the road, never on it
     else if (mid && H(4) < 0.012) car(hw * 0.45, 'abandoned', ang + (H(22) - 0.5) * 0.5);                                  // the odd wreck in a wide road
-    if (cls !== 'service' && cls !== 'track' && (qx * 7 + qy * 13) % 6 === 0 && H(5) < 0.7) { const [px, py] = at(hw + 7); this._add('light', px, py, OP_ART.light(), 16, 64, 5, { coll: [8, 8], rot: 0 }); }
-    if (cls !== 'service' && H(6) < 0.02) { const [px, py] = at(hw + 9); this._add('sign', px, py, OP_ART.sign(Math.floor(H(23) * 3)), 12, 40, 5, { tilt: H(31) < 0.6 ? (H(32) - 0.5) * 0.9 : 0 }); }   // some lean over: damaged
-    if ((cls === 'service' || cls === 'minor' || cls === 'street') && H(7) < 0.02) { const [px, py] = at(hw + 8); this._add('barrier', px, py, OP_ART.barrier(), 36, 15, 12, { coll: [34, 9], rot: ang, flip: H(24) < 0.5 }); }
+    if (cls !== 'service' && cls !== 'track' && (qx * 7 + qy * 13) % 6 === 0 && H(5) < 0.7) { const [px, py] = at(hw + 7); this._add('light', px, py, OP_ART.light(), ...OP_SCALE.size('light'), { coll: OP_SCALE.foot('light'), rot: 0 }); }
+    if (cls !== 'service' && H(6) < 0.02) { const [px, py] = at(hw + 9); this._add('sign', px, py, OP_ART.sign(Math.floor(H(23) * 3)), ...OP_SCALE.size('sign'), { tilt: H(31) < 0.6 ? (H(32) - 0.5) * 0.9 : 0 }); }   // some lean over: damaged
+    if ((cls === 'service' || cls === 'minor' || cls === 'street') && H(7) < 0.02) { const [px, py] = at(hw + 8); this._add('barrier', px, py, OP_ART.barrier(), ...OP_SCALE.size('barrier'), { coll: OP_SCALE.foot('barrier'), rot: ang, flip: H(24) < 0.5 }); }
     // Wear on the painted road only (lateral position stays inside 70% of the drawn half width), turned to follow the road.
     if (dhw >= 4) {
       const fr = ang + (H(33) - 0.5) * 0.5, lane = () => at((H(25) - 0.5) * 2 * dhw * 0.7);
-      if (H(8) < 0.16) { const [px, py] = lane(), y2 = H(34) < 0.35; this._add('crack', px, py, y2 ? OP_ART.crackY() : OP_ART.crack(), 28, y2 ? 12 : 6, 4, { flat: true, fr, alpha: 0.9 }); }
-      if (dhw >= 6 && H(11) < 0.04) { const [px, py] = at((H(36) - 0.5) * 2 * dhw * 0.6); this._add('patch', px, py, OP_ART.patch(), 24, 10, 4, { flat: true, fr }); }
-      if (H(12) < 0.035) { const [px, py] = at((H(37) - 0.5) * 2 * dhw * 0.6); this._add('stain', px, py, OP_ART.stain(Math.floor(H(35) * 3)), 26, 11, 4, { flat: true, fr: fr + H(38) * 3 }); }
+      if (H(8) < 0.16) { const [px, py] = lane(), y2 = H(34) < 0.35; this._add('crack', px, py, y2 ? OP_ART.crackY() : OP_ART.crack(), ...OP_SCALE.size(y2 ? 'crackY' : 'crack'), { flat: true, fr, alpha: 0.9 }); }
+      if (dhw >= 6 && H(11) < 0.04) { const [px, py] = at((H(36) - 0.5) * 2 * dhw * 0.6); this._add('patch', px, py, OP_ART.patch(), ...OP_SCALE.size('patch'), { flat: true, fr }); }
+      if (H(12) < 0.035) { const [px, py] = at((H(37) - 0.5) * 2 * dhw * 0.6); this._add('stain', px, py, OP_ART.stain(Math.floor(H(35) * 3)), ...OP_SCALE.size('stain'), { flat: true, fr: fr + H(38) * 3 }); }
       if (H(13) < 0.012 && (small || mid)) {   // a few traffic cones at the road edge (no collision: they never block a lane)
         const lat = dhw * 0.8, tipped = H(39) < 0.3;
-        for (let i = -1; i <= 1; i++) { const [px, py] = at(lat, i * 10); if (tipped && i === 0) this._add('cone', px, py, OP_ART.coneDown(), 14, 8, 3, { flip: H(40) < 0.5 }); else this._add('cone', px, py, OP_ART.cone(), 8, 11, 3); }
+        for (let i = -1; i <= 1; i++) { const [px, py] = at(lat, i * 10); if (tipped && i === 0) this._add('cone', px, py, OP_ART.coneDown(), ...OP_SCALE.size('coneDown'), { flip: H(40) < 0.5 }); else this._add('cone', px, py, OP_ART.cone(), ...OP_SCALE.size('cone')); }
       }
     }
     const off = (kind, px, py, ...rest) => this._onPainted(px, py) ? null : this._add(kind, px, py, ...rest);   // pavement-side items never land on another road
-    if (H(9) < 0.12) { const [px, py] = at(dhw + 2 + H(26) * 7); off('weeds', px, py, OP_ART.weeds(), 22, 8, 4, { flat: true, fr: ang }); }   // weeds pushing through at the pavement edge
-    if (H(10) < 0.05) { const [px, py] = at(dhw + 6 + H(27) * 9); off('debris', px, py, OP_ART.debris(), 22, 7, 5, { flat: true, fr: H(41) * 6.28 }); if (H(28) < 0.5) off('trash', px + 12, py + 2, OP_ART.bag(), 11, 9, 5); }
-    if (cls !== 'service' && H(14) < 0.012) { const [px, py] = at(dhw + 6 + H(42) * 6); off('cart', px, py, OP_ART.cart(), 16, 14, 6, { flip: H(43) < 0.5 }); }   // an abandoned shopping cart on the pavement
-    if (H(15) < 0.03) { const [px, py] = at(dhw + 5 + H(44) * 8); off('cardboard', px, py, OP_ART.cardboard(), 15, 9, 5, { flat: true, fr: H(45) * 6.28 }); }
+    if (H(9) < 0.12) { const [px, py] = at(dhw + 2 + H(26) * 7); off('weeds', px, py, OP_ART.weeds(), ...OP_SCALE.size('weeds'), { flat: true, fr: ang }); }   // weeds pushing through at the pavement edge
+    if (H(10) < 0.05) { const [px, py] = at(dhw + 6 + H(27) * 9); off('debris', px, py, OP_ART.debris(), ...OP_SCALE.size('debris'), { flat: true, fr: H(41) * 6.28 }); if (H(28) < 0.5) off('trash', px + 12, py + 2, OP_ART.bag(), ...OP_SCALE.size('bag')); }
+    if (cls !== 'service' && H(14) < 0.012) { const [px, py] = at(dhw + 6 + H(42) * 6); off('cart', px, py, OP_ART.cart(), ...OP_SCALE.size('cart'), { flip: H(43) < 0.5 }); }   // an abandoned shopping cart on the pavement
+    if (H(15) < 0.03) { const [px, py] = at(dhw + 5 + H(44) * 8); off('cardboard', px, py, OP_ART.cardboard(), ...OP_SCALE.size('cardboard'), { flat: true, fr: H(45) * 6.28 }); }
   }
   // Trees: inside park polygons (sparse) and wooded areas (denser), on a fixed world grid so the result never depends on tile order.
   _parks() {
@@ -11558,7 +11640,7 @@ class PropField3D {
         const x = gx * sp + (opHash(gx, gy, 201) - 0.5) * sp * 0.6, y = gy * sp + (opHash(gx, gy, 202) - 0.5) * sp * 0.6;
         if (!Utils.pointInPolygon(x, y, pl.pts)) continue;   // not inside this one: another polygon (or a later tile) may still own the cell
         this.cells.add(key); if (opHash(gx, gy, 203) > prob || this._onRoad(x, y, 16)) continue;
-        this._add('tree', x, y, OP_ART.tree(), 64, 72, 20, { coll: [16, 12], rot: 0 });
+        this._add('tree', x, y, OP_ART.tree(), ...OP_SCALE.size('tree'), { coll: OP_SCALE.foot('tree'), rot: 0 });
       }
     }
   }
@@ -11573,18 +11655,18 @@ class PropField3D {
     const e = edge(best), put = (kind, lat, along, spr, w, h, r, o) => { const px = e.mx + e.nx * lat + e.tx * along, py = e.my + e.ny * lat + e.ty * along; if (this._onRoad(px, py, 10) || this._onPainted(px, py)) return null; return this._add(kind, px, py, spr, w, h, r, o); };
     const rot = Math.atan2(e.ty, e.tx);
     if (H(1) < 0.22) {   // a service corner: dumpster, bags, maybe a crate or pallet
-      put('dumpster', 15, 0, OP_ART.dumpster(H(2) < 0.5 ? 0 : 1), 26, 19, 12, { coll: [22, 13], rot });
-      const nb = 1 + Math.floor(H(3) * 3); for (let i = 0; i < nb; i++) put('trash', 11, 20 + i * 11, i === 1 ? OP_ART.pile() : OP_ART.bag(), i === 1 ? 19 : 11, i === 1 ? 11 : 9, 5);
-      if (H(4) < 0.45) put('crate', 11, -22, OP_ART.crate(), 15, 15, 7, { coll: [12, 12], rot });
-      if (H(5) < 0.3) put('pallet', 8, -40, OP_ART.pallet(), 22, 8, 7, { flat: true });
-    } else if (H(6) < 0.07) put('util', 8, 0, OP_ART.util(), 14, 18, 6, { coll: [10, 8], rot });
-    else if (areaM > 1200 && H(7) < 0.12) put('gen', 13, bl * 0.25, OP_ART.gen(), 24, 17, 10, { coll: [20, 11], rot });
-    if (H(8) < 0.15) put('weeds', 6, (H(9) - 0.5) * bl * 0.6, OP_ART.weeds(), 22, 8, 4, { flat: true, fr: rot });
+      put('dumpster', 15, 0, OP_ART.dumpster(H(2) < 0.5 ? 0 : 1), ...OP_SCALE.size('dumpster'), { coll: OP_SCALE.foot('dumpster'), rot });
+      const nb = 1 + Math.floor(H(3) * 3); for (let i = 0; i < nb; i++) put('trash', 11, 20 + i * 11, i === 1 ? OP_ART.pile() : OP_ART.bag(), ...OP_SCALE.size(i === 1 ? 'pile' : 'bag'));
+      if (H(4) < 0.45) put('crate', 11, -22, OP_ART.crate(), ...OP_SCALE.size('crate'), { coll: OP_SCALE.foot('crate'), rot });
+      if (H(5) < 0.3) put('pallet', 8, -40, OP_ART.pallet(), ...OP_SCALE.size('pallet'), { flat: true });
+    } else if (H(6) < 0.07) put('util', 8, 0, OP_ART.util(), ...OP_SCALE.size('util'), { coll: OP_SCALE.foot('util'), rot });
+    else if (areaM > 1200 && H(7) < 0.12) put('gen', 13, bl * 0.25, OP_ART.gen(), ...OP_SCALE.size('gen'), { coll: OP_SCALE.foot('gen'), rot });
+    if (H(8) < 0.15) put('weeds', 6, (H(9) - 0.5) * bl * 0.6, OP_ART.weeds(), ...OP_SCALE.size('weeds'), { flat: true, fr: rot });
     // Odds and ends against the wall: a cart, flattened boxes, a stain on the pavement, a stray bag.
-    if (H(10) < 0.10) put('cart', 10, (H(11) - 0.5) * bl * 0.7, OP_ART.cart(), 16, 14, 6, { flip: H(12) < 0.5 });
-    if (H(13) < 0.16) put('cardboard', 8, (H(14) - 0.5) * bl * 0.7, OP_ART.cardboard(), 15, 9, 5, { flat: true, fr: rot + (H(15) - 0.5) * 0.8 });
-    if (H(16) < 0.14) put('stain', 5, (H(17) - 0.5) * bl * 0.6, OP_ART.stain(Math.floor(H(18) * 3)), 26, 11, 5, { flat: true, fr: rot });
-    if (H(19) < 0.07) put('trash', 9, (H(20) - 0.5) * bl * 0.7, OP_ART.bag(), 11, 9, 5);
+    if (H(10) < 0.10) put('cart', 10, (H(11) - 0.5) * bl * 0.7, OP_ART.cart(), ...OP_SCALE.size('cart'), { flip: H(12) < 0.5 });
+    if (H(13) < 0.16) put('cardboard', 8, (H(14) - 0.5) * bl * 0.7, OP_ART.cardboard(), ...OP_SCALE.size('cardboard'), { flat: true, fr: rot + (H(15) - 0.5) * 0.8 });
+    if (H(16) < 0.14) put('stain', 5, (H(17) - 0.5) * bl * 0.6, OP_ART.stain(Math.floor(H(18) * 3)), ...OP_SCALE.size('stain'), { flat: true, fr: rot });
+    if (H(19) < 0.07) put('trash', 9, (H(20) - 0.5) * bl * 0.7, OP_ART.bag(), ...OP_SCALE.size('bag'));
   }
   _waterRings() {
     const r = this.world.renderer, b = this.world.bridge; this.water = [];
@@ -11962,7 +12044,7 @@ class WaterZones3D {
 const OP_XWALK = {
   enabled: true, color: '#d9d3bf', opacity: 0.34,
   classes: ['trunk', 'primary', 'secondary', 'tertiary'],   // arms of these road classes get a crosswalk
-  barPx: 2.6, pitchPx: 4.6, depthPx: 11, setbackPx: 5,       // game px: bar width, bar spacing, crosswalk depth, gap between the junction and the crosswalk
+  barM: 0.5, pitchM: 1.0, depthM: 2.6, setbackM: 1.0,        // metres: bar width, bar spacing, crosswalk depth, gap between the junction and the crosswalk
   fade: 0.12,                                                // share of bars left out, so the paint looks worn
   maxCrosswalks: 260,
 };
@@ -12024,12 +12106,12 @@ class RoadMarks3D {
       const cx = n.x / n.c, cy = n.y / n.c; let R = 0; for (const c of cl) R = Math.max(R, c.w * ppm);
       for (const c of cl) {
         if (!OP_XWALK.classes.includes(c.cls) || feats.length >= OP_XWALK.maxCrosswalks * 4) continue;
-        const s = R + OP_XWALK.setbackPx, px = cx + c.ux * s, py = cy + c.uy * s, nx = -c.uy, ny = c.ux, span = c.w * ppm * 0.9;
+        const s = R + OP_XWALK.setbackM * ppm, px = cx + c.ux * s, py = cy + c.uy * s, nx = -c.uy, ny = c.ux, span = c.w * ppm * 0.9;
         const ck = Math.round(px / 6) + ',' + Math.round(py / 6); if (done.has(ck)) continue; done.add(ck);
-        const nb = Math.max(4, Math.round(2 * span / OP_XWALK.pitchPx)), bw = OP_XWALK.barPx / 2, dd = OP_XWALK.depthPx / 2;
+        const pitch = OP_XWALK.pitchM * ppm, nb = Math.max(4, Math.round(2 * span / pitch)), bw = OP_XWALK.barM * ppm / 2, dd = OP_XWALK.depthM * ppm / 2;
         for (let k = 0; k < nb; k++) {
           if (opHash(Math.round(px), Math.round(py), 300 + k) < OP_XWALK.fade) continue;
-          const o = (k - (nb - 1) / 2) * OP_XWALK.pitchPx, bx = px + nx * o, by = py + ny * o;
+          const o = (k - (nb - 1) / 2) * pitch, bx = px + nx * o, by = py + ny * o;
           const ring = [[-1, -1], [1, -1], [1, 1], [-1, 1], [-1, -1]].map(([sa, sb]) => { const ll = b.gamePxToLatLng(bx + nx * bw * sa + c.ux * dd * sb, by + ny * bw * sa + c.uy * dd * sb); return [ll.lng, ll.lat]; });
           feats.push({ type: 'Feature', properties: {}, geometry: { type: 'Polygon', coordinates: [ring] } });
         }
@@ -12191,7 +12273,7 @@ class MapTilerGameWorld {
       centerErrorPx: this.camera.centerErr,
       terrainOk: this.renderer.terrainOk, buildingsOk: this.renderer.buildingsOk,
       collision: { total: this.collision.all.length, active: this.collision.active.length, rebuilds: this.collision.rebuilds, skipped: this.collision.skipped },
-      camera: { distance: CAMERA_DISTANCE, effectiveDistance: CAMERA_DISTANCE / CAMERA_ZOOM_3D, pitch: CAMERA_PITCH, followSpeed: CAMERA_FOLLOW_SPEED, heightMeters: cameraHeightMeters() },
+      camera: { distanceMeters: cameraDistanceMeters(b.pxPerMeterX), pitch: CAMERA_PITCH, followSpeed: CAMERA_FOLLOW_SPEED, heightMeters: cameraHeightMeters(b.pxPerMeterX), gamePxPerMeter: b.pxPerMeterX },
       depth: { prisms: this.collision.prisms.length, ...this.occlusion.stats, fadeMode: this.fade.mode, buildingsThatCannotFade: this.fade.unfadable, fadedBuildings: this.fade.ids.size, fadeOpacity: this.fade.opacity },
     };
   }
