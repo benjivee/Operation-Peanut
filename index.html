@@ -1446,7 +1446,7 @@ const EMBEDDED_ASSETS = {
 
     <!-- ===================== Start overlay (home page) ===================== -->
     <div id="startScreen" class="overlay homePage">
-      <div id="versionTag" class="versionTag">v3.88.7</div>
+      <div id="versionTag" class="versionTag">v3.88.8</div>
       <div id="homeSidebar" class="homeSidebar">
         <div class="homeSidebarTitle">Your Stats</div>
         <div class="homeSidebarStat">
@@ -7265,14 +7265,14 @@ const MAP_CONFIG = {
   // once real geographic data is actually being fetched for an area.
   // ------------------------------------------------------------------
   // WORLD SCALE (read this before resizing any asset): CONFIG.WORLD is 3600 px square, so this span decides how many game px make one
-  // real metre: 3600 px / 400 m = 9 px per metre. The PixelLab art (cars ~45 px long, trees 96 x 108, lamps 80 px tall, characters 84 px
-  // canvases) was drawn for roughly 9 px per metre. At the old 800 m span (4.5 px per metre) the same art stood about twice as big next
-  // to the real roads and buildings, which is why props looked too large for the streets. Everything that has a real size (roads,
-  // buildings, props, vehicles, trees, crosswalks, water, camera zoom) is derived from this one mapping through OP_SCALE (props)
-  // or the coordinate bridge (map features), so changing it re-scales them together.
+  // real metre: 3600 px / 800 m = 4.5 px per metre. Everything that has a real size in the world (roads, buildings, collision footprints,
+  // crosswalks, water, camera zoom) is derived from this one mapping through the coordinate bridge or OP_SCALE.px(). The sprites are drawn at
+  // their own art scale (OP_SCALE.artPxPerM, ~9 px per metre = what the PixelLab art was made for), kept apart on purpose so changing the
+  // span here never changes how big the sprites look. A SMALLER span (e.g. 400 m = 9 px per metre) makes the city bigger around the same
+  // sprites, so props fit the streets better but the playable area covers less of the real map.
   PLAYABLE_MAP_SIZE: {
-    widthMeters: 400,   // real-world meters the generated map will span (was 800)
-    heightMeters: 400,
+    widthMeters: 800,   // real-world meters the generated map will span
+    heightMeters: 800,
     maxWidthMeters: 3000,  // ceiling a future "larger areas" setting must respect
     maxHeightMeters: 3000,
   },
@@ -10304,7 +10304,7 @@ class MapTilerCoordinateBridge {
  * it jumpTo()s the map to follow the peanut.
  *
  * Coordinates (all conversions go through MapTilerCoordinateBridge):
- *   gameplay (game px, 3600 x 3600 = 400 m, y grows south)  <- movement,
+ *   gameplay (game px, 3600 x 3600 = 800 m, y grows south)  <- movement,
  *        collision and the existing obstacles live here, unchanged
  *   <-> local meters (east, north) <-> lat/lng              (CoordinateConverter)
  *   <-> Mercator (+ terrain altitude in meters)             -> screen via the map matrix
@@ -11417,21 +11417,26 @@ const OP_ART = (() => {
 })();
 
 // ---------------------------------------------------------------------
-// OP_SCALE: the size of every prop, vehicle, tree and lamp, in METRES, turned into game px through the ONE world mapping
-// (CONFIG.WORLD px / MAP_CONFIG.PLAYABLE_MAP_SIZE metres). Three different sizes are kept apart for each kind:
-//   shown  w x h : how big the sprite is DRAWN (readable pixel art, deliberately a little larger than life; the smaller the thing,
-//                  the bigger the boost: cones and bags ~1.7-2.4x, carts and barriers ~2x, signs ~1.8x, cars ~1.1x, trees ~1x)
+// OP_SCALE: the size of every prop, vehicle, tree and lamp, in METRES. Two scales turn metres into game px, kept apart on purpose:
+//   art scale   (artPxPerM, ~9 px per metre): how big a sprite is DRAWN. This is the scale the PixelLab art was made for, so the pixel art stays
+//                crisp and readable whatever real-world span the map covers.
+//   world scale (CONFIG.WORLD px / MAP_CONFIG.PLAYABLE_MAP_SIZE metres): the PHYSICAL size on the map, used for collision footprints.
+// Three different sizes are kept apart for each kind:
+//   shown  w x h : how big the sprite is DRAWN, at the art scale (readable pixel art, deliberately larger than life: cones and bags
+//                  ~1.7-2.4x, carts and barriers ~2x, signs ~1.8x, cars ~1.1x, trees ~1x, when the world mapping is 9 px per metre)
 //   real         : the true size, kept here as documentation of how large the boost is
-//   foot  [l, w] : the PHYSICAL footprint on the ground = the collision box (never the drawn size; kinds without one never block anyone)
-//   r            : personal space between props, so they do not stack on each other
+//   foot  [l, w] : the PHYSICAL footprint on the ground = the collision box, at the WORLD scale (never the drawn size; kinds without one never block anyone)
+//   r            : personal space between props, so they do not stack on each other (art scale: it is about what you see)
 //   behind       : the footprint sits under the drawn base, not on the sprite's bottom-centre anchor (the anchor is the near edge of a standing object)
 // Ground contact: standing sprites are anchored bottom-centre on their ground point, flat decals are centred on it, and depth order comes
 // from that same point, for every kind. Characters keep their own settings (CONFIG.PLAYER / zombie types: spriteDisplaySize, *_SCALE,
 // GAME3D.entityScale for the drawn size and `radius` for the physical one) and are listed in the audit notes, not resized here.
 // ---------------------------------------------------------------------
 const OP_SCALE = {
-  pxPerM() { return CONFIG.WORLD.width / MAP_CONFIG.PLAYABLE_MAP_SIZE.widthMeters; },
-  px(m) { return m * this.pxPerM(); },
+  artPxPerM: 9,              // sprite drawing scale: game px per metre of DRAWN size (independent of the world mapping)
+  pxPerM() { return CONFIG.WORLD.width / MAP_CONFIG.PLAYABLE_MAP_SIZE.widthMeters; },   // world scale: game px per real metre
+  px(m) { return m * this.pxPerM(); },       // metres -> game px on the map (physical sizes)
+  art(m) { return m * this.artPxPerM; },     // metres -> game px as DRAWN (sprite sizes)
   carLengthM: 5.0,           // drawn length of a vehicle sprite (real cars ~4.5 m, vans ~5.5 m): the whole supplied sheet is scaled by ONE factor so cars stay smaller than vans
   kinds: {
     tree:      { w: 7.1, h: 8.0, real: 9,   r: 2.2,  foot: [1.0, 0.8] },                        // the trunk blocks you; the crown never does
@@ -11457,11 +11462,11 @@ const OP_SCALE = {
     cart:      { w: 1.8, h: 1.6, real: 1.0, r: 0.7 },
     cardboard: { w: 1.7, h: 1.0, real: 1.0, r: 0.55 },
   },
-  size(key) { const k = this.kinds[key]; return [Math.round(this.px(k.w)), Math.round(this.px(k.h)), Math.round(this.px(k.r))]; },   // [drawn w, drawn h, spacing r] in game px
-  r(key) { return Math.round(this.px(this.kinds[key].r)); },
+  size(key) { const k = this.kinds[key]; return [Math.round(this.art(k.w)), Math.round(this.art(k.h)), Math.round(this.art(k.r))]; },   // [drawn w, drawn h, spacing r] in game px
+  r(key) { return Math.round(this.art(this.kinds[key].r)); },
   foot(key) { const f = this.kinds[key].foot; return f ? [this.px(f[0]), this.px(f[1])] : null; },   // physical footprint [length, width] in game px
   carScale() {   // one factor for the whole vehicle sheet, from the mean sprite width
-    if (this._cs === undefined) { const rs = OP_IMG.cars.rects; this._cs = this.px(this.carLengthM) / (rs.reduce((a, r) => a + r[2], 0) / rs.length); }
+    if (this._cs === undefined) { const rs = OP_IMG.cars.rects; this._cs = this.art(this.carLengthM) / (rs.reduce((a, r) => a + r[2], 0) / rs.length); }
     return this._cs;
   },
 };
