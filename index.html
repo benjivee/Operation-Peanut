@@ -1446,7 +1446,7 @@ const EMBEDDED_ASSETS = {
 
     <!-- ===================== Start overlay (home page) ===================== -->
     <div id="startScreen" class="overlay homePage">
-      <div id="versionTag" class="versionTag">v3.88.8</div>
+      <div id="versionTag" class="versionTag">v3.88.9</div>
       <div id="homeSidebar" class="homeSidebar">
         <div class="homeSidebarTitle">Your Stats</div>
         <div class="homeSidebarStat">
@@ -1669,9 +1669,11 @@ const EMBEDDED_ASSETS = {
 
 const CONFIG = {
 
+  // The pixel world. Keep CONFIG.WORLD / MAP_CONFIG.PLAYABLE_MAP_SIZE at 9 px per metre (9000 px = 1000 m now) and the zoom, sprite sizes, roads and
+  // buildings stay exactly as they look; a bigger pair just gives a bigger play area. (Props, the nav grid and the boundary scale with it.)
   WORLD: {
-    width: 3600,
-    height: 3600,
+    width: 9000,
+    height: 9000,
   },
 
   PLAYER: {
@@ -3512,6 +3514,22 @@ class NavGrid {
             break;
           }
         }
+        this.blocked[row * this.cols + col] = isBlocked ? 1 : 0;
+      }
+    }
+  }
+
+  // Recompute only the cells within `radius` px of (cx, cy), against only the obstacles that can reach that window; every other cell keeps what
+  // it had. A bigger world costs nothing extra this way: the work is set by the window, not by the world.
+  rebuildWindow(cx, cy, radius, obstacles, agentRadius) {
+    const cs = this.cellSize, c0 = Math.max(0, Math.floor((cx - radius) / cs)), c1 = Math.min(this.cols - 1, Math.floor((cx + radius) / cs));
+    const r0 = Math.max(0, Math.floor((cy - radius) / cs)), r1 = Math.min(this.rows - 1, Math.floor((cy + radius) / cs));
+    const reach = radius * 1.45 + agentRadius, near = obstacles.filter((o) => Math.hypot(o.x - cx, o.y - cy) - Math.hypot(o.halfWidth, o.halfHeight) <= reach);
+    for (let row = r0; row <= r1; row++) {
+      for (let col = c0; col <= c1; col++) {
+        const x = col * cs + cs / 2, y = row * cs + cs / 2;
+        let isBlocked = false;
+        for (const obstacle of near) { if (Utils.resolveCircleRect(x, y, agentRadius, obstacle)) { isBlocked = true; break; } }
         this.blocked[row * this.cols + col] = isBlocked ? 1 : 0;
       }
     }
@@ -5457,6 +5475,7 @@ class HUD {
 // from ever grazing so close to a building that a wider zombie's own
 // separate obstacle-collision push-out fights the path it's following.
 const NAV_AGENT_RADIUS = 24;
+const NAV_WINDOW_PX = 1500;   // 3D runs: the nav grid is recomputed this far (px) round the peanut; zombies spawn and chase from well inside it
 
 // How far in from the world edge (px) the boundary wall art effectively
 // starts — bullets and flames stop here instead of flying out past the
@@ -5833,7 +5852,9 @@ class Game {
     // why a coarse uniform grid + capped-search A* is the right level of
     // effort here rather than a full navmesh.
     // (3D run: the grid is built from the MapTiler-derived buildings in _attachWorld3d, below.)
-    this.navGrid = will3d ? null : new NavGrid(world.width, world.height, this.obstacles, NAV_AGENT_RADIUS);
+    // 2D fallback: same local method as the 3D run: only the area round the peanut is computed, and again when the peanut walks away from the middle of it.
+    this.navGrid = will3d ? null : new NavGrid(world.width, world.height, [], NAV_AGENT_RADIUS);
+    if (!will3d) { this.navGrid.rebuildWindow(spawnX, spawnY, NAV_WINDOW_PX, this.obstacles, NAV_AGENT_RADIUS); this._nav2dCentre = { x: spawnX, y: spawnY }; this._nav2dAt = performance.now(); }
     this.survivalTime = 0;
     this.weaponUnlockBannerTimer = 0;
 
@@ -5905,8 +5926,11 @@ class Game {
   }
 
   // Zombie pathfinding grid from ALL known MapTiler buildings (coarse 48 px cells).
+  // Only the area round the peanut is recomputed (NAV_WINDOW_PX); the rest of the grid keeps its last values, so the cost does not grow with the world.
   _rebuildNavGrid() {
-    this.navGrid = new NavGrid(CONFIG.WORLD.width, CONFIG.WORLD.height, this.world3d.collision.all, NAV_AGENT_RADIUS);
+    if (!this.navGrid) this.navGrid = new NavGrid(CONFIG.WORLD.width, CONFIG.WORLD.height, [], NAV_AGENT_RADIUS);
+    this.navGrid.rebuildWindow(this.player.x, this.player.y, NAV_WINDOW_PX, this.world3d.collision.all, NAV_AGENT_RADIUS);
+    this._navCentre = { x: this.player.x, y: this.player.y };
     this._navDirty = false;
     this._navBuiltAt = performance.now();
   }
@@ -5914,6 +5938,7 @@ class Game {
   // Top of the original update() in a 3D run: keep the collision list current.
   _world3dPreUpdate() {
     this.world3d.syncCollision(this.player.x, this.player.y);
+    if (!this._navDirty && this._navCentre && Math.hypot(this.player.x - this._navCentre.x, this.player.y - this._navCentre.y) > NAV_WINDOW_PX * 0.3) this._navDirty = true; // walked out of the middle of the window: recompute round the new spot
     if (this._navDirty && performance.now() - this._navBuiltAt > 2000) this._rebuildNavGrid(); // at most every 2 s
     if (this.input.wasPressed(GAME3D.collisionDebugKey)) this.world3d.toggleCollisionDebug();
     if (this.input.wasPressed(GAME3D.readoutKey)) this.world3d.toggleReadout();
@@ -6239,6 +6264,9 @@ class Game {
   _update(dt) {
     const world = CONFIG.WORLD;
     if (this.world3d) this._world3dPreUpdate(); // 3D run: refresh the nearby-building collision list + debug keys
+    else if (this.navGrid && this._nav2dCentre && Math.hypot(this.player.x - this._nav2dCentre.x, this.player.y - this._nav2dCentre.y) > NAV_WINDOW_PX * 0.3 && performance.now() - this._nav2dAt > 500) {   // 2D fallback: walked out of the middle of the nav window
+      this.navGrid.rebuildWindow(this.player.x, this.player.y, NAV_WINDOW_PX, this.obstacles, NAV_AGENT_RADIUS); this._nav2dCentre = { x: this.player.x, y: this.player.y }; this._nav2dAt = performance.now();
+    }
     if (this.world3d && this.world3d.water) this.world3d.water.tick(dt, this); // streams: slow whoever wades in them + splash pixels
     this.survivalTime += dt;
 
@@ -7264,15 +7292,15 @@ const MAP_CONFIG = {
   // configurable-sized area to check against) — that's a Phase 4+ concern,
   // once real geographic data is actually being fetched for an area.
   // ------------------------------------------------------------------
-  // WORLD SCALE (read this before resizing any asset): CONFIG.WORLD is 3600 px square, so this span decides how many game px make one
-  // real metre: 3600 px / 800 m = 4.5 px per metre. Everything that has a real size in the world (roads, buildings, collision footprints,
-  // crosswalks, water, camera zoom) is derived from this one mapping through the coordinate bridge or OP_SCALE.px(). The sprites are drawn at
-  // their own art scale (OP_SCALE.artPxPerM, ~9 px per metre = what the PixelLab art was made for), kept apart on purpose so changing the
-  // span here never changes how big the sprites look. A SMALLER span (e.g. 400 m = 9 px per metre) makes the city bigger around the same
-  // sprites, so props fit the streets better but the playable area covers less of the real map.
+  // WORLD SCALE (read this before resizing any asset): CONFIG.WORLD is 9000 px square, so this span decides how many game px make one
+  // real metre: 9000 px / 1000 m = 9 px per metre. The PixelLab art (cars ~45 px long, trees 96 x 108, lamps 80 px tall, characters 84 px
+  // canvases) was drawn for roughly 9 px per metre. At the old 800 m span (4.5 px per metre) the same art stood about twice as big next
+  // to the real roads and buildings, which is why props looked too large for the streets. Everything that has a real size (roads,
+  // buildings, props, vehicles, trees, crosswalks, water, camera zoom) is derived from this one mapping through OP_SCALE (props)
+  // or the coordinate bridge (map features), so changing it re-scales them together.
   PLAYABLE_MAP_SIZE: {
-    widthMeters: 800,   // real-world meters the generated map will span
-    heightMeters: 800,
+    widthMeters: 1000,   // real-world meters the generated map will span (9000 px / 1000 m = 9 px per metre)
+    heightMeters: 1000,
     maxWidthMeters: 3000,  // ceiling a future "larger areas" setting must respect
     maxHeightMeters: 3000,
   },
@@ -10304,7 +10332,7 @@ class MapTilerCoordinateBridge {
  * it jumpTo()s the map to follow the peanut.
  *
  * Coordinates (all conversions go through MapTilerCoordinateBridge):
- *   gameplay (game px, 3600 x 3600 = 800 m, y grows south)  <- movement,
+ *   gameplay (game px, 9000 x 9000 = 1000 m, y grows south)  <- movement,
  *        collision and the existing obstacles live here, unchanged
  *   <-> local meters (east, north) <-> lat/lng              (CoordinateConverter)
  *   <-> Mercator (+ terrain altitude in meters)             -> screen via the map matrix
@@ -11215,7 +11243,7 @@ class WorldOverlay3D {
   // terrain plus a faint wall rising from it. (The area itself is the existing game-world
   // square; movement is clamped to it by the existing movement code.)
   drawBoundary(ctx, camera, view) {
-    const w = this.world, b = w.bridge, cam = w.camera, W = b.worldW, H = b.worldH, N = 24, k = camera.zoom;
+    const w = this.world, b = w.bridge, cam = w.camera, W = b.worldW, H = b.worldH, N = Math.round(24 * W / 3600), k = camera.zoom;
     const pts = [];
     for (let i = 0; i < N; i++) pts.push([W * i / N, 0]);
     for (let i = 0; i < N; i++) pts.push([W, H * i / N]);
@@ -11343,7 +11371,8 @@ const OP_DETAIL = {
   overlayGrowM: 0.35,      // the window / roof overlay is this much larger than the wall behind it (stops z-fighting flicker)
   pixelSize: 1,            // how chunky the building pixels are: 1 = fine (the old look), 2 = chunky (same pixel size as the ground textures), 4 = very chunky. The windows stay the same size and spacing; only the pixels get bigger (and the tiniest details drop out).
   maxBuildings: 1500,      // details on up to this many buildings, nearest the peanut first as new ones stream in (the first pass was 80)
-  drawRangePx: 640, maxDrawn: 420,   // props are drawn within this distance of the peanut (game px), at most this many per frame
+  drawRangePx: 640, maxDrawn: 420,
+  capsWorldPx: 3600,       // the world size (px) the caps below were tuned for; they scale with the world's area   // props are drawn within this distance of the peanut (game px), at most this many per frame
   safeSpawnPx: 150,        // no props this close to where the run starts
   // How many of each prop to place across the loaded map (a 0 switches a kind off).
   caps: { tree: 440, car: 70, light: 40, sign: 60, barrier: 36, dumpster: 24, crate: 28, pallet: 16, trash: 150, debris: 110, util: 14, gen: 6, weeds: 280, crack: 400, cone: 60, cart: 24, cardboard: 100, stain: 140, patch: 110 },
@@ -11417,26 +11446,21 @@ const OP_ART = (() => {
 })();
 
 // ---------------------------------------------------------------------
-// OP_SCALE: the size of every prop, vehicle, tree and lamp, in METRES. Two scales turn metres into game px, kept apart on purpose:
-//   art scale   (artPxPerM, ~9 px per metre): how big a sprite is DRAWN. This is the scale the PixelLab art was made for, so the pixel art stays
-//                crisp and readable whatever real-world span the map covers.
-//   world scale (CONFIG.WORLD px / MAP_CONFIG.PLAYABLE_MAP_SIZE metres): the PHYSICAL size on the map, used for collision footprints.
-// Three different sizes are kept apart for each kind:
-//   shown  w x h : how big the sprite is DRAWN, at the art scale (readable pixel art, deliberately larger than life: cones and bags
-//                  ~1.7-2.4x, carts and barriers ~2x, signs ~1.8x, cars ~1.1x, trees ~1x, when the world mapping is 9 px per metre)
+// OP_SCALE: the size of every prop, vehicle, tree and lamp, in METRES, turned into game px through the ONE world mapping
+// (CONFIG.WORLD px / MAP_CONFIG.PLAYABLE_MAP_SIZE metres). Three different sizes are kept apart for each kind:
+//   shown  w x h : how big the sprite is DRAWN (readable pixel art, deliberately a little larger than life; the smaller the thing,
+//                  the bigger the boost: cones and bags ~1.7-2.4x, carts and barriers ~2x, signs ~1.8x, cars ~1.1x, trees ~1x)
 //   real         : the true size, kept here as documentation of how large the boost is
-//   foot  [l, w] : the PHYSICAL footprint on the ground = the collision box, at the WORLD scale (never the drawn size; kinds without one never block anyone)
-//   r            : personal space between props, so they do not stack on each other (art scale: it is about what you see)
+//   foot  [l, w] : the PHYSICAL footprint on the ground = the collision box (never the drawn size; kinds without one never block anyone)
+//   r            : personal space between props, so they do not stack on each other
 //   behind       : the footprint sits under the drawn base, not on the sprite's bottom-centre anchor (the anchor is the near edge of a standing object)
 // Ground contact: standing sprites are anchored bottom-centre on their ground point, flat decals are centred on it, and depth order comes
 // from that same point, for every kind. Characters keep their own settings (CONFIG.PLAYER / zombie types: spriteDisplaySize, *_SCALE,
 // GAME3D.entityScale for the drawn size and `radius` for the physical one) and are listed in the audit notes, not resized here.
 // ---------------------------------------------------------------------
 const OP_SCALE = {
-  artPxPerM: 9,              // sprite drawing scale: game px per metre of DRAWN size (independent of the world mapping)
-  pxPerM() { return CONFIG.WORLD.width / MAP_CONFIG.PLAYABLE_MAP_SIZE.widthMeters; },   // world scale: game px per real metre
-  px(m) { return m * this.pxPerM(); },       // metres -> game px on the map (physical sizes)
-  art(m) { return m * this.artPxPerM; },     // metres -> game px as DRAWN (sprite sizes)
+  pxPerM() { return CONFIG.WORLD.width / MAP_CONFIG.PLAYABLE_MAP_SIZE.widthMeters; },
+  px(m) { return m * this.pxPerM(); },
   carLengthM: 5.0,           // drawn length of a vehicle sprite (real cars ~4.5 m, vans ~5.5 m): the whole supplied sheet is scaled by ONE factor so cars stay smaller than vans
   kinds: {
     tree:      { w: 7.1, h: 8.0, real: 9,   r: 2.2,  foot: [1.0, 0.8] },                        // the trunk blocks you; the crown never does
@@ -11462,11 +11486,11 @@ const OP_SCALE = {
     cart:      { w: 1.8, h: 1.6, real: 1.0, r: 0.7 },
     cardboard: { w: 1.7, h: 1.0, real: 1.0, r: 0.55 },
   },
-  size(key) { const k = this.kinds[key]; return [Math.round(this.art(k.w)), Math.round(this.art(k.h)), Math.round(this.art(k.r))]; },   // [drawn w, drawn h, spacing r] in game px
-  r(key) { return Math.round(this.art(this.kinds[key].r)); },
+  size(key) { const k = this.kinds[key]; return [Math.round(this.px(k.w)), Math.round(this.px(k.h)), Math.round(this.px(k.r))]; },   // [drawn w, drawn h, spacing r] in game px
+  r(key) { return Math.round(this.px(this.kinds[key].r)); },
   foot(key) { const f = this.kinds[key].foot; return f ? [this.px(f[0]), this.px(f[1])] : null; },   // physical footprint [length, width] in game px
   carScale() {   // one factor for the whole vehicle sheet, from the mean sprite width
-    if (this._cs === undefined) { const rs = OP_IMG.cars.rects; this._cs = this.art(this.carLengthM) / (rs.reduce((a, r) => a + r[2], 0) / rs.length); }
+    if (this._cs === undefined) { const rs = OP_IMG.cars.rects; this._cs = this.px(this.carLengthM) / (rs.reduce((a, r) => a + r[2], 0) / rs.length); }
     return this._cs;
   },
 };
@@ -11511,7 +11535,7 @@ class PropField3D {
     this.segGrid = new Map(); this.propGrid = new Map(); this.water = []; this.prismDone = 0; this.removed = false; this.obstacles = [];
   }
   static HALF_M = Object.fromEntries(Object.entries(OP_ROAD_WIDTH_M).map(([c, w]) => [c, w / 2]));   // half the real road width (m), the same table the map paints the roads from
-  _room(kind) { return (this.count[kind] || 0) < OP_DETAIL.caps[kind]; }
+  _room(kind) { return (this.count[kind] || 0) < OP_DETAIL.caps[kind] * Math.pow(CONFIG.WORLD.width / OP_DETAIL.capsWorldPx, 2); }   // the caps are per 3600 px of world: a bigger world gets proportionally more
   _segCells(x0, y0, x1, y1, fn) { const C = 64; for (let cx = Math.floor(Math.min(x0, x1) / C); cx <= Math.floor(Math.max(x0, x1) / C); cx++) for (let cy = Math.floor(Math.min(y0, y1) / C); cy <= Math.floor(Math.max(y0, y1) / C); cy++) fn(cx + ',' + cy); }
   _onRoad(x, y, pad) {
     const C = 64, cx = Math.floor(x / C), cy = Math.floor(y / C);
