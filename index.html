@@ -1446,7 +1446,7 @@ const EMBEDDED_ASSETS = {
 
     <!-- ===================== Start overlay (home page) ===================== -->
     <div id="startScreen" class="overlay homePage">
-      <div id="versionTag" class="versionTag">v3.88.9</div>
+      <div id="versionTag" class="versionTag">v3.88.10</div>
       <div id="homeSidebar" class="homeSidebar">
         <div class="homeSidebarTitle">Your Stats</div>
         <div class="homeSidebarStat">
@@ -10003,6 +10003,27 @@ const OP_STYLE = (() => {
 
 // Small procedural pixel textures (no image files): every "art pixel" is 2x2 screen pixels, drawn only in the layer's own
 // palette colour plus one lighter and one darker tone. Deterministic (seeded), so the world looks the same every run.
+// PixelLab grass: one seamless 384 x 384 image built from the 6 supplied 128 x 128 PixelLab tiles. Their dark and light patches and tufts sit on one flat
+// base colour, so they were lifted out and scattered at random positions (wrapping round the edges, so it tiles with no seam), using only the supplied pixels.
+// It repeats every ~80 m instead of every ~3 m. It replaces the plain procedural grass the moment it has decoded; if that ever fails, the procedural grass stays.
+const OP_GRASS_PNG = 'data:image/png;base64,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';
+function opLoadGrassImage(map, ratio) {
+  if (!OP_GRASS_PNG || map.__opGrass) return;
+  map.__opGrass = true;
+  let img; try { img = new Image(); } catch (e) { console.warn('[grass] cannot decode images here:', e.message); return; }   // never let this stop the rest of the map styling
+  img.onload = () => {
+    try {
+      const c = document.createElement('canvas'); c.width = img.width; c.height = img.height;
+      const g = c.getContext('2d'); g.drawImage(img, 0, 0);
+      const d = g.getImageData(0, 0, c.width, c.height);
+      if (map.hasImage('op-grass')) map.removeImage('op-grass');
+      map.addImage('op-grass', { width: c.width, height: c.height, data: new Uint8Array(d.data.buffer) }, { pixelRatio: ratio / 2 });   // one art pixel = 2 screen pixels, like the other ground textures
+    } catch (e) { console.warn('[grass] PixelLab texture not applied:', e.message); }
+  };
+  img.onerror = () => console.warn('[grass] PixelLab texture failed to decode');
+  img.src = OP_GRASS_PNG;
+}
+
 function opMakePatterns(map) {
   const S = OP_STYLE, ratio = Math.max(1, window.devicePixelRatio || 1);
   const rgb = (h) => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
@@ -10039,6 +10060,7 @@ function opMakePatterns(map) {
     speckle(0.93, 1.05, 0.05, 0.03)(art, n, base);
     for (let i = 0; i < n; i++) { art[i * n + (n - 1)] = tone(base, 0.86); art[(n - 1) * n + i] = tone(base, 0.86); }   // slab joints
   });
+  opLoadGrassImage(map, ratio);   // the PixelLab grass replaces op-grass once decoded
 }
 
 // Real-world road widths (kerb to kerb, metres) per map road class, taken from the game's own table (Road.WIDTH_METERS_BY_TYPE) so the 2D and 3D
