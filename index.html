@@ -1447,7 +1447,7 @@ const EMBEDDED_ASSETS = {
     <!-- ===================== Start overlay (home page) ===================== -->
     <div id="startScreen" class="overlay homePage">
       <!-- Version: major.minor.patch. The patch digit goes 0-9 and rolls into the minor number (v3.88.9 -> v3.89.0); the minor number is two digits and rolls into the major number (v3.99.9 -> v4.00.0). Bumped by 1 on every change. -->
-      <div id="versionTag" class="versionTag">v3.89.3</div>
+      <div id="versionTag" class="versionTag">v3.89.4</div>
       <div id="homeSidebar" class="homeSidebar">
         <div class="homeSidebarTitle">Your Stats</div>
         <div class="homeSidebarStat">
@@ -2070,6 +2070,21 @@ const CONFIG = {
   // ------------------------------------------------------------------
   WEAPON_UNLOCK: {
     edgeMargin: 150, // keep unlock pickups this far from the world's edges
+  },
+
+  // Off-screen pointer to a weapon pickup: a small badge with the weapon's own pixel art and an arrow, sitting on the screen edge in the
+  // direction of the gun. It fades in when a weapon is out of sight and fades away once the gun is on screen.
+  WEAPON_POINTER: {
+    enabled: true,
+    badgeW: 60,        // badge size (screen px): wide, because the weapon art is wide and short
+    badgeH: 44,
+    insetX: 58,        // how far from the left/right screen edge the badge sits (so its arrow fits)
+    insetY: 48,        // ... and from the top/bottom edge
+    onScreenMargin: 20, // the gun counts as "on screen" once it is this far inside the edge
+    fadeSpeed: 7,      // higher = faster fade in / out
+    maxPointers: 3,    // nearest weapon pickups to point at
+    showDistance: true, // little "123 m" label under the badge
+    color: '#ffd54a',  // arrow and badge outline
   },
 };
 
@@ -4236,6 +4251,44 @@ class Bullet extends Entity {
  * uniformly.
  */
 
+// ---- Weapon pointer helpers (pure functions; see Game._drawWeaponPointers) ----
+// Where the ray from `o` (the peanut on screen) along (vx, vy) meets the screen edge inset by `inset`; angle = the arrow's direction.
+function opPointerPlace(W, H, o, vx, vy, ix, iy = ix) {
+  const ox = Math.min(W - ix, Math.max(ix, o.x)), oy = Math.min(H - iy, Math.max(iy, o.y));
+  const L = Math.hypot(vx, vy) || 1; vx /= L; vy /= L;
+  const tx = vx > 1e-9 ? (W - ix - ox) / vx : vx < -1e-9 ? (ix - ox) / vx : Infinity;
+  const ty = vy > 1e-9 ? (H - iy - oy) / vy : vy < -1e-9 ? (iy - oy) / vy : Infinity;
+  const t = Math.min(tx, ty);
+  return { x: ox + vx * t, y: oy + vy * t, angle: Math.atan2(vy, vx) };
+}
+// Nudge a badge (half size `r`) out from under any HUD panel, staying inside the allowed rectangle [lo, hi]; the nearest free spot wins.
+function opPointerAvoid(pos, rects, rx, ry, W, H, ix, iy = ix) {   // rx, ry = half width / half height of the badge
+  const hit = (x, y) => rects.some((q) => x + rx > q.left && x - rx < q.right && y + ry > q.top && y - ry < q.bottom);
+  if (!hit(pos.x, pos.y)) return pos;
+  const cl = (v, lo, hi) => Math.min(hi, Math.max(lo, v)), cands = [];
+  for (const q of rects) {
+    if (!(pos.x + rx > q.left && pos.x - rx < q.right && pos.y + ry > q.top && pos.y - ry < q.bottom)) continue;
+    cands.push({ x: pos.x, y: cl(q.top - ry - 4, iy, H - iy) }, { x: pos.x, y: cl(q.bottom + ry + 4, iy, H - iy) },
+               { x: cl(q.left - rx - 4, ix, W - ix), y: pos.y }, { x: cl(q.right + rx + 4, ix, W - ix), y: pos.y });
+  }
+  cands.sort((a, b) => Math.hypot(a.x - pos.x, a.y - pos.y) - Math.hypot(b.x - pos.x, b.y - pos.y));
+  for (const c of cands) if (!hit(c.x, c.y)) return { ...pos, x: c.x, y: c.y };
+  return pos;
+}
+// The part of a sprite that actually has art in it (sprites sit in a bigger transparent canvas), measured once and remembered on the image.
+function opSpriteArtBox(img) {
+  if (img.__artBox) return img.__artBox;
+  const w = img.naturalWidth || img.width || 48, h = img.naturalHeight || img.height || 48; let box = { x: 0, y: 0, w, h };
+  try {
+    const c = document.createElement('canvas'); c.width = w; c.height = h; const g = c.getContext('2d'); g.drawImage(img, 0, 0);
+    const d = g.getImageData(0, 0, w, h).data; let x0 = w, y0 = h, x1 = -1, y1 = -1;
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (d[(y * w + x) * 4 + 3] > 8) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+    if (x1 >= 0) box = { x: x0, y: y0, w: x1 - x0 + 1, h: y1 - y0 + 1 };
+  } catch (e) { /* keep the whole canvas */ }
+  img.__artBox = box; return box;
+}
+function opEase(a, target, dt, speed) { return a + (target - a) * (1 - Math.exp(-dt * speed)); }
+
 class Pickup extends Entity {
   // `value` is the numeric amount for 'ammo'/'health', or the weapon id
   // string (e.g. 'shotgun') for 'weapon'.
@@ -6004,6 +6057,7 @@ class Game {
     this._drawFloatingTexts(ctx, view);
     ctx.restore();
     w.drawReadout(ctx); // F3: lat/lng, ground height, active collision (screen space)
+    this._drawWeaponPointers(ctx, rc); // screen space: arrows to weapon pickups that are out of sight
     const now = performance.now(), dt = Math.min(0.1, (now - (this._lastOverlayT || now)) / 1000);
     this._lastOverlayT = now;
     w.fade.update(dt, obstructors); // fade only the building(s) actually in front of the peanut
@@ -6947,6 +7001,63 @@ class Game {
     this.fx.draw(ctx, this.camera, canvas, null, zoom, { x: this.player.x, y: this.player.y }, true);
     this._drawExplosions(ctx, canvas);
     this._drawFloatingTexts(ctx, canvas);
+    ctx.restore();
+    this._drawWeaponPointers(ctx, realCanvas); // screen space: arrows to weapon pickups that are out of sight
+  }
+
+  // Weapon pointer: for each weapon pickup that is out of sight, a badge (the weapon's own pixel art + an arrow) on the screen edge in its direction,
+  // fading in; once the gun itself is on screen the badge fades away. Drawn in screen space (not under the camera zoom), in 2D and 3D runs alike.
+  _drawWeaponPointers(ctx, rc) {
+    const cfg = CONFIG.WEAPON_POINTER, pl = this.player;
+    if (!cfg || !cfg.enabled || !pl || this.state === 'gameover') return;
+    const now = performance.now(), dt = Math.min(0.1, (now - (this._ptrT || now)) / 1000); this._ptrT = now;
+    const W = rc.width, H = rc.height, w3 = this.world3d, cam = this.camera, zoom = cam.zoom, view = cam.viewSize(rc);
+    const proj = (x, y) => {
+      if (w3) { const s = w3.project(x, y, {}); return s.visible === false ? null : { x: s.x, y: s.y }; }
+      const p = cam.worldToScreen(x, y, view); return { x: p.x * zoom, y: p.y * zoom };
+    };
+    const origin = proj(pl.x, pl.y) || { x: W / 2, y: H / 2 };
+    const picks = this.pickups.filter((p) => p.alive && p.kind === 'weapon').map((p) => ({ p, d: Math.hypot(p.x - pl.x, p.y - pl.y) })).sort((a, b) => a.d - b.d);
+    const hud = typeof document !== 'undefined' ? [...document.querySelectorAll('#hud .hudPanel')].map((e) => e.getBoundingClientRect()) : [];
+    const ppm = CONFIG.WORLD.width / MAP_CONFIG.PLAYABLE_MAP_SIZE.widthMeters, placed = [], m = cfg.onScreenMargin, hx = cfg.badgeW / 2, hy = cfg.badgeH / 2;
+    picks.forEach(({ p: pk, d }, idx) => {
+      const st = pk._ptr || (pk._ptr = { a: 0 }), s = proj(pk.x, pk.y);
+      const on = !!s && s.x >= m && s.x <= W - m && s.y >= m && s.y <= H - m;
+      st.a = opEase(st.a, on || idx >= cfg.maxPointers ? 0 : 1, dt, cfg.fadeSpeed);
+      if (st.a < 0.02) return;
+      let vx = pk.x - pl.x, vy = (pk.y - pl.y) * 0.55;   // fallback direction: the ground plane squashed like the 3/4 view
+      if (w3) { const L = d || 1, q = proj(pl.x + (pk.x - pl.x) / L * 200, pl.y + (pk.y - pl.y) / L * 200); if (q) { vx = q.x - origin.x; vy = q.y - origin.y; } }
+      else { vy = pk.y - pl.y; }
+      let pos = opPointerPlace(W, H, origin, vx, vy, cfg.insetX, cfg.insetY);
+      pos = opPointerAvoid(pos, hud, hx + 4, hy + 4, W, H, cfg.insetX, cfg.insetY);
+      for (const o of placed) if (Math.abs(o.x - pos.x) < cfg.badgeW + 6 && Math.abs(o.y - pos.y) < cfg.badgeH + 6) { const tx = -Math.sin(pos.angle), ty = Math.cos(pos.angle), step = Math.abs(ty) > Math.abs(tx) ? cfg.badgeH + 8 : cfg.badgeW + 8; pos = { ...pos, x: Math.min(W - cfg.insetX, Math.max(cfg.insetX, pos.x + tx * step)), y: Math.min(H - cfg.insetY, Math.max(cfg.insetY, pos.y + ty * step)) }; }   // two guns in nearly the same direction: sit side by side
+      placed.push(pos);
+      const sprites = WEAPON_SPRITES[pk.weaponId], sprite = sprites && (sprites.east || Object.values(sprites)[0]);
+      const label = cfg.showDistance ? Math.round(d / ppm) + ' m' : null;
+      this._drawWeaponPointerIcon(ctx, pos, st.a, isSpriteReady(sprite) ? sprite : null, CONFIG.WEAPONS[pk.weaponId]?.pickupGlyph || '?', label, now / 1000, H);
+    });
+  }
+
+  _drawWeaponPointerIcon(ctx, pos, alpha, sprite, glyph, label, t, H) {
+    const cfg = CONFIG.WEAPON_POINTER, bw = cfg.badgeW, bh = cfg.badgeH, hx = bw / 2, hy = bh / 2, pulse = 1 + Math.sin(t * 5) * 0.04, bob = (Math.sin(t * 6) + 1) * 1.5;
+    const ca = Math.abs(Math.cos(pos.angle)), sa = Math.abs(Math.sin(pos.angle)), edge = Math.min(ca > 1e-6 ? hx / ca : Infinity, sa > 1e-6 ? hy / sa : Infinity);   // distance from the badge centre to its edge along the arrow
+    ctx.save(); ctx.globalAlpha = alpha; ctx.imageSmoothingEnabled = false; ctx.translate(Math.round(pos.x), Math.round(pos.y));
+    ctx.save(); ctx.rotate(pos.angle);   // arrow: stepped pixel triangle pointing away from the badge
+    for (let i = 0; i < 4; i++) { const hh = (4 - i) * 5; ctx.fillStyle = '#14141b'; ctx.fillRect(edge + 3 + bob + i * 4 - 1, -hh / 2 - 1, 6, hh + 2); }
+    for (let i = 0; i < 4; i++) { const hh = (4 - i) * 5; ctx.fillStyle = cfg.color; ctx.fillRect(edge + 3 + bob + i * 4, -hh / 2, 4, hh); }
+    ctx.restore();
+    ctx.scale(pulse, pulse);
+    const oct = (ax, ay, col) => { ctx.fillStyle = col; ctx.fillRect(-ax + 4, -ay, 2 * ax - 8, 2 * ay); ctx.fillRect(-ax, -ay + 4, 2 * ax, 2 * ay - 8); ctx.fillRect(-ax + 2, -ay + 2, 2 * ax - 4, 2 * ay - 4); };   // pixel-cornered badge
+    oct(hx + 2, hy + 2, '#14141b'); oct(hx, hy, cfg.color); oct(hx - 3, hy - 3, 'rgba(24,27,32,0.94)');
+    if (sprite) {   // the weapon's own art, scaled so its drawn part fills the badge
+      const box = opSpriteArtBox(sprite), k = Math.min((bw - 12) / box.w, (bh - 12) / box.h), dw = box.w * k, dh = box.h * k;
+      ctx.drawImage(sprite, box.x, box.y, box.w, box.h, -dw / 2, -dh / 2, dw, dh);
+    } else { ctx.fillStyle = '#fff'; ctx.font = "12px 'Press Start 2P', 'Courier New', monospace"; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(glyph, 0, 1); }
+    if (label) {
+      ctx.font = "8px 'Press Start 2P', 'Courier New', monospace"; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      const ly = pos.y > H / 2 ? -hy - 10 : hy + 12;   // the label goes on the side with room
+      ctx.fillStyle = '#14141b'; ctx.fillText(label, 1, ly + 1); ctx.fillStyle = '#ffffff'; ctx.fillText(label, 0, ly);
+    }
     ctx.restore();
   }
 
