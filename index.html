@@ -1447,7 +1447,7 @@ const EMBEDDED_ASSETS = {
     <!-- ===================== Start overlay (home page) ===================== -->
     <div id="startScreen" class="overlay homePage">
       <!-- Version: major.minor.patch. The patch digit goes 0-9 and rolls into the minor number (v3.88.9 -> v3.89.0); the minor number is two digits and rolls into the major number (v3.99.9 -> v4.00.0). Bumped by 1 on every change. -->
-      <div id="versionTag" class="versionTag">v3.89.4</div>
+      <div id="versionTag" class="versionTag">v3.89.5</div>
       <div id="homeSidebar" class="homeSidebar">
         <div class="homeSidebarTitle">Your Stats</div>
         <div class="homeSidebarStat">
@@ -1772,7 +1772,7 @@ const CONFIG = {
       pickupGlyph: 'SG',     // shown on its map pickup crate — distinct from SMG's 'SM'
       spriteFolder: 'shotgun',
       spriteDisplaySize: 32,
-      unlockAtSurvivalSeconds: 180, // 3 minutes
+      unlockAtSurvivalSeconds: 150, // 2:30 — weapon #2
     },
     smg: {
       id: 'smg',
@@ -1790,7 +1790,7 @@ const CONFIG = {
       pickupGlyph: 'SM',
       spriteFolder: 'smg',
       spriteDisplaySize: 26,
-      unlockAtSurvivalSeconds: 300, // 5 minutes
+      unlockAtSurvivalSeconds: 270, // 4:30 — weapon #3 (SMG)
     },
     rifle: {
       id: 'rifle',
@@ -1808,7 +1808,7 @@ const CONFIG = {
       pickupGlyph: 'AR',
       spriteFolder: 'rifle',
       spriteDisplaySize: 31,
-      unlockAtSurvivalSeconds: 420, // 7 minutes
+      unlockAtSurvivalSeconds: 510, // 8:30 — weapon #5 (Assault Rifle)
     },
     flamethrower: {
       id: 'flamethrower',
@@ -1830,7 +1830,7 @@ const CONFIG = {
       pickupGlyph: 'FT',
       spriteFolder: 'flamethrower',
       spriteDisplaySize: 30,
-      unlockAtSurvivalSeconds: 540, // 9 minutes
+      unlockAtSurvivalSeconds: null, // not time-unlocked — dropped by the boss where it dies (see Game._onZombieKilled) — weapon #8
     },
     // Chainsaw — a melee weapon that runs on gas like the flamethrower, but
     // with its own separate tank: one full tank = 18s of continuous sawing
@@ -1851,7 +1851,7 @@ const CONFIG = {
       pickupGlyph: 'CS',
       spriteFolder: 'chainsaw',
       spriteDisplaySize: 30,
-      unlockAtSurvivalSeconds: null, // not time-unlocked — dropped by the boss when it dies (see Game._onZombieKilled)
+      unlockAtSurvivalSeconds: 750, // 12:30 — weapon #7 (Chainsaw)
     },
     rpg: {
       id: 'rpg',
@@ -1871,7 +1871,7 @@ const CONFIG = {
       pickupGlyph: 'RG',
       spriteFolder: 'rpg',
       spriteDisplaySize: 32,
-      unlockAtSurvivalSeconds: 720, // 12 minutes
+      unlockAtSurvivalSeconds: 630, // 10:30 — weapon #6 (RPG)
     },
     // `thrown: true` (currently just the grenade) means the weapon has
     // no bullet at all — Game._throwGrenade()/_updateGrenades() handle a
@@ -1900,7 +1900,7 @@ const CONFIG = {
       pickupGlyph: 'GR',
       spriteFolder: 'grenade', // same single symmetric image for every direction (see the copy step in assets/weapons/grenade/) — also reused for the in-flight projectile itself, see Game._drawGrenades
       spriteDisplaySize: 22,   // smaller than the firearms — it's a compact handheld item, not a gun
-      unlockAtSurvivalSeconds: 720, // 12 minutes — same time as the RPG, since it's an equally powerful alternate delivery for it
+      unlockAtSurvivalSeconds: 390, // 6:30 — weapon #4 (Grenade)
     },
   },
 
@@ -6580,7 +6580,7 @@ class Game {
       Sound.weaponUnlock();
     } else if (newlyUnlocked.length > 1) {
       // More than one weapon can now cross its threshold on the exact
-      // same frame (e.g. the RPG and grenade both unlock at 12:00) —
+      // same frame (weapons are 2 minutes apart now, but a loaded save could cross two at once) —
       // showing one banner per weapon here would just have each
       // overwrite the last within the same frame, so the first would
       // never actually be visible. One combined banner instead.
@@ -6652,17 +6652,17 @@ class Game {
     const drop = rollZombieDrop(zombie.x, zombie.y, this.player);
     if (drop) this.pickups.push(drop);
 
-    // The boss drops the chainsaw. Skipped if the player already owns it or
-    // an earlier boss's chainsaw is still lying on the map, so it never
-    // duplicates. Any ordinary drop that rolled is nudged aside so the two
-    // crates don't sit on top of each other.
+    // The boss drops the flamethrower, right where it dies. Skipped if the
+    // player already owns it or an earlier boss's flamethrower is still lying
+    // on the map, so it never duplicates. Any ordinary drop that rolled is
+    // nudged aside so the two crates don't sit on top of each other.
     if (zombie.type.isBoss) {
-      const owned = this.player.weapons.some((w) => w.config.id === 'chainsaw');
-      const onGround = this.pickups.some((p) => p.alive && p.kind === 'weapon' && p.weaponId === 'chainsaw');
+      const owned = this.player.weapons.some((w) => w.config.id === 'flamethrower');
+      const onGround = this.pickups.some((p) => p.alive && p.kind === 'weapon' && p.weaponId === 'flamethrower');
       if (!owned && !onGround) {
         if (drop) drop.x += 26;
-        this.pickups.push(new Pickup(zombie.x, zombie.y, 'weapon', 'chainsaw'));
-        this.hud.showWeaponUnlockBanner('The boss dropped a Chainsaw!');
+        this.pickups.push(new Pickup(zombie.x, zombie.y, 'weapon', 'flamethrower'));
+        this.hud.showWeaponUnlockBanner('The boss dropped a Flamethrower!');
         this.weaponUnlockBannerTimer = 3.5;
         Sound.weaponUnlock();
       }
