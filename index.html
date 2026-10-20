@@ -871,6 +871,68 @@ html, body, button, input, select, textarea {
 /* ---- map canvases in the city-select flow: keep pixels crisp ---- */
 #cityMapCanvas, #realCityMap { image-rendering: pixelated; border: 4px solid var(--px-ink); box-shadow: 4px 4px 0 rgba(0,0,0,0.55); }
 
+/* ---- HUD: cash + next shop ---- */
+#moneyText { color: #f5c542; }
+#shopText { opacity: 0.8; }
+
+/* ---- Survival Supply Shop ---- */
+#shopScreen { z-index: 20; padding: 12px; box-sizing: border-box; cursor: default; user-select: none; -webkit-user-select: none; }
+.shopPanel {
+  width: min(980px, 100%); max-height: 100%; display: flex; flex-direction: column; gap: 12px;
+  box-sizing: border-box; padding: 16px 18px; color: var(--px-text); text-shadow: 2px 2px 0 #000;
+  background: var(--px-panel); border: 4px solid var(--px-ink);
+  box-shadow: inset 4px 4px 0 var(--px-panel-hi), inset -4px -4px 0 var(--px-panel-lo), 6px 6px 0 rgba(0,0,0,0.6);
+}
+.shopHeader { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px; }
+.shopPanel h1 { margin: 0; font-size: 16px; line-height: 1.4; letter-spacing: 0; color: #f5c542; }
+.shopMoney { font-size: 10px; } .shopMoney b { font-size: 16px; color: #f5c542; margin-left: 6px; }
+.shopNotice { flex: 1 1 100%; font-size: 8px; line-height: 1.7; padding: 8px 10px; background: #2a1a36; color: #f0defa; border: 3px solid var(--px-ink); }
+.shopTabs, .shopWeaponPick { display: flex; flex-wrap: wrap; gap: 8px; }
+.shopTab, .shopWpn {
+  font: inherit; font-size: 10px; padding: 10px 14px; color: var(--px-text); cursor: pointer;
+  background: #26292e; border: 3px solid var(--px-ink);
+  box-shadow: inset 3px 3px 0 rgba(255,255,255,0.12), inset -3px -3px 0 rgba(0,0,0,0.35);
+}
+.shopWpn { font-size: 8px; padding: 8px 10px; }
+.shopTab:hover, .shopWpn:hover { background: #343941; }
+.shopTab.active { background: var(--px-red); }
+.shopWpn.active { background: #6b5410; color: #f5c542; }
+.shopList { flex: 1 1 auto; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding-right: 4px; }
+.shopItem {
+  display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1.2fr) auto; gap: 8px 14px; align-items: center;
+  padding: 10px 12px; background: #20242a; border: 3px solid var(--px-ink);
+}
+.shopItem.isMax { opacity: 0.75; }
+.siName { font-size: 10px; margin-bottom: 6px; color: #fff; }
+.siDesc { font-size: 8px; line-height: 1.7; color: var(--px-dim); }
+.siLevel { font-size: 8px; margin-bottom: 6px; }
+.pip { display: inline-block; width: 8px; height: 8px; margin-left: 3px; background: #3a3f47; border: 1px solid var(--px-ink); }
+.pip.on { background: #f1c40f; }
+.siVal { font-size: 9px; line-height: 1.6; } .siVal b { color: #2ecc71; } .siVal .arrow { color: #f5c542; } .siVal em { color: #f5c542; font-style: normal; font-size: 8px; }
+.siBuy { text-align: right; }
+.shopBuyBtn {
+  font: inherit; font-size: 10px; padding: 10px 12px; min-width: 104px; color: #fff; cursor: pointer;
+  background: #2e7d32; border: 3px solid var(--px-ink);
+  box-shadow: inset 3px 3px 0 rgba(255,255,255,0.2), inset -3px -3px 0 rgba(0,0,0,0.3);
+}
+.shopBuyBtn:hover { background: #3fa045; }
+.shopBuyBtn.cant { background: #4a3030; color: #c9a7a0; }
+.shopBuyBtn.cant:hover { background: #5a3636; }
+.siMaxed { font-size: 10px; color: #f5c542; }
+.shopMessage { min-height: 24px; font-size: 9px; line-height: 1.7; }
+.shopMessage.ok { color: #2ecc71; } .shopMessage.bad { color: #e8665a; }
+.shopFooter { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.shopHint { font-size: 8px; color: var(--px-dim); }
+@media (max-width: 720px) {
+  .shopPanel { padding: 12px; gap: 8px; }
+  .shopPanel h1 { font-size: 11px; }
+  .shopItem { grid-template-columns: 1fr; }
+  .siBuy { text-align: left; }
+  .shopTab { padding: 8px 10px; }
+}
+@media (min-width: 1100px) and (min-height: 700px) { .siDesc, .siLevel, .shopNotice, .shopHint { font-size: 10px; } .siVal { font-size: 10px; } .siName { font-size: 12px; } .shopWpn { font-size: 10px; } }
+@media (max-height: 560px) { .shopNotice { display: none; } }
+
   </style>
   <script>
 // Auto-generated for the single-file build: maps each original
@@ -1427,6 +1489,8 @@ const EMBEDDED_ASSETS = {
         <div id="waveText">Survived: 0:00</div>
         <div id="killText">Kills: 0</div>
         <div id="zombieCountText">Zombies: 0</div>
+        <div id="moneyText">Cash: $0</div>
+        <div id="shopText">Next shop: 2:00</div>
       </div>
 
       <div id="weaponWrap" class="hudPanel">
@@ -1447,7 +1511,7 @@ const EMBEDDED_ASSETS = {
     <!-- ===================== Start overlay (home page) ===================== -->
     <div id="startScreen" class="overlay homePage">
       <!-- Version: major.minor.patch. The patch digit goes 0-9 and rolls into the minor number (v3.88.9 -> v3.89.0); the minor number is two digits and rolls into the major number (v3.99.9 -> v4.00.0). Bumped by 1 on every change. -->
-      <div id="versionTag" class="versionTag">v3.89.5</div>
+      <div id="versionTag" class="versionTag">v3.89.6</div>
       <div id="homeSidebar" class="homeSidebar">
         <div class="homeSidebarTitle">Your Stats</div>
         <div class="homeSidebarStat">
@@ -1480,6 +1544,8 @@ const EMBEDDED_ASSETS = {
           <label class="testToggle"><span>Unlimited Ammo &amp; Gas</span><input type="checkbox" id="tmUnlimitedAmmoGas"><i></i></label>
           <label class="testToggle"><span>Unlimited Stamina</span><input type="checkbox" id="tmUnlimitedStamina"><i></i></label>
           <label class="testToggle"><span>Zombies</span><input type="checkbox" id="tmZombies" checked><i></i></label>
+          <label class="testToggle"><span>Fast Shop (every 15s)</span><input type="checkbox" id="tmFastShop"><i></i></label>
+          <label class="testToggle"><span>Shop Cash ($3000 start)</span><input type="checkbox" id="tmShopCash"><i></i></label>
         </div>
         <button id="backFromTestModeBtn" class="bigButton">Back</button>
       </div>
@@ -1497,6 +1563,7 @@ const EMBEDDED_ASSETS = {
           <li><b>R</b> — Reload</li>
           <li><b>P</b> — Pause</li>
           <li><b>1-9</b> — Switch weapon (once found)</li>
+          <li><b>Shop</b> — opens every 2 minutes (game pauses); spend kill cash on upgrades, <b>Esc</b> to continue</li>
         </ul>
         <p class="subtitle">Survive as long as you can. Kill zombies, collect ammo and medkits, and find new weapons hidden around the map.</p>
         <button id="backFromHowToPlayBtn" class="bigButton">Back</button>
@@ -1534,6 +1601,25 @@ const EMBEDDED_ASSETS = {
         <button id="restartBtn" class="bigButton">Restart</button>
         <button id="changeCityBtn" class="smallLinkButton">Change City</button>
         <button id="mainMenuBtn" class="smallLinkButton">Main Menu</button>
+      </div>
+    </div>
+
+    <!-- ===================== Survival Supply Shop ===================== -->
+    <div id="shopScreen" class="overlay hidden">
+      <div id="shopPanel" class="shopPanel" role="dialog" aria-modal="true" aria-labelledby="shopTitle">
+        <div class="shopHeader">
+          <h1 id="shopTitle">SURVIVAL SUPPLY SHOP</h1>
+          <div class="shopMoney">CASH <b id="shopMoney">$0</b></div>
+          <div id="shopNotice" class="shopNotice"></div>
+        </div>
+        <div id="shopTabs" class="shopTabs"></div>
+        <div id="shopWeaponPick" class="shopWeaponPick hidden"></div>
+        <div id="shopList" class="shopList"></div>
+        <div id="shopMessage" class="shopMessage" aria-live="polite"></div>
+        <div class="shopFooter">
+          <button id="shopCloseBtn" class="bigButton" data-act="close">CONTINUE</button>
+          <span class="shopHint">ESC = CONTINUE</span>
+        </div>
       </div>
     </div>
 
@@ -3818,8 +3904,10 @@ const TEST_MODE = {
   unlimitedAmmoGas: false,
   unlimitedStamina: false,
   zombies: true, // false = no zombies spawn at all (including the boss)
+  fastShop: false, // shop opens every SHOP_CONFIG.testIntervalSeconds instead of every 2 minutes (see shop.js)
+  shopCash: false, // start the run with SHOP_CONFIG.testStartMoney
   isActive() {
-    return this.invincible || this.allWeapons || this.unlimitedAmmoGas || this.unlimitedStamina || !this.zombies;
+    return this.invincible || this.allWeapons || this.unlimitedAmmoGas || this.unlimitedStamina || !this.zombies || this.fastShop || this.shopCash;
   },
 };
 
@@ -3913,6 +4001,8 @@ class Weapon {
       this._ammo = weaponConfig.magazineSize;
     }
     this.reserveAmmo = weaponConfig.startReserveAmmo;
+    // Shop upgrade levels for THIS weapon (see shop.js). CONFIG.WEAPONS is never modified.
+    this.upgrades = { damage: 0, fireRate: 0, reload: 0, magazine: 0, ammo: 0 };
 
     this.cooldownTimer = 0;   // time left until next shot allowed
     this.isReloading = false;
@@ -3926,7 +4016,10 @@ class Weapon {
     if (this.fuelTank) this.fuelTank.amount = value;
     else this._ammo = value;
   }
-  get magazineSize() { return this.config.magazineSize; }
+  get magazineSize() { return ShopMath.value(this.config, 'magazine', this.upgrades.magazine); } // magazine / gas-tank size incl. shop upgrades
+  get damage() { return ShopMath.value(this.config, 'damage', this.upgrades.damage); }
+  get fireRate() { return ShopMath.value(this.config, 'fireRate', this.upgrades.fireRate); }
+  get reloadTime() { return ShopMath.value(this.config, 'reload', this.upgrades.reload); }
 
   update(dt) {
     if (this.cooldownTimer > 0) {
@@ -3961,7 +4054,7 @@ class Weapon {
     if (!this.canShoot()) return null;
 
     this.currentAmmo -= 1;
-    this.cooldownTimer = 1 / this.config.fireRate;
+    this.cooldownTimer = 1 / this.fireRate;
 
     const pelletCount = this.config.pelletCount || 1;
     const specs = [];
@@ -3973,7 +4066,7 @@ class Weapon {
         y: originY,
         angle,
         speed: this.config.bulletSpeed,
-        damage: this.config.damage,
+        damage: this.damage,
         radius: this.config.bulletRadius,
         color: this.config.color,
         life: this.config.bulletLifetime,       // undefined -> Bullet falls back to CONFIG.BULLET.maxLifetime
@@ -3992,7 +4085,7 @@ class Weapon {
   // about). Only meaningful when config.melee is true.
   tryMelee() {
     if (!this.canShoot()) return false;
-    this.cooldownTimer = 1 / this.config.fireRate;
+    this.cooldownTimer = 1 / this.fireRate;
     if (this.config.fuelTank) this.currentAmmo -= 1; // each chainsaw tick burns 1 fuel
     return true;
   }
@@ -4008,7 +4101,7 @@ class Weapon {
   tryThrow() {
     if (!this.canShoot()) return false;
     this.currentAmmo -= 1;
-    this.cooldownTimer = 1 / this.config.fireRate;
+    this.cooldownTimer = 1 / this.fireRate;
     return true;
   }
 
@@ -4019,7 +4112,7 @@ class Weapon {
     if (this.currentAmmo === this.magazineSize) return;
 
     this.isReloading = true;
-    this.reloadTimer = this.config.reloadTime;
+    this.reloadTimer = this.reloadTime;
   }
 
   cancelReload() {
@@ -4035,7 +4128,7 @@ class Weapon {
   addReserveAmmo(amount) {
     if (this.config.melee) return 0; // no ammo concept — leaves the pickup on the ground for later, same as a full reserve would
     const before = this.reserveAmmo;
-    this.reserveAmmo += amount;
+    this.reserveAmmo += ShopMath.ammoYield(this.config, this.upgrades.ammo, amount); // Ammo Reserve upgrade: bigger pickups
     return this.reserveAmmo - before;
   }
 
@@ -4589,6 +4682,10 @@ class Player extends Entity {
 
     this.maxHealth = CONFIG.PLAYER.maxHealth;
     this.health = CONFIG.PLAYER.startHealth;
+    // Shop (see shop.js): cash from kills (separate from ammo etc.) and purchased levels.
+    this.money = 0;
+    this.upgrades = { health: 0, stamina: 0 };
+    this.maxStamina = CONFIG.PLAYER.maxStamina;
     this.speed = CONFIG.PLAYER.speed;
 
     // Sprint/stamina — see handleMovement for the actual drain/regen/
@@ -4620,6 +4717,11 @@ class Player extends Entity {
 
   get currentWeapon() {
     return this.weapons[this.weaponIndex];
+  }
+
+  // Regen scales with the (upgradable) stamina bar so a full refill always takes the same time.
+  get staminaRegenPerSec() {
+    return CONFIG.PLAYER.staminaRegenPerSec * (this.maxStamina / CONFIG.PLAYER.maxStamina);
   }
 
   switchWeapon(index) {
@@ -4661,13 +4763,13 @@ class Player extends Entity {
     this.isSprinting = this.isMoving && shiftHeld && this.canSprint && this.stamina > 0;
 
     if (this.isSprinting) {
-      this.stamina = Utils.clamp(this.stamina - CONFIG.PLAYER.staminaDrainPerSec * dt, 0, CONFIG.PLAYER.maxStamina);
+      this.stamina = Utils.clamp(this.stamina - CONFIG.PLAYER.staminaDrainPerSec * dt, 0, this.maxStamina);
       this.staminaRegenCooldown = CONFIG.PLAYER.staminaRegenDelay;
       if (this.stamina <= 0) this.canSprint = false; // empty — forced to rest before sprinting again
     } else if (this.staminaRegenCooldown > 0) {
       this.staminaRegenCooldown -= dt;
     } else {
-      this.stamina = Utils.clamp(this.stamina + CONFIG.PLAYER.staminaRegenPerSec * dt, 0, CONFIG.PLAYER.maxStamina);
+      this.stamina = Utils.clamp(this.stamina + this.staminaRegenPerSec * dt, 0, this.maxStamina);
     }
     if (!this.canSprint && this.stamina >= CONFIG.PLAYER.minStaminaToResumeSprint) {
       this.canSprint = true;
@@ -4748,7 +4850,7 @@ class Player extends Entity {
   update(dt) {
     // Test Mode top-ups (before anything reads stamina/ammo this frame).
     if (TEST_MODE.unlimitedStamina) {
-      this.stamina = CONFIG.PLAYER.maxStamina;
+      this.stamina = this.maxStamina;
       this.canSprint = true;
       this.staminaRegenCooldown = 0;
     }
@@ -5448,6 +5550,8 @@ class HUD {
     this.waveText = document.getElementById('waveText');
     this.killText = document.getElementById('killText');
     this.zombieCountText = document.getElementById('zombieCountText');
+    this.moneyText = document.getElementById('moneyText');
+    this.shopText = document.getElementById('shopText');
     this.weaponName = document.getElementById('weaponName');
     this.ammoText = document.getElementById('ammoText');
     this.reloadText = document.getElementById('reloadText');
@@ -5457,12 +5561,12 @@ class HUD {
     this.weaponUnlockBanner = document.getElementById('weaponUnlockBanner');
   }
 
-  update({ player, zombies, survivalTime }) {
+  update({ player, zombies, survivalTime, shopIn }) {
     const healthPct = Utils.clamp(player.health / player.maxHealth, 0, 1) * 100;
     this.healthFill.style.width = `${healthPct}%`;
     this.healthText.textContent = `${Math.ceil(player.health)} / ${player.maxHealth}`;
 
-    const staminaPct = Utils.clamp(player.stamina / CONFIG.PLAYER.maxStamina, 0, 1) * 100;
+    const staminaPct = Utils.clamp(player.stamina / player.maxStamina, 0, 1) * 100;
     this.staminaFill.style.width = `${staminaPct}%`;
     // Dims when stamina is exhausted enough that sprint is force-stopped
     // (see Player.canSprint) — a quick visual cue for "you can't sprint
@@ -5472,6 +5576,8 @@ class HUD {
     this.waveText.textContent = `Survived: ${Utils.formatTime(survivalTime)}`;
     this.killText.textContent = `Kills: ${player.kills}`;
     this.zombieCountText.textContent = `Zombies: ${zombies.length}`;
+    this.moneyText.textContent = `Cash: $${player.money}`;
+    this.shopText.textContent = shopIn == null ? '' : `Next shop: ${Utils.formatTime(Math.ceil(shopIn))}`;
 
     const weapon = player.currentWeapon;
     this.weaponName.textContent = weapon.name;
@@ -5508,6 +5614,372 @@ class HUD {
 
   hideWeaponUnlockBanner() {
     this.weaponUnlockBanner.classList.add('hidden');
+  }
+}
+
+  </script>
+  <script>
+/**
+ * shop.js — the "SURVIVAL SUPPLY SHOP": an upgrade shop that opens every
+ * SHOP_CONFIG.intervalSeconds of ACTIVE play (the survival timer stops while
+ * it is open), a kill-reward currency, and the upgrades themselves.
+ *
+ * ALL BALANCE NUMBERS LIVE IN SHOP_CONFIG BELOW — prices, level caps, how much
+ * each level gives, kill rewards and the shop timing. Nothing else needs touching.
+ *
+ * Where the upgrades take effect:
+ *   - Player.maxHealth / Player.maxStamina (+ stamina regen scaling)   (player.js)
+ *   - Weapon.damage / fireRate / reloadTime / magazineSize / addReserveAmmo (weapon.js)
+ * Weapons keep their own `upgrades` levels; CONFIG.WEAPONS itself is never modified.
+ */
+
+const SHOP_CONFIG = {
+  // ---- timing -------------------------------------------------------
+  intervalSeconds: 120,      // a shop every 2 minutes of active play (2:00, 4:00, 6:00, ...)
+  testIntervalSeconds: 15,   // ONLY used by Test Mode > "Fast Shop" — never the normal game
+  testStartMoney: 3000,      // ONLY used by Test Mode > "Shop Cash"
+
+  // ---- currency: cash per kill, by zombie type id ---------------------
+  killReward: { walker: 10, runner: 8, brute: 30, boss: 300 },
+  defaultKillReward: 10,     // any zombie type not listed above
+
+  priceStep: 5,              // prices are rounded to a multiple of this
+
+  // ---- player upgrades ---------------------------------------------
+  // price at level L (L = levels already bought) = basePrice * priceGrowth^L
+  player: {
+    health: {
+      name: 'MAX HEALTH', desc: 'Raises your maximum health. Does not heal you.',
+      maxLevel: 8, basePrice: 100, priceGrowth: 1.45,
+      perLevel: 20,          // +20 max health per level (100 -> 260 at max)
+      healOnBuy: 0,          // health restored at purchase; 0 = none
+    },
+    stamina: {
+      name: 'MAX STAMINA', desc: 'A bigger stamina bar: sprint for longer. Regeneration scales with the bar.',
+      maxLevel: 6, basePrice: 80, priceGrowth: 1.45,
+      perLevel: 20,          // +20 max stamina per level (100 -> 220 at max)
+    },
+  },
+
+  // ---- weapon upgrades ----------------------------------------------
+  // Price multiplier per weapon (applied on top of the stat's own price): stronger weapons cost more to improve.
+  weaponPriceMult: {
+    knife: 0.5, pistol: 0.8, shotgun: 1.0, smg: 1.1, grenade: 1.1,
+    rifle: 1.3, chainsaw: 1.2, flamethrower: 1.3, rpg: 1.6,
+  },
+
+  // Generic stat definitions. A stat is only offered for weapons it makes sense for
+  // (see ShopMath.applies): damage + fire rate = every weapon; reload + ammo = reloading guns
+  // (not melee, not gas weapons); magazine = reloading guns, and the gas TANK of the flamethrower/chainsaw.
+  weaponStats: {
+    damage:   { name: 'DAMAGE',        desc: 'More damage per hit, pellet or blast.',            maxLevel: 6, basePrice: 140, priceGrowth: 1.55, perLevel: 0.10 },  // +10% of base per level
+    fireRate: { name: 'FIRE RATE',     desc: 'Shorter delay between shots / swings.',            maxLevel: 4, basePrice: 120, priceGrowth: 1.55, perLevel: 0.08 },  // +8% of base per level
+    reload:   { name: 'RELOAD SPEED',  desc: 'Faster reloads.',                                  maxLevel: 5, basePrice:  80, priceGrowth: 1.50, perLevel: 0.08 },  // -8% of base reload time per level
+    magazine: { name: 'MAGAZINE SIZE', desc: 'Bigger magazine (does not refill it).',            maxLevel: 4, basePrice:  90, priceGrowth: 1.50, perLevel: 2,       // +rounds per level (override per weapon below)
+                fuelName: 'GAS TANK',  fuelDesc: 'Bigger gas tank (does not refill it).', fuelPctPerLevel: 0.20 },                                            // gas weapons: +20% of base tank per level
+    ammo:     { name: 'AMMO RESERVE',  desc: 'Instantly adds reserve rounds, and ammo pickups give more for this weapon.',
+                maxLevel: 4, basePrice: 70, priceGrowth: 1.45, pickupBonusPerLevel: 0.25, packFraction: 0.40 },                                              // +25% pickup yield/level; instant pack = 40% of the weapon's starting reserve
+  },
+
+  // Per-weapon overrides of any field above; `false` removes that upgrade from the weapon.
+  perWeapon: {
+    pistol:       { magazine: { perLevel: 3 } },
+    shotgun:      { magazine: { perLevel: 2, maxLevel: 3 } },
+    smg:          { magazine: { perLevel: 6 } },
+    rifle:        { magazine: { perLevel: 6 } },
+    rpg:          { magazine: { perLevel: 1, maxLevel: 1 }, fireRate: { maxLevel: 2 } },
+    grenade:      { magazine: { perLevel: 1, maxLevel: 1 } },
+    chainsaw:     { fireRate: false },   // gas weapons already tick 15x/s; faster ticks only burn gas faster (Damage covers it)
+    flamethrower: { fireRate: false },
+  },
+};
+
+const ShopMath = {
+  keys: ['damage', 'fireRate', 'reload', 'magazine', 'ammo'],
+
+  applies(cfg, key) {
+    const melee = !!cfg.melee, fuel = !!cfg.fuelTank;
+    if (key === 'damage' || key === 'fireRate') return true;
+    if (key === 'reload' || key === 'ammo') return !melee && !fuel;
+    if (key === 'magazine') return fuel || !melee;
+    return false;
+  },
+
+  // The merged definition of `key` for this weapon, or null if the weapon can't have it.
+  stat(cfg, key) {
+    const base = SHOP_CONFIG.weaponStats[key];
+    if (!base || !this.applies(cfg, key)) return null;
+    const ov = (SHOP_CONFIG.perWeapon[cfg.id] || {})[key];
+    if (ov === false) return null;
+    return Object.assign({ key }, base, ov || {});
+  },
+
+  price(basePrice, growth, level, mult = 1) {
+    const step = SHOP_CONFIG.priceStep;
+    return Math.max(step, Math.round((basePrice * mult * Math.pow(growth, level)) / step) * step);
+  },
+  weaponPrice(cfg, key, level) {
+    const s = this.stat(cfg, key);
+    return this.price(s.basePrice, s.priceGrowth, level, SHOP_CONFIG.weaponPriceMult[cfg.id] ?? 1);
+  },
+
+  // The weapon's real stat at `level` (level 0 = the base value from CONFIG.WEAPONS).
+  value(cfg, key, level) {
+    const s = this.stat(cfg, key) || SHOP_CONFIG.weaponStats[key];
+    level = level || 0;
+    if (!level) return { damage: cfg.damage, fireRate: cfg.fireRate, reload: cfg.reloadTime, magazine: cfg.magazineSize, ammo: 1 }[key]; // level 0 = the untouched CONFIG.WEAPONS value
+    switch (key) {
+      case 'damage':   return cfg.damage * (1 + s.perLevel * level);
+      case 'fireRate': return cfg.fireRate * (1 + s.perLevel * level);
+      case 'reload':   return cfg.reloadTime * (1 - s.perLevel * level);
+      case 'magazine': return cfg.magazineSize + (cfg.fuelTank ? Math.round(cfg.magazineSize * s.fuelPctPerLevel * level) : s.perLevel * level);
+      case 'ammo':     return 1 + s.pickupBonusPerLevel * level;   // ammo-pickup yield multiplier
+    }
+    return 0;
+  },
+  ammoYield(cfg, level, amount) { return Math.round(amount * this.value(cfg, 'ammo', level)); },
+  ammoPack(cfg) { return Math.max(1, Math.round((cfg.startReserveAmmo || 0) * SHOP_CONFIG.weaponStats.ammo.packFraction)); },
+
+  num(v) { return String(Math.abs(v) < 10 ? +v.toFixed(2) : +v.toFixed(1)); },
+  fmt(cfg, key, v) {
+    switch (key) {
+      case 'damage':   return this.num(v);
+      case 'fireRate': return this.num(v) + (cfg.melee ? ' swings/s' : cfg.thrown ? ' throws/s' : ' shots/s');
+      case 'reload':   return this.num(v) + 's';
+      case 'magazine': return String(Math.round(v));
+      case 'ammo':     return '+' + Math.round((v - 1) * 100) + '% pickups';
+    }
+    return String(v);
+  },
+};
+
+class ShopSystem {
+  constructor(game) {
+    this.game = game;
+    this.isOpen = false;
+    this.shopNumber = 0;
+    this.nextShopAt = SHOP_CONFIG.intervalSeconds;
+    this.tab = 'health';
+    this.selectedWeaponId = null;
+    this.message = null;
+    this._bind();
+  }
+
+  get interval() { return TEST_MODE.fastShop ? SHOP_CONFIG.testIntervalSeconds : SHOP_CONFIG.intervalSeconds; }
+
+  // Cash for a kill of this zombie type.
+  static killReward(type) {
+    const r = SHOP_CONFIG.killReward;
+    if (type.isBoss) return r.boss ?? SHOP_CONFIG.defaultKillReward;
+    return r[type.id] ?? SHOP_CONFIG.defaultKillReward;
+  }
+
+  // Recomputes the player's real max health / stamina from their purchased levels.
+  static applyPlayerStats(p) {
+    const pc = SHOP_CONFIG.player;
+    p.maxHealth = CONFIG.PLAYER.maxHealth + (p.upgrades.health || 0) * pc.health.perLevel;
+    p.maxStamina = CONFIG.PLAYER.maxStamina + (p.upgrades.stamina || 0) * pc.stamina.perLevel;
+    p.health = Math.min(p.health, p.maxHealth);
+    p.stamina = Math.min(p.stamina, p.maxStamina);
+  }
+
+  // Fresh run (called from Game.start): timer back to the first interval, shop closed.
+  reset() {
+    this.forceClose();
+    this.shopNumber = 0;
+    this.nextShopAt = this.interval;
+    this.tab = 'health';
+    this.selectedWeaponId = null;
+    this.message = null;
+    const p = this.game.player;
+    if (p && TEST_MODE.shopCash) p.money = SHOP_CONFIG.testStartMoney;
+  }
+
+  serialize() { return { n: this.shopNumber, nextShopAt: this.nextShopAt }; }
+  restore(data, survivalTime) {
+    const iv = this.interval;
+    this.shopNumber = (data && data.n) || 0;
+    this.nextShopAt = (data && data.nextShopAt) || (Math.floor(survivalTime / iv) + 1) * iv;
+    while (this.nextShopAt <= survivalTime) this.nextShopAt += iv;
+  }
+
+  secondsUntilNext(survivalTime) { return Math.max(0, this.nextShopAt - survivalTime); }
+
+  due(survivalTime) { return !this.isOpen && survivalTime >= this.nextShopAt; }
+
+  open() {
+    const g = this.game;
+    if (this.isOpen || g.state !== 'playing') return;
+    this.isOpen = true;
+    this.shopNumber += 1;
+    while (this.nextShopAt <= g.survivalTime) this.nextShopAt += this.interval; // next scheduled slot, no drift, no repeats
+    g.state = 'shop';
+    g.input.mouseDown = false; g.input.prevMouseDown = false; // never keep firing underneath the shop
+    this.message = null;
+    if (this.tab === 'weapons' && !this._owned(this.selectedWeaponId)) this.selectedWeaponId = null;
+    this.render();
+    document.getElementById('shopScreen').classList.remove('hidden');
+    Sound.weaponUnlock();
+    g._refreshHud();
+  }
+
+  close() {
+    if (!this.isOpen) return;
+    this.forceClose();
+    const g = this.game;
+    if (g.state === 'shop') g.state = 'playing';
+    g._lastTimestamp = null; // no catch-up frame after the pause
+    g._refreshHud();
+  }
+
+  forceClose() {
+    this.isOpen = false;
+    const el = document.getElementById('shopScreen');
+    if (el) el.classList.add('hidden');
+  }
+
+  _owned(id) { return !!id && this.game.player.weapons.some((w) => w.config.id === id); }
+
+  _bind() {
+    const screen = document.getElementById('shopScreen');
+    screen.addEventListener('click', (e) => {
+      const t = e.target.closest('[data-act]');
+      if (!t || !this.isOpen) return;
+      const act = t.dataset.act;
+      if (act === 'close') { Sound.uiClick(); this.close(); }
+      else if (act === 'tab') { Sound.uiClick(); this.tab = t.dataset.tab; this.message = null; this.render(); }
+      else if (act === 'weapon') { Sound.uiClick(); this.selectedWeaponId = t.dataset.wid; this.message = null; this.render(); }
+      else if (act === 'buy-player') this.buyPlayer(t.dataset.kind);
+      else if (act === 'buy-weapon') this.buyWeapon(t.dataset.wid, t.dataset.key);
+    });
+    // While the shop is open its keys are swallowed here (capture phase) so the game's own
+    // input handler never sees them: no movement, weapon switching or P-pause underneath.
+    window.addEventListener('keydown', (e) => {
+      if (!this.isOpen) return;
+      if (e.ctrlKey || e.metaKey || e.altKey || /^F\d+$/.test(e.code)) return; // leave browser shortcuts alone
+      e.stopImmediatePropagation();
+      if (e.code === 'Escape') { e.preventDefault(); if (!e.repeat) this.close(); }
+      else if (e.code !== 'Tab' && e.code !== 'Enter' && e.code !== 'Space') e.preventDefault(); // Tab/Enter/Space keep working on the buttons
+    }, true);
+  }
+
+  // ---- purchasing ----------------------------------------------------
+  _spend(price) {
+    const p = this.game.player;
+    if (!Number.isFinite(price) || p.money < price) {
+      this._say(`NOT ENOUGH CASH - YOU NEED $${Math.max(0, Math.ceil(price - p.money))} MORE`, 'bad');
+      Sound.emptyClick();
+      return false;
+    }
+    p.money = Math.max(0, p.money - price);
+    return true;
+  }
+
+  _say(text, kind) { this.message = { text, kind }; this.render(); }
+  _done(text) { Sound.pickup('weapon'); this._say(text, 'ok'); this.game._refreshHud(); }
+
+  buyPlayer(kind) {
+    const cfg = SHOP_CONFIG.player[kind], p = this.game.player;
+    if (!this.isOpen || !cfg) return;
+    const lvl = p.upgrades[kind] || 0;
+    if (lvl >= cfg.maxLevel) return this._say(cfg.name + ' IS ALREADY AT MAX LEVEL', 'bad');
+    if (!this._spend(ShopMath.price(cfg.basePrice, cfg.priceGrowth, lvl))) return;
+    p.upgrades[kind] = lvl + 1;
+    ShopSystem.applyPlayerStats(p);
+    if (kind === 'health' && cfg.healOnBuy > 0) p.heal(cfg.healOnBuy);
+    this._done(`${cfg.name} UPGRADED TO LV ${lvl + 1}`);
+  }
+
+  buyWeapon(wid, key) {
+    const p = this.game.player;
+    const w = p.weapons.find((x) => x.config.id === wid);
+    if (!this.isOpen || !w) return;
+    const s = ShopMath.stat(w.config, key);
+    if (!s) return;
+    const lvl = w.upgrades[key] || 0;
+    if (lvl >= s.maxLevel) return this._say(`${w.name.toUpperCase()} ${s.name} IS ALREADY AT MAX LEVEL`, 'bad');
+    if (!this._spend(ShopMath.weaponPrice(w.config, key, lvl))) return;
+    w.upgrades[key] = lvl + 1;
+    let extra = '';
+    if (key === 'ammo') { const n = ShopMath.ammoPack(w.config); w.reserveAmmo += n; extra = ` (+${n} ROUNDS)`; }
+    this._done(`${w.name.toUpperCase()} ${this._statName(w.config, s)} UPGRADED TO LV ${lvl + 1}${extra}`);
+  }
+
+  _statName(cfg, s) { return cfg.fuelTank && s.key === 'magazine' ? s.fuelName : s.name; }
+
+  // ---- drawing the interface -----------------------------------------
+  _item(o) {
+    const p = this.game.player;
+    const maxed = o.level >= o.maxLevel;
+    const afford = !maxed && p.money >= o.price;
+    let pips = '';
+    for (let i = 0; i < o.maxLevel; i++) pips += `<i class="pip${i < o.level ? ' on' : ''}"></i>`;
+    const val = maxed ? `<span>${o.cur}</span> <em>MAX</em>` : `${o.cur} <span class="arrow">&gt;</span> <b>${o.next}</b>`;
+    const right = maxed
+      ? '<span class="siMaxed">MAXED</span>'
+      : `<button class="shopBuyBtn${afford ? '' : ' cant'}" data-act="${o.act}" ${o.attrs} aria-disabled="${!afford}">BUY $${o.price}</button>`;
+    return `<div class="shopItem${maxed ? ' isMax' : ''}">` +
+      `<div class="siMain"><div class="siName">${o.name}</div><div class="siDesc">${o.desc}</div></div>` +
+      `<div class="siStats"><div class="siLevel">LV ${o.level}/${o.maxLevel} ${pips}</div><div class="siVal">${val}</div></div>` +
+      `<div class="siBuy">${right}</div></div>`;
+  }
+
+  _playerItem(kind) {
+    const cfg = SHOP_CONFIG.player[kind], p = this.game.player;
+    const lvl = p.upgrades[kind] || 0;
+    const base = kind === 'health' ? CONFIG.PLAYER.maxHealth : CONFIG.PLAYER.maxStamina;
+    return this._item({
+      name: cfg.name, desc: cfg.desc, level: lvl, maxLevel: cfg.maxLevel,
+      cur: base + lvl * cfg.perLevel, next: base + (lvl + 1) * cfg.perLevel,
+      price: ShopMath.price(cfg.basePrice, cfg.priceGrowth, lvl),
+      act: 'buy-player', attrs: `data-kind="${kind}"`,
+    });
+  }
+
+  _weaponItem(w, key) {
+    const cfg = w.config, s = ShopMath.stat(cfg, key);
+    const lvl = w.upgrades[key] || 0;
+    let desc = s.desc;
+    if (cfg.fuelTank && key === 'magazine') desc = s.fuelDesc;
+    if (key === 'ammo') desc = `Instantly +${ShopMath.ammoPack(cfg)} reserve rounds, and ammo pickups give ${Math.round(s.pickupBonusPerLevel * 100)}% more per level.`;
+    if (cfg.melee && key === 'damage') desc = 'More damage per hit.';
+    return this._item({
+      name: this._statName(cfg, s), desc, level: lvl, maxLevel: s.maxLevel,
+      cur: ShopMath.fmt(cfg, key, ShopMath.value(cfg, key, lvl)),
+      next: ShopMath.fmt(cfg, key, ShopMath.value(cfg, key, lvl + 1)),
+      price: ShopMath.weaponPrice(cfg, key, lvl),
+      act: 'buy-weapon', attrs: `data-wid="${cfg.id}" data-key="${key}"`,
+    });
+  }
+
+  render() {
+    const g = this.game, p = g.player;
+    document.getElementById('shopMoney').textContent = '$' + p.money;
+    document.getElementById('shopNotice').textContent =
+      `SHOP #${this.shopNumber} IS OPEN - THE GAME IS PAUSED. NEXT SHOP AT ${Utils.formatTime(this.nextShopAt)}.`;
+
+    const tabs = [['health', 'HEALTH'], ['stamina', 'STAMINA'], ['weapons', 'WEAPONS']];
+    document.getElementById('shopTabs').innerHTML = tabs.map(([id, label]) =>
+      `<button class="shopTab${this.tab === id ? ' active' : ''}" data-act="tab" data-tab="${id}">${label}</button>`).join('');
+
+    const pick = document.getElementById('shopWeaponPick');
+    const list = document.getElementById('shopList');
+    if (this.tab === 'weapons') {
+      if (!this._owned(this.selectedWeaponId)) this.selectedWeaponId = p.currentWeapon.config.id;
+      pick.classList.remove('hidden');
+      pick.innerHTML = p.weapons.map((w) =>
+        `<button class="shopWpn${w.config.id === this.selectedWeaponId ? ' active' : ''}" data-act="weapon" data-wid="${w.config.id}">${w.name.toUpperCase()}</button>`).join('');
+      const w = p.weapons.find((x) => x.config.id === this.selectedWeaponId);
+      list.innerHTML = ShopMath.keys.filter((k) => ShopMath.stat(w.config, k)).map((k) => this._weaponItem(w, k)).join('');
+    } else {
+      pick.classList.add('hidden');
+      pick.innerHTML = '';
+      list.innerHTML = this._playerItem(this.tab === 'stamina' ? 'stamina' : 'health');
+    }
+
+    const m = document.getElementById('shopMessage');
+    m.textContent = this.message ? this.message.text : 'Spend your cash on upgrades. Weapons you have not found yet are not listed.';
+    m.className = 'shopMessage' + (this.message ? ' ' + this.message.kind : '');
   }
 }
 
@@ -5709,8 +6181,9 @@ class Game {
     this.hud = new HUD();
     this.spawner = new SpawnSystem();
     this.weaponUnlocks = new WeaponUnlockSystem();
+    this.shop = new ShopSystem(this); // upgrade shop every 2 minutes (see shop.js)
 
-    this.state = 'menu'; // 'menu' | 'playing' | 'paused' | 'gameover'
+    this.state = 'menu'; // 'menu' | 'playing' | 'paused' | 'shop' | 'gameover'
     this._lastTimestamp = null;
     this._lastSpawnPos = null; // remembered for a quick Restart without re-running city select
     this._lastGenerated = null; // remembered alongside it — real map data (Phase 4c-4f), if generation succeeded
@@ -5843,6 +6316,8 @@ class Game {
     bindToggle('tmUnlimitedAmmoGas', 'unlimitedAmmoGas');
     bindToggle('tmUnlimitedStamina', 'unlimitedStamina');
     bindToggle('tmZombies', 'zombies');
+    bindToggle('tmFastShop', 'fastShop');
+    bindToggle('tmShopCash', 'shopCash');
     testModeBtn.addEventListener('click', () => {
       Sound.uiClick();
       document.getElementById('startScreen').classList.add('hidden');
@@ -5914,6 +6389,7 @@ class Game {
 
     this.spawner.reset();
     this.weaponUnlocks.reset();
+    this.shop.reset(); // shop timer back to the first interval, cash/upgrades start fresh with the new Player
     // A run started with any Test Mode switch on never counts toward the saved
     // stats (decided once here, at the start of the run).
     this.testModeRun = TEST_MODE.isActive();
@@ -6123,8 +6599,10 @@ class Game {
       player: {
         x: pl.x, y: pl.y, health: pl.health, stamina: pl.stamina, canSprint: pl.canSprint,
         kills: pl.kills, aimAngle: pl.aimAngle, facing: pl.facing, weaponIndex: pl.weaponIndex,
-        weapons: pl.weapons.map((w) => ({ id: w.config.id, ammo: w.currentAmmo, reserve: w.reserveAmmo })),
+        money: pl.money, upgrades: { ...pl.upgrades }, maxHealth: pl.maxHealth,
+        weapons: pl.weapons.map((w) => ({ id: w.config.id, ammo: w.currentAmmo, reserve: w.reserveAmmo, up: { ...w.upgrades } })),
       },
+      shop: this.shop.serialize(),
       zombies: this.zombies.filter((z) => z.alive !== false).map((z) => ({ type: z.type.id, x: r1(z.x), y: r1(z.y), health: z.health })),
       pickups: this.pickups.map((p) => ({ kind: p.kind, x: r1(p.x), y: r1(p.y), v: p.kind === 'weapon' ? p.weaponId : p.amount })),
       spawner: { elapsed: this.spawner.elapsed, timer: this.spawner.timer, nextBossAt: this.spawner.nextBossAt },
@@ -6178,7 +6656,7 @@ class Game {
     document.getElementById('continueRunSummary').innerHTML =
       `<div><span>Survived</span><b>${Utils.formatTime(save.survivalTime)}</b></div>` +
       `<div><span>Kills</span><b>${save.player.kills}</b></div>` +
-      `<div><span>Health</span><b>${Math.round(save.player.health)} / ${CONFIG.PLAYER.startHealth}</b></div>` +
+      `<div><span>Health</span><b>${Math.round(save.player.health)} / ${save.player.maxHealth || CONFIG.PLAYER.startHealth}</b></div>` +
       `<div><span>Weapon</span><b>${weaponName}</b></div>` +
       (save.cityName ? `<div><span>City</span><b></b></div>` : '') +
       `<div><span>Saved</span><b>${when.toLocaleDateString()} ${when.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</b></div>`;
@@ -6242,12 +6720,16 @@ class Game {
       const cfg = CONFIG.WEAPONS[w.id];
       if (!cfg) continue;
       const weapon = new Weapon(cfg);
+      Object.assign(weapon.upgrades, w.up || {});
       weapon.currentAmmo = w.ammo;
       weapon.reserveAmmo = w.reserve;
       pl.weapons.push(weapon);
     }
     if (pl.weapons.length === 0) pl.weapons = CONFIG.PLAYER.startingWeaponIds.map((id) => new Weapon(CONFIG.WEAPONS[id]));
     pl.weaponIndex = Utils.clamp(p.weaponIndex, 0, pl.weapons.length - 1);
+    pl.money = Math.max(0, p.money || 0);
+    pl.upgrades = Object.assign({ health: 0, stamina: 0 }, p.upgrades || {});
+    ShopSystem.applyPlayerStats(pl); // real max health / stamina from the purchased levels (also clamps the restored values)
 
     this.survivalTime = save.survivalTime;
     // A Test Mode run stays uncounted; and turning a switch on before
@@ -6257,6 +6739,7 @@ class Game {
     this.spawner.timer = save.spawner.timer;
     this.spawner.nextBossAt = save.spawner.nextBossAt;
     this.weaponUnlocks.spawned = new Set(save.unlocked);
+    this.shop.restore(save.shop, this.survivalTime);
 
     const diff = CONFIG.DIFFICULTY_LEVELS[CONFIG.activeDifficulty];
     this.zombies = [];
@@ -6274,6 +6757,10 @@ class Game {
     }
     this.bullets = [];
     this.camera.follow(pl.x, pl.y);
+  }
+
+  _refreshHud() {
+    this.hud.update({ player: this.player, zombies: this.zombies, survivalTime: this.survivalTime, shopIn: this.shop.secondsUntilNext(this.survivalTime) });
   }
 
   _togglePause() {
@@ -6324,6 +6811,9 @@ class Game {
     }
     if (this.world3d && this.world3d.water) this.world3d.water.tick(dt, this); // streams: slow whoever wades in them + splash pixels
     this.survivalTime += dt;
+
+    // --- Shop: opens once per scheduled interval; _update (and so every gameplay timer) stops while it is open ---
+    if (this.shop.due(this.survivalTime)) { this.shop.open(); return; }
 
     // --- Player ---
     this.player.handleMovement(this.input, dt, world.width, world.height, this.obstacles);
@@ -6636,7 +7126,7 @@ class Game {
     }
 
     // --- HUD ---
-    this.hud.update({ player: this.player, zombies: this.zombies, survivalTime: this.survivalTime });
+    this._refreshHud();
 
     // --- Death check ---
     if (!this.player.alive) {
@@ -6649,6 +7139,9 @@ class Game {
   _onZombieKilled(zombie) {
     this.fx.death(zombie);   // short death effect (the zombie itself is removed from play as before)
     this.player.kills += 1;
+    const reward = ShopSystem.killReward(zombie.type); // cash for the shop (bosses / brutes pay more)
+    this.player.money += reward;
+    this._addFloatingText(zombie.x, zombie.y - 18, `+$${reward}`, '#f5c542');
     const drop = rollZombieDrop(zombie.x, zombie.y, this.player);
     if (drop) this.pickups.push(drop);
 
@@ -6742,7 +7235,7 @@ class Game {
       const angleToZombie = Utils.angleBetween(player.x, player.y, zombie.x, zombie.y);
       if (Math.abs(Utils.angleDiff(angleToZombie, player.aimAngle)) > halfArc) continue;
 
-      const died = zombie.takeDamage(weapon.config.damage);
+      const died = zombie.takeDamage(weapon.damage);
       this.fx.meleeHit(zombie, weapon, player); zombie.flinch(zombie.x - player.x, zombie.y - player.y);
       if (died) this._onZombieKilled(zombie);
       else if (!weapon.config.fuelTank) Sound.zombieHit(); // the chainsaw ticks 15x/s — its own buzz is enough, a hit sound per tick would be noise
@@ -6794,7 +7287,7 @@ class Game {
       duration: Math.max(0.25, throwDist / weapon.config.throwSpeed), // a very short throw still takes a beat, rather than landing instantly
       arcHeight: weapon.config.arcHeight,
       splashRadius: weapon.config.splashRadius,
-      damage: weapon.config.damage,
+      damage: weapon.damage,
       fuseTime: weapon.config.fuseTime,
       exploded: false,
     });
@@ -6966,6 +7459,7 @@ class Game {
 
   _gameOver() {
     this.state = 'gameover';
+    this.shop.forceClose();
     SavedRun.clear(); // the run is over — nothing left to continue
     document.getElementById('finalStats').textContent =
       `Survived ${Utils.formatTime(this.survivalTime)} — ${this.player.kills} kills` +
