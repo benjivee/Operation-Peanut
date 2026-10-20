@@ -1511,7 +1511,7 @@ const EMBEDDED_ASSETS = {
     <!-- ===================== Start overlay (home page) ===================== -->
     <div id="startScreen" class="overlay homePage">
       <!-- Version: major.minor.patch. The patch digit goes 0-9 and rolls into the minor number (v3.88.9 -> v3.89.0); the minor number is two digits and rolls into the major number (v3.99.9 -> v4.00.0). Bumped by 1 on every change. -->
-      <div id="versionTag" class="versionTag">v3.89.6</div>
+      <div id="versionTag" class="versionTag">v3.89.7</div>
       <div id="homeSidebar" class="homeSidebar">
         <div class="homeSidebarTitle">Your Stats</div>
         <div class="homeSidebarStat">
@@ -1587,6 +1587,7 @@ const EMBEDDED_ASSETS = {
         <h1>CONTINUE RUN?</h1>
         <p class="subtitle">You have a saved run.</p>
         <div id="continueRunSummary" class="savedRunSummary"></div>
+        <p id="continueRunMessage" class="inputError hidden"></p>
         <button id="continueRunBtn" class="bigButton">Continue Run</button>
         <button id="newRunBtn" class="smallLinkButton">New Run (discards the saved run)</button>
         <button id="continueRunBackBtn" class="smallLinkButton">Back</button>
@@ -6435,7 +6436,7 @@ class Game {
       this.camera.rig3d = this.world3d;
       ENTITY_SCALE_3D = GAME3D.entityScale;
       container.classList.add('world3d-active');
-      quitBtn.textContent = 'Quit to Menu'; // a 3D run can't be saved/resumed yet
+      quitBtn.innerHTML = this._saveQuitLabel; // 3D runs can be saved too
     } else {
       this.camera.rig3d = null;
       ENTITY_SCALE_3D = 1;
@@ -6576,7 +6577,10 @@ class Game {
     const pl = this.player;
     const gen = this._lastGenerated;
     let map = null;
-    if (gen) {
+    // A 3D run is saved as just its geographic origin: the MapTiler world is streamed again on Continue
+    // (every saved position is in world pixels relative to that origin, so it lines up exactly).
+    const world3d = this.world3d && this.world3d.bridge ? { lat: this.world3d.bridge.originLat, lng: this.world3d.bridge.originLng } : null;
+    if (gen && !world3d) {
       map = {
         obstacles: gen.obstacles.map((o) => [
           r2(o.x), r2(o.y), r2(o.halfWidth), r2(o.halfHeight), Math.round(o.rotation * 10000) / 10000, o.color,
@@ -6593,6 +6597,7 @@ class Game {
       savedAt: Date.now(),
       cityName: this.currentCityName || '',
       spawn: this._lastSpawnPos,
+      world3d,
       map,
       survivalTime: this.survivalTime,
       testModeRun: !!this.testModeRun,
@@ -6615,16 +6620,6 @@ class Game {
   _saveAndQuit() {
     if (this.state !== 'paused') return;
     Sound.uiClick();
-    if (this.world3d) {
-      // A 3D run has no saved form yet (the geographic world is not part of
-      // the save), so this just returns to the menu.
-      this._leaveWorld3d();
-      this.hud.hideWeaponUnlockBanner();
-      this.state = 'gameover'; // also what stops the frame loop (see _loop)
-      document.getElementById('pauseScreen').classList.add('hidden');
-      document.getElementById('startScreen').classList.remove('hidden');
-      return;
-    }
     const msg = document.getElementById('pauseMessage');
     let ok = false;
     try { ok = SavedRun.save(this._serializeRun()); } catch (e) { ok = false; }
@@ -6635,6 +6630,7 @@ class Game {
     }
     msg.classList.add('hidden');
     this.hud.hideWeaponUnlockBanner();
+    if (this.world3d) this._leaveWorld3d(); // saved: tear the 3D map down and go back to the menu
     // 'gameover' is also what stops the frame loop (see _loop); Continue /
     // Play start a fresh one, so nothing keeps running behind the menu.
     this.state = 'gameover';
@@ -6668,10 +6664,47 @@ class Game {
     document.getElementById('continueRunScreen').classList.remove('hidden');
   }
 
-  _continueSavedRun() {
+  async _continueSavedRun() {
+    if (this._continuingRun) return; // a second click while the 3D map is loading
     const save = SavedRun.load();
+    if (!save) {
+      document.getElementById('continueRunScreen').classList.add('hidden');
+      document.getElementById('startScreen').classList.remove('hidden');
+      return;
+    }
+
+    // 3D run: stream the MapTiler world again at the saved origin first. If that fails (offline, key
+    // problem) the save is kept and the player stays on this screen to try again.
+    let world = null;
+    if (save.world3d) {
+      const btn = document.getElementById('continueRunBtn');
+      const msg = document.getElementById('continueRunMessage');
+      const label = btn.textContent;
+      this._continuingRun = true;
+      btn.disabled = true; btn.textContent = 'Loading 3D map…'; msg.classList.add('hidden');
+      let failure = null;
+      try {
+        if (this.world3d) { this.world3d.exit(); this.world3d = null; } // never two maps in one container
+        const w = new MapTilerGameWorld(this);
+        const r = await w.enter({ lat: save.world3d.lat, lng: save.world3d.lng });
+        if (r.ok) {
+          // Look at where the peanut actually stands (it may be hundreds of metres from the origin) and give the tiles there a moment.
+          w.snapCamera(save.player.x, save.player.y);
+          const t0 = performance.now();
+          while (!w.renderer.isIdle() && performance.now() - t0 < 4000) await new Promise((res) => setTimeout(res, 100));
+          w.refreshBuildingCollision(true);
+          world = w;
+        } else failure = r.reason || 'the 3D map could not be loaded';
+      } catch (err) { failure = err && err.message ? err.message : String(err); }
+      this._continuingRun = false;
+      btn.disabled = false; btn.textContent = label;
+      if (!world) {
+        msg.textContent = `Couldn't load the 3D map (${failure}). Your saved run is still here - check your connection and try again.`;
+        msg.classList.remove('hidden');
+        return;
+      }
+    }
     document.getElementById('continueRunScreen').classList.add('hidden');
-    if (!save) { document.getElementById('startScreen').classList.remove('hidden'); return; }
 
     // Rebuild the map from the save (no network), then start a normal run on
     // it and overwrite its starting state with the saved one.
@@ -6707,7 +6740,8 @@ class Game {
       generated = { obstacles, roads, mapAreaData: null };
     }
     this.currentCityName = save.cityName || '';
-    this._pendingWorld = null; // saved runs carry no geographic origin: the 2D map
+    this._pendingWorld = world; // the freshly entered 3D world, or null = the 2D map
+    if (world && !generated) generated = { obstacles: [], roads: [] }; // 3D: collision comes from the MapTiler buildings
     this.start(save.spawn, generated);
 
     // --- saved state on top of the fresh run ---
@@ -6757,6 +6791,11 @@ class Game {
     }
     this.bullets = [];
     this.camera.follow(pl.x, pl.y);
+    if (this.world3d) { // the run started at the origin; put the camera, collision and zombie grid where the peanut really is
+      this.world3d.snapCamera(pl.x, pl.y);
+      this.world3d.syncCollision(pl.x, pl.y);
+      this._navDirty = true;
+    }
   }
 
   _refreshHud() {
