@@ -1511,7 +1511,7 @@ const EMBEDDED_ASSETS = {
     <!-- ===================== Start overlay (home page) ===================== -->
     <div id="startScreen" class="overlay homePage">
       <!-- Version: major.minor.patch. The patch digit goes 0-9 and rolls into the minor number (v3.88.9 -> v3.89.0); the minor number is two digits and rolls into the major number (v3.99.9 -> v4.00.0). Bumped by 1 on every change. -->
-      <div id="versionTag" class="versionTag">v3.89.7</div>
+      <div id="versionTag" class="versionTag">v3.89.9</div>
       <div id="homeSidebar" class="homeSidebar">
         <div class="homeSidebarTitle">Your Stats</div>
         <div class="homeSidebarStat">
@@ -2033,7 +2033,7 @@ const CONFIG = {
     brute: {
       id: 'brute',
       name: 'Brute',
-      health: 220,            // stronger — takes far more hits to put down
+      health: 110,            // stronger than the walker — takes more hits to put down
       speed: 55,              // slower — noticeably behind the walker
       damage: 25,              // stronger bite
       attackRange: 6,         // its huge arms reach a little past a true touch
@@ -5641,8 +5641,8 @@ const SHOP_CONFIG = {
   testStartMoney: 3000,      // ONLY used by Test Mode > "Shop Cash"
 
   // ---- currency: cash per kill, by zombie type id ---------------------
-  killReward: { walker: 10, runner: 8, brute: 30, boss: 300 },
-  defaultKillReward: 10,     // any zombie type not listed above
+  killReward: { walker: 5, runner: 4, brute: 15, boss: 150 },
+  defaultKillReward: 5,     // any zombie type not listed above
 
   priceStep: 5,              // prices are rounded to a multiple of this
 
