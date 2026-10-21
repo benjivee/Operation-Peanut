@@ -1511,7 +1511,7 @@ const EMBEDDED_ASSETS = {
     <!-- ===================== Start overlay (home page) ===================== -->
     <div id="startScreen" class="overlay homePage">
       <!-- Version: major.minor.patch. The patch digit goes 0-9 and rolls into the minor number (v3.88.9 -> v3.89.0); the minor number is two digits and rolls into the major number (v3.99.9 -> v4.00.0). Bumped by 1 on every change. -->
-      <div id="versionTag" class="versionTag">v3.90.1</div>
+      <div id="versionTag" class="versionTag">v3.90.2</div>
       <div id="homeSidebar" class="homeSidebar">
         <div class="homeSidebarTitle">Your Stats</div>
         <div class="homeSidebarStat">
@@ -11057,8 +11057,8 @@ const GAME3D = {
   zombieXrayRangePx: 380,     // ... but only zombies this close to the peanut; farther ones stay fully hidden
   fadeBuildings: true,        // fade the building that is in front of the peanut (needs building ids in the tiles; falls back to the x-ray above)
   fadeOpacity: 0.3,           // opacity of an obstructing building
-  fadeDownSec: 0.18, fadeUpSec: 0.18, fadeArmSec: 0.08,   // fade-out / fade-in length; arming = a short wait so the map redraws its layers before the fade starts
-  fadeHoldSec: 0.03,      // a building must obstruct this long before it starts fading (filters out single-frame flicker)
+  fadeDownSec: 0.15, fadeUpSec: 0.18, fadeArmSec: 0,   // fade-out / fade-in length; arming = optional wait so the map redraws its layers before the fade starts (0 = fade starts at once)
+  fadeHoldSec: 0,         // a building must obstruct this long before it starts fading (0 = instantly; raise if buildings flicker)
   fadeReleaseSec: 0.10,   // ...and must stop obstructing this long before it starts coming back (raise these two if buildings flicker)
   outOfBoundsDim: 0.35,       // darkening outside the playable area
   curtainMeters: 14,          // height of the translucent wall along the playable-area edge
