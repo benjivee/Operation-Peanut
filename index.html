@@ -1527,7 +1527,7 @@ const EMBEDDED_ASSETS = {
     <!-- ===================== Start overlay (home page) ===================== -->
     <div id="startScreen" class="overlay homePage">
       <!-- Version: major.minor.patch. The patch digit goes 0-9 and rolls into the minor number (v3.88.9 -> v3.89.0); the minor number is two digits and rolls into the major number (v3.99.9 -> v4.00.0). Bumped by 1 on every change. -->
-      <div id="versionTag" class="versionTag">v3.90.8</div>
+      <div id="versionTag" class="versionTag">v3.90.9</div>
       <div id="homeSidebar" class="homeSidebar">
         <div class="homeSidebarTitle">Your Stats</div>
         <div class="homeSidebarStat">
@@ -1839,6 +1839,7 @@ const CONFIG = {
       melee: true,
       auto: true,             // holding the mouse button keeps swinging
       color: '#cfd8dc',
+      spriteDirShift: -2,     // which skin is shown for an aim direction: aiming east uses the 'south' image, south-east uses 'south-west', north uses 'east'... (-2 steps in SPRITE_DIRECTIONS; 0 = each direction uses its own)
       spriteFolder: 'hammer', // assets/weapons/hammer/<dir>.png — the held hammer; it spins when swung (see Player._drawWeaponSprite)
       spriteDisplaySize: 30,
       unlockAtSurvivalSeconds: null, // starting weapon — always available, alongside the pistol
@@ -5007,7 +5008,10 @@ class Player extends Entity {
   // if that weapon has no real art (or it hasn't finished loading yet)
   // — every weapon still renders as *something* rather than nothing.
   _drawWeaponSprite(ctx, cx, cy, weaponDir, attachment) {
-    const weaponSprite = WEAPON_SPRITES[this.currentWeapon.config.id]?.[weaponDir];
+    // A weapon can show a different skin than the aim direction says (config.spriteDirShift, e.g. the hammer: aim east -> its 'south' skin)
+    const shift = this.currentWeapon.config.spriteDirShift || 0;
+    const skinDir = shift ? SPRITE_DIRECTIONS[(SPRITE_DIRECTIONS.indexOf(weaponDir) + shift + 8) % 8] : weaponDir;
+    const weaponSprite = WEAPON_SPRITES[this.currentWeapon.config.id]?.[skinDir];
     const wx = cx + attachment.offsetX * PLAYER_SCALE;
     const wy = cy + attachment.offsetY * PLAYER_SCALE;
 
