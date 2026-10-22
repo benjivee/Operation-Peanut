@@ -1563,7 +1563,7 @@ const EMBEDDED_ASSETS = {
     <!-- ===================== Start overlay (home page) ===================== -->
     <div id="startScreen" class="overlay homePage">
       <!-- Version: major.minor.patch. The patch digit goes 0-9 and rolls into the minor number (v3.88.9 -> v3.89.0); the minor number is two digits and rolls into the major number (v3.99.9 -> v4.00.0). Bumped by 1 on every change. -->
-      <div id="versionTag" class="versionTag">v3.91.0</div>
+      <div id="versionTag" class="versionTag">v3.91.1</div>
       <div id="homeSidebar" class="homeSidebar">
         <div class="homeSidebarTitle">Your Stats</div>
         <div class="homeSidebarStat">
@@ -3123,11 +3123,13 @@ class Camera {
 
   // `canvas` here is the zoomed view size from viewSize(); the result is
   // in the (pre-zoom) coordinates the scaled drawing context expects.
-  worldToScreen(wx, wy, canvas) {
+  worldToScreen(wx, wy, canvas, fixedElevM) {
     if (this.rig3d) {
       // 3D run: project through the map camera at the terrain height under the
-      // point. `zoom` is then the per-frame art scale (screen px per game px).
-      const s = this.rig3d.project(wx, wy, {});
+      // point (or, when fixedElevM is given, at that fixed height above sea level: used by bullets so
+      // they fly in a straight line instead of rising and falling with the hills under them).
+      // `zoom` is then the per-frame art scale (screen px per game px).
+      const s = fixedElevM === undefined ? this.rig3d.project(wx, wy, {}) : this.rig3d.projectAtElevation(wx, wy, fixedElevM, {});
       return { x: s.x / this.zoom, y: s.y / this.zoom, depthScale: s.scale };
     }
     return {
@@ -4408,7 +4410,10 @@ class Bullet extends Entity {
   }
 
   draw(ctx, camera, canvas) {
-    const p = camera.worldToScreen(this.x, this.y, canvas);
+    // 3D: a bullet flies at one fixed height (the ground height where it was fired), so its path on screen is a straight line.
+    // (Projecting it at the terrain height under every point made it rise and fall with hills.)
+    if (camera.rig3d && this._flightElev === undefined) this._flightElev = camera.rig3d.groundElevation(this.x, this.y);
+    const p = camera.worldToScreen(this.x, this.y, canvas, camera.rig3d ? this._flightElev : undefined);
     if (camera.rig3d) p.y -= BUILDING_OCCLUSION_CONFIG.playerFeetOffset * PLAYER_SCALE * GAME3D.entityScale * (p.depthScale || 1); // 3D: projectiles fly at weapon height, not along the ground
     if (this.flame) { ctx.save(); camera.applyEntityScale(ctx, p, false); this._drawFlame(ctx, p); ctx.restore(); return; }
     ctx.save();
@@ -12152,6 +12157,13 @@ class GameplayCamera3D {
     return this._projectMerc(m.x, m.y, e + lift, ll.lat, out);
   }
 
+  // Game px -> screen px at a GIVEN elevation (metres), ignoring the terrain under the point.
+  projectAtElevation(gx, gy, elevM, out = {}) {
+    const ll = this.bridge.gamePxToLatLng(gx, gy);
+    const m = Mercator.fromLngLat(ll.lng, ll.lat);
+    return this._projectMerc(m.x, m.y, elevM, ll.lat, out);
+  }
+
   // Raw clip-space [x, y, z, w] of a ground point (+ lift meters): for polygons that must be clipped.
   clipAt(gx, gy, lift = 0) {
     const ll = this.bridge.gamePxToLatLng(gx, gy);
@@ -13731,6 +13743,8 @@ class MapTilerGameWorld {
   hasMatrix() { return !!this.renderer.matrix; }
   get snapshot() { return this.camera && this.camera.snapshot; }
   project(gx, gy, out) { return this.camera.project(gx, gy, out); }
+  projectAtElevation(gx, gy, elevM, out) { return this.camera.projectAtElevation(gx, gy, elevM, out); }
+  groundElevation(gx, gy) { return this.terrain.atGameOrLast(gx, gy); } // terrain height (m) under a game point
   unproject(sx, sy) { return this.camera.unproject(sx, sy); }
   pixelScaleAt(gx, gy) { return this.camera.pixelScaleAt(gx, gy, this.game.camera.zoom); }
   drawBoundary(ctx, camera, view) { this.overlay.drawBoundary(ctx, camera, view); }
