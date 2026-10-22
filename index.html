@@ -969,6 +969,33 @@ html, body, button, input, select, textarea {
 @keyframes achOut { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateY(-14px); } }
 @media (max-width: 720px) { .achSummary { text-align: left; } .achDesc { font-size: 8px; } .achProg .achBar { max-width: none; } }
 @media (min-width: 1100px) and (min-height: 700px) { .achDesc, .achProg span { font-size: 10px; } .achName { font-size: 12px; } .achTab { font-size: 9px; } }
+/* ---- Cosmetics + Statistics screens ---- */
+#cosmeticsScreen, #statsScreen { z-index: 25; padding: 12px; box-sizing: border-box; cursor: default; user-select: none; -webkit-user-select: none; }
+.cosGrid { display: grid !important; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; align-content: start; }
+.cosNote { grid-column: 1 / -1; font-size: 8px; line-height: 1.7; color: var(--px-dim); }
+.cosCard { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 10px; text-align: center; background: #20242a; border: 3px solid var(--px-ink); }
+.cosCard.open { border-color: #3d6b3f; } .cosCard.equipped { border-color: #f5c542; box-shadow: 0 0 10px rgba(245,197,66,0.35); } .cosCard.locked { opacity: 0.85; }
+.cosPrev { width: 96px; height: 96px; image-rendering: pixelated; background: #14171b; border: 3px solid var(--px-ink); }
+.cosName { font-size: 10px; color: #fff; line-height: 1.5; }
+.cosTag { font-size: 7px; padding: 3px 6px; border: 2px solid var(--px-ink); } .cosTag.eq { background: #6b5410; color: #f5c542; } .cosTag.un { background: #1f4a22; color: #2ecc71; } .cosTag.lk { background: #2a2d33; color: #8a9099; }
+.cosReq { font-size: 8px; line-height: 1.6; color: #c9ced6; }
+.cosCard .achProg { width: 100%; } .cosCard .achProg .achBar { max-width: none; }
+.cosBtn { margin-top: auto; padding-top: 4px; }
+.shopBuyBtn.cosUn { background: #5a4330; } .shopBuyBtn:disabled { cursor: not-allowed; }
+.statsBody { gap: 12px; }
+.stBigRow { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+.stBig { display: flex; flex-direction: column; gap: 6px; padding: 12px; background: #20242a; border: 3px solid var(--px-ink); text-align: center; }
+.stBig b { font-size: 20px; color: #f5c542; } .stBig span { font-size: 8px; color: var(--px-dim); }
+.stCompletion { padding: 10px 12px; background: #20242a; border: 3px solid var(--px-ink); font-size: 10px; } .stCompletion b { color: #f5c542; font-size: 14px; } .stCompletion em { color: #2ecc71; font-style: normal; margin-left: 8px; }
+.stGrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 10px; }
+.stCard { padding: 10px 12px; background: #20242a; border: 3px solid var(--px-ink); }
+.stTitle { font-size: 10px; color: #f5c542; margin-bottom: 8px; }
+.stRow { display: flex; justify-content: space-between; gap: 12px; padding: 5px 0; font-size: 8px; line-height: 1.6; border-bottom: 1px solid #2b3037; } .stRow span { color: var(--px-dim); } .stRow b { color: #fff; text-align: right; }
+.stNote { margin-top: 6px; font-size: 7px; line-height: 1.7; color: #8a9099; }
+.stBarRow { display: grid; grid-template-columns: 120px 1fr 60px; gap: 8px; align-items: center; padding: 3px 0; font-size: 8px; } .stBarRow .achBar { margin-top: 0; } .stBarRow b { text-align: right; color: #fff; }
+.stTable { width: 100%; border-collapse: collapse; font-size: 8px; } .stTable th { text-align: right; color: #f5c542; padding: 4px 6px; font-weight: normal; } .stTable td { padding: 5px 6px; text-align: right; border-top: 1px solid #2b3037; color: #fff; } .stTable td:first-child { text-align: left; color: var(--px-dim); }
+@media (max-width: 720px) { .stBarRow { grid-template-columns: 80px 1fr 44px; } .stBig b { font-size: 16px; } .stGrid { grid-template-columns: 1fr; } }
+@media (min-width: 1100px) and (min-height: 700px) { .stRow, .stBarRow, .stTable, .cosReq { font-size: 10px; } .cosNote, .stNote { font-size: 9px; } .cosName { font-size: 11px; } .stBig span { font-size: 9px; } }
   </style>
   <script>
 // Auto-generated for the single-file build: maps each original
@@ -1563,7 +1590,7 @@ const EMBEDDED_ASSETS = {
     <!-- ===================== Start overlay (home page) ===================== -->
     <div id="startScreen" class="overlay homePage">
       <!-- Version: major.minor.patch. The patch digit goes 0-9 and rolls into the minor number (v3.88.9 -> v3.89.0); the minor number is two digits and rolls into the major number (v3.99.9 -> v4.00.0). Bumped by 1 on every change. -->
-      <div id="versionTag" class="versionTag">v3.91.1</div>
+      <div id="versionTag" class="versionTag">v3.91.2</div>
       <div id="homeSidebar" class="homeSidebar">
         <div class="homeSidebarTitle">Your Stats</div>
         <div class="homeSidebarStat">
@@ -1582,6 +1609,8 @@ const EMBEDDED_ASSETS = {
         <button id="testModeBtn" class="testModeButton">Test Mode</button>
         <button id="howToPlayBtn" class="testModeButton">How to Play</button>
         <button id="achievementsBtn" class="testModeButton">Achievements</button>
+        <button id="cosmeticsBtn" class="testModeButton">Cosmetics</button>
+        <button id="statsBtn" class="testModeButton">Statistics</button>
         <div id="difficultyRow" class="difficultyRow"><span class="diffLabel">Difficulty</span><div class="diffButtons"><button class="testModeButton diffBtn" data-diff="easy">Easy</button><button class="testModeButton diffBtn" data-diff="normal">Normal</button><button class="testModeButton diffBtn" data-diff="hard">Hard</button></div></div>
       </div>
     </div>
@@ -1630,6 +1659,8 @@ const EMBEDDED_ASSETS = {
         <p class="subtitle">Press <b>P</b> to resume</p>
         <button id="resumeBtn" class="bigButton">Resume</button>
         <button id="pauseAchievementsBtn" class="smallLinkButton">Achievements</button>
+        <button id="pauseCosmeticsBtn" class="smallLinkButton">Cosmetics</button>
+        <button id="pauseStatsBtn" class="smallLinkButton">Statistics</button>
         <button id="pauseSaveQuitBtn" class="smallLinkButton">Save &amp; Quit</button>
         <p id="pauseMessage" class="inputError hidden"></p>
       </div>
@@ -1677,6 +1708,25 @@ const EMBEDDED_ASSETS = {
           <button id="achCloseBtn" class="bigButton" data-act="close">CLOSE</button>
           <span class="shopHint">ESC = CLOSE</span>
         </div>
+      </div>
+    </div>
+
+    <!-- ===================== Cosmetics ===================== -->
+    <div id="cosmeticsScreen" class="overlay hidden">
+      <div class="shopPanel achPanel" role="dialog" aria-modal="true" aria-labelledby="cosTitle">
+        <div class="shopHeader"><h1 id="cosTitle">COSMETICS</h1><div id="cosSummary" class="achSummary"></div></div>
+        <div id="cosTabs" class="shopTabs"></div>
+        <div id="cosGrid" class="shopList cosGrid"></div>
+        <div class="shopFooter"><button class="bigButton" data-act="close">CLOSE</button><span class="shopHint">ESC = CLOSE</span></div>
+      </div>
+    </div>
+
+    <!-- ===================== Statistics ===================== -->
+    <div id="statsScreen" class="overlay hidden">
+      <div class="shopPanel achPanel" role="dialog" aria-modal="true" aria-labelledby="stTitleMain">
+        <div class="shopHeader"><h1 id="stTitleMain">STATISTICS</h1></div>
+        <div id="statsBody" class="shopList statsBody"></div>
+        <div class="shopFooter"><button class="bigButton" data-act="close">CLOSE</button><span class="shopHint">ESC = CLOSE</span></div>
       </div>
     </div>
 
@@ -5079,7 +5129,7 @@ class Player extends Entity {
     // A weapon can show a different skin than the aim direction says (config.spriteDirShift, e.g. the hammer: aim east -> its 'south' skin)
     const shift = this.currentWeapon.config.spriteDirShift || 0;
     const skinDir = shift ? SPRITE_DIRECTIONS[(SPRITE_DIRECTIONS.indexOf(weaponDir) + shift + 8) % 8] : weaponDir;
-    const weaponSprite = WEAPON_SPRITES[this.currentWeapon.config.id]?.[skinDir];
+    const weaponSprite = COSMETICS.weaponSprite(this.currentWeapon.config.id, skinDir) || WEAPON_SPRITES[this.currentWeapon.config.id]?.[skinDir]; // equipped weapon skin, else the original
     const wx = cx + attachment.offsetX * PLAYER_SCALE;
     const wy = cy + attachment.offsetY * PLAYER_SCALE;
 
@@ -5163,7 +5213,7 @@ class Player extends Entity {
     // move the way the body is actually travelling (no moonwalking). Frame
     // 0 stays frame 0, then 7, 6, 5, ... so the loop stays seamless.
     const frame = this.walkingBackward ? (8 - this.animFrame) % 8 : this.animFrame;
-    return pickSpriteFrame(PLAYER_SPRITES, this.facing, this.isMoving, frame);
+    return pickSpriteFrame(COSMETICS.playerSheet(), this.facing, this.isMoving, frame); // the equipped skin's sheet (or the original)
   }
 }
 
@@ -6148,7 +6198,7 @@ class ShopSystem {
  */
 
 const ACH_SAVE_KEY = 'operationPeanut.achievements';
-const ACH_SAVE_VERSION = 1;
+const ACH_SAVE_VERSION = 2; // v2: adds cosmetics (inside the same save) and the extra lifetime statistics; v1 saves are upgraded in _migrate()
 
 const ACH_TIERS = {
   bronze:   { label: 'BRONZE',   color: '#c98a4b' },
@@ -6311,6 +6361,7 @@ function achDefaultLife() {
     kills: 0, shots: 0, fired: 0, distanceM: 0, timeS: 0, runs: 0,
     weaponKills: {}, cityKills: {}, cities: [], days: [], weaponsGot: [], upCats: [], upBought: {},
     purchases: 0, spent: 0, shopVisits: 0, damageTaken: 0,
+    damageDealt: 0, deaths: 0, deathTimeS: 0, cityRuns: {},   // v2 statistics
     quick: 0, closeCall: 0, closeShave: 0, secondWind: 0, crowd: 0, streets: 0, welcomeBack: 0,
     sessions: 0, lastSessionAt: 0, firstSeenAt: 0,
     best: {},
@@ -6321,6 +6372,7 @@ function achNewRun() {
     diff: null, hardest: false, city: null, cityNew: false, time: 0,
     kills: 0, meleeKills: 0, pistolKills: 0, noDmgKills: 0, lowHpKills: 0, hardKills: 0,
     usedNonMelee: false, usedNonPistol: false,
+    shots: 0, damageDealt: 0, distM: 0,   // run-only numbers shown on the Statistics screen
     damageTaken: 0, minHpFrac: 1, wasLow: false, closeCallAt: -1,
     purchases: 0, weaponsGot: 0, healthLvl: 0, staminaLvl: 0,
     lastX: null, lastY: null, startX: null, startY: null, away: 0,
@@ -6345,6 +6397,7 @@ class AchievementSystem {
     this._roadSet = new Set(); this._hoodSet = new Set();
     this._queue = []; this._toastActive = false;
     this._dirty = false; this._lastSave = 0; this._tickAcc = 0; this._resuming = false;
+    this._cosRaw = null; this.cosSerialize = null; this.onUnlock = null; // set up by CosmeticsSystem
     this._load();
     this._beginSession();
     window.addEventListener('pagehide', () => this.save(true));
@@ -6396,6 +6449,7 @@ class AchievementSystem {
     this._enqueue(d);
     this.save(true);
     this._eval('unlock'); // Overachiever / Completionist (re-entrancy is safe: each id can only unlock once)
+    if (this.onUnlock) this.onUnlock(d); // cosmetic rewards tied to achievements
   }
   _best(key, v) { if (v > (this.life.best[key] || 0)) { this.life.best[key] = v; this._dirty = true; } }
 
@@ -6414,6 +6468,7 @@ class AchievementSystem {
       if (run.city) {
         run.cityNew = !this.life.cities.includes(run.city);
         if (run.cityNew) this.life.cities.push(run.city);
+        this.life.cityRuns[run.city] = (this.life.cityRuns[run.city] || 0) + 1;
       }
       const day = this._today();
       if (!this.life.days.includes(day)) this.life.days.push(day);
@@ -6425,6 +6480,7 @@ class AchievementSystem {
   runEnded() {
     if (!this.active) return;
     this._best('runTime', this.run.time);
+    this.life.deaths++; this.life.deathTimeS += this.run.time; // a run ends only by dying
     this.save(true);
     this._eval('run');
   }
@@ -6448,7 +6504,7 @@ class AchievementSystem {
     const ppm = game._pxPerMeter();
     if (run.lastX !== null) {
       const d = Math.hypot(p.x - run.lastX, p.y - run.lastY);
-      if (d < 120) { L.distanceM += d / ppm; } // a jump (respawn / restore) is not walking
+      if (d < 120) { L.distanceM += d / ppm; run.distM += d / ppm; } // a jump (respawn / restore) is not walking
     } else { run.startX = p.x; run.startY = p.y; }
     run.lastX = p.x; run.lastY = p.y;
     const away = Math.hypot(p.x - run.startX, p.y - run.startY) / ppm;
@@ -6526,6 +6582,8 @@ class AchievementSystem {
     if (!this.active) return;
     const t = this.run.time;
     if (z._achT0 === undefined) z._achT0 = t;
+    const dealt = Math.min(amount, Math.max(0, z.health)); // damage that actually landed (not the overkill)
+    this.life.damageDealt += dealt; this.run.damageDealt += dealt;
     // rolling damage dealt over the last few seconds (4 one-second slots)
     const sec = Math.floor(t), slots = this.run.burst, i = sec & 3;
     if (!slots[i] || slots[i][0] !== sec) slots[i] = [sec, 0];
@@ -6542,7 +6600,7 @@ class AchievementSystem {
     if (!cfg.melee) run.usedNonMelee = true;
     if (cfg.id !== 'pistol') run.usedNonPistol = true;
     if (cfg.melee || cfg.fuelTank || cfg.flame) { if (first) { this._dirty = true; this._eval('fire'); } return; } // swings and flame ticks are not "shots"
-    L.shots++; this._dirty = true;
+    L.shots++; run.shots++; this._dirty = true;
     this._eval('fire');
   }
   playerDamaged(amount, hp, maxHp) {
@@ -6602,7 +6660,7 @@ class AchievementSystem {
     if (!force && (!this._dirty || now - this._lastSave < 5000)) return;
     this._lastSave = now; this._dirty = false;
     try {
-      localStorage.setItem(ACH_SAVE_KEY, JSON.stringify({ v: ACH_SAVE_VERSION, savedAt: now, unlocked: this.unlocked, life: this.life }));
+      localStorage.setItem(ACH_SAVE_KEY, JSON.stringify({ v: ACH_SAVE_VERSION, savedAt: now, unlocked: this.unlocked, life: this.life, cos: this.cosSerialize ? this.cosSerialize() : this._cosRaw }));
     } catch (e) { /* storage full / blocked: the game keeps working, progress just isn't kept */ }
   }
   _load() {
@@ -6616,6 +6674,7 @@ class AchievementSystem {
       return;
     }
     data = this._migrate(data);
+    this._cosRaw = data.cos && typeof data.cos === 'object' ? data.cos : null;
     const L = achDefaultLife(), src = data.life;
     for (const k of Object.keys(L)) {
       const def = L[k], v = src[k];
@@ -6630,7 +6689,8 @@ class AchievementSystem {
       for (const id of Object.keys(data.unlocked)) if (Number.isFinite(data.unlocked[id]) && data.unlocked[id] > 0) this.unlocked[id] = data.unlocked[id];
     }
   }
-  _migrate(data) { // older save versions are upgraded here (only v1 exists so far)
+  _migrate(data) { // older save versions are upgraded here. Nothing is ever dropped: new fields simply start from their defaults.
+    if (!(data.v >= 2)) { data.cos = data.cos || null; data.v = 2; } // v1 -> v2: no cosmetics yet; new statistics start at 0
     return data;
   }
 
@@ -6645,7 +6705,7 @@ class AchievementSystem {
     const el = document.createElement('div');
     el.className = 'achToast tier-' + d.tier + (major ? ' major' : '');
     el.innerHTML = `<div class="achIcon" style="--tier:${tier.color}">${d.icon}</div>` +
-      `<div class="achToastText"><div class="achToastHead">${major ? 'MAJOR ' : ''}ACHIEVEMENT UNLOCKED</div>` +
+      `<div class="achToastText"><div class="achToastHead">${d.header || (major ? 'MAJOR ' : '') + 'ACHIEVEMENT UNLOCKED'}</div>` +
       `<div class="achToastName">${d.name}</div><div class="achToastDesc">${d.secret ? 'Secret achievement' : d.desc}</div></div>`;
     host.appendChild(el);
     this._toastActive = true; this._current = el;
@@ -6746,6 +6806,332 @@ class AchievementMenu {
     document.getElementById('achList').innerHTML = shown ? html : '<div class="achEmpty">No achievements match.</div>';
   }
 }
+
+// ===== Cosmetics: player skins and weapon skins earned through achievements =====
+//
+// HOW IT WORKS
+//  - COSMETIC_DEFS is the one registry of rewards. Each has a requirement (an achievement, or a number of achievements).
+//  - A skin is a PALETTE SWAP of your existing sprites: the original PNG is recoloured pixel-by-pixel (see cosRecolor) once, cached,
+//    and drawn in exactly the same place / size / direction as the original, so animation and directional alignment never change.
+//  - To use dedicated art instead of a recolour, give a def `art: 'assets/...'` (see "Adding art" below) - no other change is needed.
+//  - Skins are purely visual: nothing here touches speed, health, damage or hitboxes.
+//
+// Adding a reward:  add a line to COSMETIC_DEFS.  Adding art for it: put the PNGs in the folder layout the original uses and set `art`:
+//    player skin : <art>/idle/<dir>.png and <art>/walk/<dir>/frame_000..007.png   (same as assets/player)
+//    weapon skin : <art>/<dir>.png for the 8 directions                            (same as assets/weapons/<id>)
+//  (with the single-file build the images must also be added to EMBEDDED_ASSETS under those paths).
+const COS_SAVE_VERSION = 1;
+const COS_RAMPS = {  // colour ramps (dark -> light) used to recolour grey metal weapons by brightness
+  gold:     [[38, 22, 0], [140, 92, 8], [232, 178, 34], [255, 236, 130]],
+  tactical: [[4, 4, 7], [34, 36, 42], [84, 88, 98], [146, 150, 160]],
+  olive:    [[18, 22, 8], [62, 74, 34], [112, 128, 64], [176, 190, 116]],
+  flame:    [[40, 4, 0], [150, 28, 4], [248, 104, 18], [255, 204, 90]],
+  toxic:    [[4, 24, 4], [28, 112, 28], [104, 222, 56], [208, 255, 146]],
+  frost:    [[6, 22, 44], [30, 92, 150], [110, 190, 236], [226, 248, 255]],
+  obsidian: [[6, 2, 14], [38, 14, 64], [92, 44, 140], [170, 120, 210]],
+  chrome:   [[14, 18, 24], [90, 104, 118], [190, 204, 216], [250, 254, 255]],
+};
+const COSMETIC_DEFS = [
+  // ---- player skins ----
+  { id: 'classic',         kind: 'player', name: 'Classic Peanut',   desc: 'The original peanut.', isDefault: true },
+  { id: 'golden_peanut',   kind: 'player', name: 'Golden Peanut',    desc: 'A shiny gold shell.',                 req: { type: 'achCount', n: 10 },          reqText: 'Unlock 10 achievements.',                       recipe: { hue: 14, sat: 1.7, val: 1.1 } },
+  { id: 'zombie_peanut',   kind: 'player', name: 'Zombie Peanut',    desc: 'Sickly green. Survived the worst.',   req: { type: 'ach', id: 'survivor' },     reqText: 'Survive for 10 minutes in a run.',              recipe: { hue: 65, sat: 0.85, val: 0.88 } },
+  { id: 'military_peanut', kind: 'player', name: 'Military Peanut',  desc: 'Olive drab, fully equipped.',         req: { type: 'ach', id: 'walking_armory' }, reqText: 'Find every weapon that appears on the map.', recipe: { hue: 28, sat: 0.6, val: 0.78 } },
+  { id: 'shadow_peanut',   kind: 'player', name: 'Shadow Peanut',    desc: 'Dark and mysterious.',                req: { type: 'ach', id: 'nuts_about_survival' }, reqText: 'A secret reward. Can you discover it?', secret: true, secretReq: 'Survive for 15 minutes in a run.', recipe: { sat: 0.2, val: 0.4, mul: [0.85, 0.9, 1.25] } },
+  { id: 'elite_peanut',    kind: 'player', name: 'Elite Peanut',     desc: 'For the best survivors on Hard.',     req: { type: 'ach', id: 'last_peanut' },  reqText: 'Survive for 20 minutes on Hard difficulty.',   recipe: { hue: 240, sat: 1.25, val: 1.05 } },
+  { id: 'platinum_peanut', kind: 'player', name: 'Platinum Peanut',  desc: 'The completionist\'s skin.',          req: { type: 'ach', id: 'completionist' }, reqText: 'Unlock every standard achievement.',          recipe: { hue: 150, sat: 0.3, val: 1.3 } },
+  // ---- weapon skins ----
+  { id: 'golden_pistol',     kind: 'weapon', weapon: 'pistol',       name: 'Golden Pistol',      desc: 'Solid gold sidearm.',        req: { type: 'ach', id: 'zombie_genocide' },    reqText: 'Kill 500 zombies.',                       recipe: { ramp: 'gold' } },
+  { id: 'tactical_shotgun',  kind: 'weapon', weapon: 'shotgun',      name: 'Tactical Shotgun',   desc: 'Blacked-out finish.',        req: { type: 'ach', id: 'shotgun_specialist' }, reqText: 'Kill 100 zombies with the shotgun.',      recipe: { ramp: 'tactical' } },
+  { id: 'military_rifle',    kind: 'weapon', weapon: 'rifle',        name: 'Military Rifle',     desc: 'Olive drab issue.',          req: { type: 'ach', id: 'marksman' },           reqText: 'Kill 100 zombies with the assault rifle.', recipe: { ramp: 'olive' } },
+  { id: 'toxic_smg',         kind: 'weapon', weapon: 'smg',          name: 'Toxic SMG',          desc: 'Glows a radioactive green.', req: { type: 'ach', id: 'spray_and_pray' },     reqText: 'Kill 100 zombies with the SMG or machine gun.', recipe: { ramp: 'toxic' } },
+  { id: 'chrome_machinegun', kind: 'weapon', weapon: 'machinegun',   name: 'Chrome Machine Gun', desc: 'Mirror-polished.',           req: { type: 'ach', id: 'mass_destruction' },   reqText: 'Kill 250 zombies in a single run.',       recipe: { ramp: 'chrome' } },
+  { id: 'flaming_chainsaw',  kind: 'weapon', weapon: 'chainsaw',     name: 'Flaming Chainsaw',   desc: 'Burns as it cuts.',          req: { type: 'ach', id: 'chop_shop' },          reqText: 'Kill 100 zombies with the chainsaw.',     recipe: { ramp: 'flame' } },
+  { id: 'golden_hammer',     kind: 'weapon', weapon: 'hammer',       name: 'Golden Hammer',      desc: 'Pure gold. Still hits hard.', req: { type: 'ach', id: 'hammer_time' },       reqText: 'Kill 50 zombies with the hammer.',        recipe: { ramp: 'gold' } },
+  { id: 'frost_flamethrower',kind: 'weapon', weapon: 'flamethrower', name: 'Frost Flamethrower', desc: 'Icy-blue casing.',           req: { type: 'ach', id: 'fire_starter' },       reqText: 'Kill 100 zombies with the flamethrower.', recipe: { ramp: 'frost' } },
+  { id: 'obsidian_rpg',      kind: 'weapon', weapon: 'rpg',          name: 'Obsidian RPG',       desc: 'Dark volcanic glass.',       req: { type: 'ach', id: 'rocket_science' },     reqText: 'Kill 50 zombies with the RPG.',           recipe: { ramp: 'obsidian' } },
+  { id: 'golden_grenade',    kind: 'weapon', weapon: 'grenade',      name: 'Golden Grenade',     desc: 'Gold plated. Still explodes.', req: { type: 'ach', id: 'explosive_personality' }, reqText: 'Kill 50 zombies with grenades.',  recipe: { ramp: 'gold' } },
+];
+
+// Recolours an image (palette swap). recipe: { hue, sat, val, mul:[r,g,b] } shifts the colours of coloured art (the peanut),
+// recipe: { ramp } maps brightness onto a colour ramp (grey metal weapons). Alpha and shading are preserved.
+function cosRecolor(src, recipe) {
+  const w = src.naturalWidth || src.width, h = src.naturalHeight || src.height;
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  const g = c.getContext('2d', { willReadFrequently: true });
+  g.imageSmoothingEnabled = false;
+  g.drawImage(src, 0, 0);
+  const img = g.getImageData(0, 0, w, h), d = img.data;
+  const ramp = recipe.ramp ? COS_RAMPS[recipe.ramp] : null;
+  for (let i = 0; i < d.length; i += 4) {
+    if (d[i + 3] === 0) continue;
+    let r = d[i], gg = d[i + 1], b = d[i + 2];
+    if (ramp) {
+      let l = (0.299 * r + 0.587 * gg + 0.114 * b) / 255;
+      l = Math.min(1, Math.max(0, (l - 0.04) / 0.82));        // stretch so the ramp's ends are used
+      const f = l * (ramp.length - 1), k = Math.min(ramp.length - 2, Math.floor(f)), t = f - k;
+      r = ramp[k][0] + (ramp[k + 1][0] - ramp[k][0]) * t;
+      gg = ramp[k][1] + (ramp[k + 1][1] - ramp[k][1]) * t;
+      b = ramp[k][2] + (ramp[k + 1][2] - ramp[k][2]) * t;
+    } else {
+      // RGB -> HSV, adjust, back
+      const mx = Math.max(r, gg, b), mn = Math.min(r, gg, b), dl = mx - mn;
+      let hh = 0;
+      if (dl > 0) { if (mx === r) hh = ((gg - b) / dl) % 6; else if (mx === gg) hh = (b - r) / dl + 2; else hh = (r - gg) / dl + 4; hh *= 60; if (hh < 0) hh += 360; }
+      let s = mx === 0 ? 0 : dl / mx, v = mx / 255;
+      hh = (hh + (recipe.hue || 0) + 360) % 360;
+      s = Math.min(1, s * (recipe.sat === undefined ? 1 : recipe.sat));
+      v = Math.min(1, v * (recipe.val === undefined ? 1 : recipe.val));
+      const cc = v * s, x = cc * (1 - Math.abs(((hh / 60) % 2) - 1)), m = v - cc;
+      let rr = 0, g2 = 0, bb = 0;
+      if (hh < 60) { rr = cc; g2 = x; } else if (hh < 120) { rr = x; g2 = cc; } else if (hh < 180) { g2 = cc; bb = x; }
+      else if (hh < 240) { g2 = x; bb = cc; } else if (hh < 300) { rr = x; bb = cc; } else { rr = cc; bb = x; }
+      r = (rr + m) * 255; gg = (g2 + m) * 255; b = (bb + m) * 255;
+      if (recipe.mul) { r *= recipe.mul[0]; gg *= recipe.mul[1]; b *= recipe.mul[2]; }
+    }
+    d[i] = Math.min(255, Math.max(0, r)); d[i + 1] = Math.min(255, Math.max(0, gg)); d[i + 2] = Math.min(255, Math.max(0, b));
+  }
+  g.putImageData(img, 0, 0);
+  c.naturalWidth = w; c.naturalHeight = h; c.complete = true; // lets the game's existing sprite code (isSpriteReady / spriteScaledSize) treat it like an Image
+  return c;
+}
+
+class CosmeticsSystem {
+  constructor(ach) {
+    this.ach = ach;
+    this.defs = COSMETIC_DEFS;
+    this.byId = new Map(this.defs.map((d) => [d.id, d]));
+    this.unlocked = {};                       // id -> unlock timestamp
+    this.equipped = { player: null, weapons: {} };
+    this._pc = {}; this._wc = {};             // caches of recoloured sheets / weapon images
+    this._load(ach._cosRaw);
+    ach.cosSerialize = () => this.serialize();
+    ach.onUnlock = () => this.check();
+    this.check(); // existing players: grant rewards their current achievements already earned (each notifies once)
+  }
+  // ---- requirements ----
+  _req(d) {
+    const r = d.req;
+    if (!r) return { done: true, val: 1, target: 1 };
+    if (r.type === 'achCount') { const v = this.ach.unlockedCount(); return { done: v >= r.n, val: Math.min(v, r.n), target: r.n }; }
+    if (r.type === 'ach') { const a = this.ach.byId.get(r.id); if (!a) return { done: false, val: 0, target: 1 }; const s = this.ach.status(a); return { done: s.done, val: s.val, target: s.target, ach: a }; }
+    return { done: false, val: 0, target: 1 };
+  }
+  isUnlocked(id) { const d = this.byId.get(id); return !!d && (d.isDefault || !!this.unlocked[id]); }
+  // Grants every reward whose requirement is genuinely met. Safe to call any time: a reward unlocks once, and notifies once.
+  check() {
+    for (const d of this.defs) {
+      if (d.isDefault || this.unlocked[d.id]) continue;
+      if (this._req(d).done) {
+        this.unlocked[d.id] = Date.now();
+        this.ach._dirty = true;
+        this.ach._enqueue({ tier: 'gold', icon: d.kind === 'player' ? 'SKIN' : 'GUN', name: d.name, desc: 'New ' + (d.kind === 'player' ? 'player skin' : 'weapon skin') + ' unlocked - equip it in Cosmetics.', header: 'REWARD UNLOCKED' });
+        this.ach.save(true);
+      }
+    }
+  }
+  // ---- equipping ----
+  equip(id) {
+    const d = this.byId.get(id);
+    if (!d || !this.isUnlocked(id)) return false;                    // locked cosmetics can never be equipped
+    if (d.kind === 'player') this.equipped.player = d.isDefault ? null : id;
+    else this.equipped.weapons[d.weapon] = id;
+    this.ach.save(true);
+    return true;
+  }
+  unequip(kind, weaponId) {
+    if (kind === 'player') this.equipped.player = null; else delete this.equipped.weapons[weaponId];
+    this.ach.save(true);
+  }
+  isEquipped(d) { return d.kind === 'player' ? (d.isDefault ? !this.equipped.player : this.equipped.player === d.id) : this.equipped.weapons[d.weapon] === d.id; }
+  // ---- drawing (called by Player.draw every frame: cached lookups only) ----
+  playerSheet() {
+    const id = this.equipped.player;
+    if (!id || !PLAYER_SPRITES) return PLAYER_SPRITES;
+    if (this._pc[id]) return this._pc[id];
+    const d = this.byId.get(id), base = PLAYER_SPRITES;
+    for (const dir of SPRITE_DIRECTIONS) { // only build once every frame of the original has loaded
+      if (!isSpriteReady(base.idle[dir])) return base;
+      for (const f of base.walk[dir]) if (!isSpriteReady(f)) return base;
+    }
+    const sheet = { idle: {}, walk: {} };
+    for (const dir of SPRITE_DIRECTIONS) {
+      sheet.idle[dir] = cosRecolor(base.idle[dir], d.recipe);
+      sheet.walk[dir] = base.walk[dir].map((f) => cosRecolor(f, d.recipe));
+    }
+    this._pc[id] = sheet;
+    return sheet;
+  }
+  weaponSprite(weaponId, dir) {
+    const id = this.equipped.weapons[weaponId];
+    if (!id) return null;
+    const key = id + '|' + dir;
+    let c = this._wc[key];
+    if (!c) {
+      const base = WEAPON_SPRITES[weaponId] && WEAPON_SPRITES[weaponId][dir];
+      if (!isSpriteReady(base)) return null;
+      c = this._wc[key] = cosRecolor(base, this.byId.get(id).recipe);
+    }
+    return c;
+  }
+  // Small preview image of a skin (player: idle facing south; weapon: facing east). Returns an Image/canvas or null.
+  preview(d) {
+    if (d.kind === 'player') {
+      const base = PLAYER_SPRITES && PLAYER_SPRITES.idle.south;
+      if (!isSpriteReady(base)) return null;
+      if (d.isDefault) return base;
+      return (this._pv = this._pv || {})[d.id] || (this._pv[d.id] = cosRecolor(base, d.recipe));
+    }
+    const base = WEAPON_SPRITES[d.weapon] && WEAPON_SPRITES[d.weapon].east;
+    if (!isSpriteReady(base)) return null;
+    return (this._pv = this._pv || {})[d.id] || (this._pv[d.id] = cosRecolor(base, d.recipe));
+  }
+  // ---- persistence (stored inside the achievements save, key ACH_SAVE_KEY) ----
+  serialize() { return { v: COS_SAVE_VERSION, unlocked: this.unlocked, equipped: this.equipped }; }
+  _load(raw) {
+    if (!raw || typeof raw !== 'object') return;
+    if (raw.unlocked && typeof raw.unlocked === 'object') {
+      for (const id of Object.keys(raw.unlocked)) if (this.byId.has(id) && Number.isFinite(raw.unlocked[id]) && raw.unlocked[id] > 0) this.unlocked[id] = raw.unlocked[id];
+    }
+    const eq = raw.equipped;
+    if (eq && typeof eq === 'object') {
+      const p = this.byId.get(eq.player);
+      if (p && p.kind === 'player' && !p.isDefault && this.unlocked[p.id]) this.equipped.player = p.id; // an equipped skin must be one you have unlocked
+      if (eq.weapons && typeof eq.weapons === 'object') {
+        for (const w of Object.keys(eq.weapons)) {
+          const d = this.byId.get(eq.weapons[w]);
+          if (d && d.kind === 'weapon' && d.weapon === w && this.unlocked[d.id]) this.equipped.weapons[w] = d.id;
+        }
+      }
+    }
+  }
+}
+
+// ===== shared base for the two new full-screen panels =====
+class PanelMenu {
+  constructor(elId) {
+    this.el = document.getElementById(elId); this.isOpen = false;
+    this.el.addEventListener('click', (e) => { const t = e.target.closest('[data-act]'); if (t && this.isOpen) this.onAct(t.dataset.act, t); });
+    // While open, keys never reach the game underneath (movement / pause / weapon keys); Esc closes.
+    window.addEventListener('keydown', (e) => {
+      if (!this.isOpen) return;
+      if (e.ctrlKey || e.metaKey || e.altKey || /^F\d+$/.test(e.code)) return;
+      e.stopImmediatePropagation();
+      if (e.code === 'Escape') { e.preventDefault(); if (!e.repeat) this.close(); }
+      else if (e.code !== 'Tab' && e.code !== 'Enter' && e.code !== 'Space') e.preventDefault();
+    }, true);
+  }
+  open() { if (this.isOpen) return; this.isOpen = true; this.render(); this.el.classList.remove('hidden'); }
+  close() { if (!this.isOpen) return; this.isOpen = false; this.el.classList.add('hidden'); }
+  onAct(act) { if (act === 'close') { Sound.uiClick(); this.close(); } }
+}
+
+// ===== Cosmetics menu =====
+class CosmeticsMenu extends PanelMenu {
+  constructor(cos) { super('cosmeticsScreen'); this.cos = cos; this.tab = 'player'; }
+  onAct(act, t) {
+    if (act === 'tab') { Sound.uiClick(); this.tab = t.dataset.tab; this.render(); }
+    else if (act === 'equip') { if (this.cos.equip(t.dataset.id)) Sound.uiClick(); else Sound.emptyClick(); this.render(); }
+    else if (act === 'unequip') { const d = this.cos.byId.get(t.dataset.id); this.cos.unequip(d.kind, d.weapon); Sound.uiClick(); this.render(); }
+    else super.onAct(act);
+  }
+  render() {
+    const cos = this.cos, ach = cos.ach;
+    const list = cos.defs.filter((d) => d.kind === this.tab);
+    const un = cos.defs.filter((d) => !d.isDefault && cos.isUnlocked(d.id)).length, total = cos.defs.filter((d) => !d.isDefault).length;
+    document.getElementById('cosSummary').innerHTML = `<b>${un}</b> / ${total} REWARDS UNLOCKED`;
+    document.getElementById('cosTabs').innerHTML = [['player', 'PLAYER SKINS'], ['weapon', 'WEAPON SKINS']].map(([id, label]) =>
+      `<button class="shopTab achTab${this.tab === id ? ' active' : ''}" data-act="tab" data-tab="${id}">${label}</button>`).join('');
+    let html = '';
+    if (this.tab === 'weapon') html += `<div class="cosNote">A weapon skin only changes how the weapon looks while you hold it. Equip one per weapon.</div>`;
+    for (const d of list) {
+      const open = cos.isUnlocked(d.id), eq = cos.isEquipped(d), hidden = d.secret && !open;
+      const r = cos._req(d);
+      const reqText = hidden ? 'A secret reward. Can you discover it?' : (d.reqText || '');
+      let prog = '';
+      if (!open && !hidden && d.req) prog = `<div class="achProg"><div class="achBar"><i style="width:${Math.round(100 * Math.min(1, r.val / Math.max(1, r.target)))}%"></i></div><span>${this._pv(d, r)}</span></div>`;
+      const wname = d.kind === 'weapon' && CONFIG.WEAPONS[d.weapon] ? CONFIG.WEAPONS[d.weapon].name.toUpperCase() : '';
+      let btn;
+      if (!open) btn = `<button class="shopBuyBtn cant" disabled>LOCKED</button>`;
+      else if (d.isDefault) btn = eq ? `<span class="siMaxed">EQUIPPED</span>` : `<button class="shopBuyBtn" data-act="equip" data-id="${d.id}">EQUIP</button>`;
+      else btn = eq ? `<button class="shopBuyBtn cosUn" data-act="unequip" data-id="${d.id}">UNEQUIP</button>` : `<button class="shopBuyBtn" data-act="equip" data-id="${d.id}">EQUIP</button>`;
+      html += `<div class="cosCard${open ? ' open' : ' locked'}${eq ? ' equipped' : ''}">` +
+        `<canvas class="cosPrev" width="96" height="96" data-id="${d.id}" data-state="${hidden ? 'secret' : open ? 'open' : 'locked'}"></canvas>` +
+        `<div class="cosName">${hidden ? '???' : d.name}</div>` +
+        `<div class="cosTag ${eq ? 'eq' : open ? 'un' : 'lk'}">${eq ? 'EQUIPPED' : open ? 'UNLOCKED' : 'LOCKED'}${wname && !hidden ? ' - ' + wname : ''}</div>` +
+        `<div class="achDesc">${hidden ? '' : d.desc}</div>` +
+        `<div class="cosReq">${open ? (d.isDefault ? 'Always available.' : 'Earned: ' + reqText) : 'To unlock: ' + reqText}</div>${prog}<div class="cosBtn">${btn}</div></div>`;
+    }
+    document.getElementById('cosGrid').innerHTML = html;
+    for (const cv of document.querySelectorAll('#cosGrid canvas.cosPrev')) this._drawPreview(cv, cos.byId.get(cv.dataset.id), cv.dataset.state);
+  }
+  _pv(d, r) {
+    if (d.req.type === 'achCount') return `${r.val} / ${r.target}`;
+    const a = r.ach; if (!a) return '';
+    return a.fmt === 'bool' ? 'Not yet' : `${this._fmtNum(a, r.val)} / ${this._fmtNum(a, r.target)}`;
+  }
+  _fmtNum(a, v) { return a.fmt === 'time' ? Utils.formatTime(Math.floor(v)) : a.fmt === 'km' ? (v / 1000).toFixed(1) + ' km' : a.fmt === 'm' ? Math.floor(v) + ' m' : String(Math.floor(v)); }
+  _drawPreview(cv, d, state) {
+    const g = cv.getContext('2d'); g.clearRect(0, 0, 96, 96); g.imageSmoothingEnabled = false;
+    if (state === 'secret') { g.fillStyle = '#555b63'; g.font = '36px monospace'; g.textAlign = 'center'; g.fillText('?', 48, 62); return; }
+    const img = this.cos.preview(d);
+    if (!img) return;
+    const w = img.naturalWidth || img.width, h = img.naturalHeight || img.height, k = Math.min(96 / w, 96 / h);
+    g.drawImage(img, (96 - w * k) / 2, (96 - h * k) / 2, w * k, h * k);
+    if (state === 'locked') { g.globalCompositeOperation = 'source-atop'; g.fillStyle = 'rgba(8,10,14,0.82)'; g.fillRect(0, 0, 96, 96); }
+  }
+}
+
+// ===== Statistics screen =====
+class StatsMenu extends PanelMenu {
+  constructor(sys, isRunActive) { super('statsScreen'); this.sys = sys; this.isRunActive = isRunActive; }
+  _n(v) { return String(Math.floor(v)).replace(/\B(?=(\d{3})+(?!\d))/g, ','); }
+  _t(s) { s = Math.floor(s); const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), x = s % 60; return h > 0 ? `${h}:${String(m).padStart(2, '0')}:${String(x).padStart(2, '0')}` : `${m}:${String(x).padStart(2, '0')}`; }
+  _km(m) { return m >= 1000 ? (m / 1000).toFixed(2) + ' km' : Math.floor(m) + ' m'; }
+  render() {
+    const S = this.sys, L = S.life, R = S.run, live = this.isRunActive();
+    const c = S.counts();
+    const wname = (id) => (CONFIG.WEAPONS[id] ? CONFIG.WEAPONS[id].name : id);
+    const wk = Object.entries(L.weaponKills).filter(([, n]) => n > 0).sort((a, b) => b[1] - a[1]);
+    const fav = wk.length ? `${wname(wk[0][0])} (${this._n(wk[0][1])})` : '-';
+    let melee = 0, expl = 0;
+    for (const [id, n] of wk) { const cfg = CONFIG.WEAPONS[id]; if (cfg && cfg.melee) melee += n; if (cfg && (cfg.explosive || cfg.thrown)) expl += n; }
+    const findable = S.findableWeapons(), got = findable.filter((k) => L.weaponsGot.includes(k)).length;
+    const cityEntries = Object.entries(L.cityRuns || {}).sort((a, b) => b[1] - a[1]);
+    const topCity = cityEntries.length ? `${cityEntries[0][0].replace(',', ', ')} (${cityEntries[0][1]} run${cityEntries[0][1] === 1 ? '' : 's'})` : '-';
+    const avg = L.deaths > 0 ? this._t(L.deathTimeS / L.deaths) : '-';
+    const row = (label, val) => `<div class="stRow"><span>${label}</span><b>${val}</b></div>`;
+    const big = (label, val) => `<div class="stBig"><b>${val}</b><span>${label}</span></div>`;
+    const card = (title, rows) => `<div class="stCard"><div class="stTitle">${title}</div>${rows}</div>`;
+    let html = `<div class="stBigRow">${big('ZOMBIES KILLED', this._n(L.kills))}${big('LONGEST RUN', this._t(L.best.runTime || 0))}${big('BEST RUN KILLS', this._n(L.best.runKills || 0))}${big('DISTANCE', this._km(L.distanceM))}</div>`;
+    html += `<div class="stCompletion"><div>ACHIEVEMENTS <b>${c.unlocked}</b> / ${c.total} <em>${c.pct}%</em></div><div class="achBar"><i style="width:${c.pct}%"></i></div></div>`;
+    html += '<div class="stGrid">';
+    html += card('COMBAT', row('Total zombies killed', this._n(L.kills)) + row('Zombies killed this run', live ? this._n(R.kills) : '-') + row('Most kills in one run', this._n(L.best.runKills || 0)) +
+      row('Shots fired (guns, rockets, grenades)', this._n(L.shots)) + row('Total damage dealt', this._n(L.damageDealt || 0)) + row('Total damage received', this._n(L.damageTaken)) +
+      row('Favourite weapon (most kills)', fav) + row('Melee kills', this._n(melee)) + row('Explosive kills', this._n(expl)));
+    html += card('SURVIVAL', row('Total time survived', this._t(L.timeS)) + row('Longest run', this._t(L.best.runTime || 0)) + row('Average run', avg) + row('Deaths', this._n(L.deaths || 0)) +
+      row('Longest kill streak (no damage taken)', this._n(L.best.noDmgKills || 0)));
+    html += card('PROGRESSION', row('Achievements unlocked', `${c.unlocked} / ${c.total}`) + row('Weapons found on the map', `${got} / ${findable.length}`) + row('Upgrades purchased', this._n(L.purchases)) +
+      row('Cash spent in the shop', '$' + this._n(L.spent)) + row('Runs started', this._n(L.runs)) + `<div class="stNote">Runs only end by dying, so there is no "runs completed" stat.</div>`);
+    html += card('EXPLORATION', row('Total distance travelled', this._km(L.distanceM)) + row('Different cities played', this._n(L.cities.length)) + row('Most-played city', topCity));
+    html += '</div>';
+    // kills per weapon, as bars
+    const max = wk.length ? wk[0][1] : 1;
+    html += `<div class="stCard stWide"><div class="stTitle">KILLS PER WEAPON</div>` + (wk.length ? wk.map(([id, n]) =>
+      `<div class="stBarRow"><span>${wname(id)}</span><div class="achBar"><i style="width:${Math.round((n / max) * 100)}%"></i></div><b>${this._n(n)}</b></div>`).join('') : '<div class="stNote">No kills recorded yet.</div>') + '</div>';
+    // this run vs lifetime
+    const cmp = (label, run, life) => `<tr><td>${label}</td><td>${live ? run : '-'}</td><td>${life}</td></tr>`;
+    html += `<div class="stCard stWide"><div class="stTitle">THIS RUN vs LIFETIME</div><table class="stTable"><tr><th></th><th>THIS RUN</th><th>LIFETIME</th></tr>` +
+      cmp('Zombies killed', this._n(R.kills), this._n(L.kills)) + cmp('Shots fired', this._n(R.shots || 0), this._n(L.shots)) +
+      cmp('Damage dealt', this._n(R.damageDealt || 0), this._n(L.damageDealt || 0)) + cmp('Damage received', this._n(R.damageTaken), this._n(L.damageTaken)) +
+      cmp('Time survived', this._t(R.time), this._t(L.timeS)) + cmp('Distance travelled', this._km(R.distM || 0), this._km(L.distanceM)) +
+      cmp('Upgrades purchased', this._n(R.purchases), this._n(L.purchases)) + cmp('Weapons found', this._n(R.weaponsGot), this._n(got)) +
+      `</table>${live ? '' : '<div class="stNote">Start a run to see current-run numbers.</div>'}</div>`;
+    document.getElementById('statsBody').innerHTML = html;
+  }
+}
+
+const COSMETICS = new CosmeticsSystem(ACH);
 
   </script>
   <script>
@@ -6948,6 +7334,8 @@ class Game {
     this.weaponUnlocks = new WeaponUnlockSystem();
     this.shop = new ShopSystem(this); // upgrade shop every 2 minutes (see shop.js)
     this.achMenu = new AchievementMenu(ACH); // achievements menu (see achievements.js)
+    this.cosMenu = new CosmeticsMenu(COSMETICS); // cosmetics (player / weapon skins)
+    this.statsMenu = new StatsMenu(ACH, () => this.state === 'playing' || this.state === 'paused' || this.state === 'shop'); // lifetime statistics
 
     this.state = 'menu'; // 'menu' | 'playing' | 'paused' | 'shop' | 'gameover'
     this._lastTimestamp = null;
@@ -7059,6 +7447,10 @@ class Game {
 
     document.getElementById('achievementsBtn').addEventListener('click', () => { Sound.uiClick(); this.achMenu.open(); });
     document.getElementById('pauseAchievementsBtn').addEventListener('click', () => { Sound.uiClick(); this.achMenu.open(); });
+    document.getElementById('cosmeticsBtn').addEventListener('click', () => { Sound.uiClick(); this.cosMenu.open(); });
+    document.getElementById('pauseCosmeticsBtn').addEventListener('click', () => { Sound.uiClick(); this.cosMenu.open(); });
+    document.getElementById('statsBtn').addEventListener('click', () => { Sound.uiClick(); this.statsMenu.open(); });
+    document.getElementById('pauseStatsBtn').addEventListener('click', () => { Sound.uiClick(); this.statsMenu.open(); });
     document.getElementById('howToPlayBtn').addEventListener('click', () => {
       Sound.uiClick();
       document.getElementById('startScreen').classList.add('hidden');
