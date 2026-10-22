@@ -933,6 +933,42 @@ html, body, button, input, select, textarea {
 @media (min-width: 1100px) and (min-height: 700px) { .siDesc, .siLevel, .shopNotice, .shopHint { font-size: 10px; } .siVal { font-size: 10px; } .siName { font-size: 12px; } .shopWpn { font-size: 10px; } }
 @media (max-height: 560px) { .shopNotice { display: none; } }
 
+/* ---- Achievements: menu + toast notifications ---- */
+#achievementsScreen { z-index: 25; padding: 12px; box-sizing: border-box; cursor: default; user-select: none; -webkit-user-select: none; }
+.achPanel { width: min(1020px, 100%); }
+.achSummary { font-size: 10px; flex: 1 1 260px; text-align: right; }
+.achSummary b { color: #f5c542; font-size: 16px; } .achPct { color: #2ecc71; margin-left: 8px; }
+.achBar { height: 8px; margin-top: 6px; background: #14171b; border: 2px solid var(--px-ink); }
+.achBar i { display: block; height: 100%; background: #f1c40f; } .achBar.done i { background: #2ecc71; }
+.achTab { font-size: 8px; padding: 8px 10px; } .achTab em { font-style: normal; color: #f5c542; margin-left: 4px; }
+.achTools { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; justify-content: space-between; }
+.achSearch { font: inherit; font-size: 10px; padding: 8px 10px; width: min(220px, 100%); color: var(--px-text); background: #14171b; border: 3px solid var(--px-ink); text-transform: uppercase; user-select: text; -webkit-user-select: text; }
+.achList { gap: 6px; }
+.achRow { display: flex; gap: 12px; align-items: center; padding: 8px 10px; background: #20242a; border: 3px solid var(--px-ink); }
+.achRow.locked { opacity: 0.82; } .achRow.future { opacity: 0.5; } .achRow.secret { opacity: 0.7; }
+.achRow.done { border-color: #3d6b3f; }
+.achIcon { flex: 0 0 auto; display: flex; align-items: center; justify-content: center; width: 40px; height: 40px; font-size: 9px; color: #111; background: var(--tier, #888); border: 3px solid var(--px-ink); box-shadow: inset 3px 3px 0 rgba(255,255,255,0.35), inset -3px -3px 0 rgba(0,0,0,0.3); text-shadow: none; }
+.achRow.locked .achIcon, .achRow.future .achIcon { filter: grayscale(0.7); }
+.achBody { flex: 1 1 auto; min-width: 0; }
+.achName { font-size: 10px; color: #fff; margin-bottom: 5px; line-height: 1.5; }
+.achTier { font-size: 7px; margin-left: 10px; letter-spacing: 0; }
+.achDesc { font-size: 8px; line-height: 1.7; color: var(--px-dim); }
+.achProg { display: flex; align-items: center; gap: 10px; margin-top: 6px; } .achProg .achBar { flex: 1 1 auto; margin-top: 0; max-width: 260px; } .achProg span { font-size: 8px; white-space: nowrap; }
+.achWhen { margin-top: 4px; font-size: 7px; color: #2ecc71; }
+.achEmpty { padding: 24px; text-align: center; font-size: 10px; color: var(--px-dim); }
+#achToasts { position: absolute; top: 78px; left: 50%; transform: translateX(-50%); z-index: 16; display: flex; flex-direction: column; align-items: center; gap: 8px; pointer-events: none; width: min(420px, 92%); }
+.achToast { display: flex; gap: 12px; align-items: center; width: 100%; box-sizing: border-box; padding: 10px 12px; color: var(--px-text); text-shadow: 2px 2px 0 #000;
+  background: rgba(24, 27, 32, 0.94); border: 4px solid var(--px-ink); box-shadow: inset 3px 3px 0 var(--px-panel-hi), 4px 4px 0 rgba(0,0,0,0.55);
+  animation: achIn 0.38s cubic-bezier(.2,.9,.3,1.2) both; }
+.achToast.out { animation: achOut 0.5s ease-in both; }
+.achToast.major { padding: 14px 16px; border-color: #f5c542; box-shadow: 0 0 18px rgba(245,197,66,0.55), inset 3px 3px 0 var(--px-panel-hi), 4px 4px 0 rgba(0,0,0,0.55); }
+.achToast.tier-platinum.major { border-color: #7fe3ff; box-shadow: 0 0 20px rgba(127,227,255,0.6), inset 3px 3px 0 var(--px-panel-hi), 4px 4px 0 rgba(0,0,0,0.55); }
+.achToast.major .achIcon { width: 50px; height: 50px; font-size: 11px; }
+.achToastHead { font-size: 7px; color: #f5c542; margin-bottom: 5px; } .achToastName { font-size: 11px; color: #fff; margin-bottom: 5px; } .achToastDesc { font-size: 8px; line-height: 1.6; color: var(--px-dim); }
+@keyframes achIn  { from { opacity: 0; transform: translateY(-26px) scale(0.96); } to { opacity: 1; transform: none; } }
+@keyframes achOut { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateY(-14px); } }
+@media (max-width: 720px) { .achSummary { text-align: left; } .achDesc { font-size: 8px; } .achProg .achBar { max-width: none; } }
+@media (min-width: 1100px) and (min-height: 700px) { .achDesc, .achProg span { font-size: 10px; } .achName { font-size: 12px; } .achTab { font-size: 9px; } }
   </style>
   <script>
 // Auto-generated for the single-file build: maps each original
@@ -1527,7 +1563,7 @@ const EMBEDDED_ASSETS = {
     <!-- ===================== Start overlay (home page) ===================== -->
     <div id="startScreen" class="overlay homePage">
       <!-- Version: major.minor.patch. The patch digit goes 0-9 and rolls into the minor number (v3.88.9 -> v3.89.0); the minor number is two digits and rolls into the major number (v3.99.9 -> v4.00.0). Bumped by 1 on every change. -->
-      <div id="versionTag" class="versionTag">v3.90.9</div>
+      <div id="versionTag" class="versionTag">v3.91.0</div>
       <div id="homeSidebar" class="homeSidebar">
         <div class="homeSidebarTitle">Your Stats</div>
         <div class="homeSidebarStat">
@@ -1545,6 +1581,7 @@ const EMBEDDED_ASSETS = {
         <button id="startBtn" class="bigButton" disabled>Loading…</button>
         <button id="testModeBtn" class="testModeButton">Test Mode</button>
         <button id="howToPlayBtn" class="testModeButton">How to Play</button>
+        <button id="achievementsBtn" class="testModeButton">Achievements</button>
         <div id="difficultyRow" class="difficultyRow"><span class="diffLabel">Difficulty</span><div class="diffButtons"><button class="testModeButton diffBtn" data-diff="easy">Easy</button><button class="testModeButton diffBtn" data-diff="normal">Normal</button><button class="testModeButton diffBtn" data-diff="hard">Hard</button></div></div>
       </div>
     </div>
@@ -1592,6 +1629,7 @@ const EMBEDDED_ASSETS = {
         <h1>PAUSED</h1>
         <p class="subtitle">Press <b>P</b> to resume</p>
         <button id="resumeBtn" class="bigButton">Resume</button>
+        <button id="pauseAchievementsBtn" class="smallLinkButton">Achievements</button>
         <button id="pauseSaveQuitBtn" class="smallLinkButton">Save &amp; Quit</button>
         <p id="pauseMessage" class="inputError hidden"></p>
       </div>
@@ -1618,6 +1656,27 @@ const EMBEDDED_ASSETS = {
         <button id="restartBtn" class="bigButton">Restart</button>
         <button id="changeCityBtn" class="smallLinkButton">Change City</button>
         <button id="mainMenuBtn" class="smallLinkButton">Main Menu</button>
+      </div>
+    </div>
+
+    <!-- ===================== Achievements ===================== -->
+    <div id="achToasts" aria-live="polite"></div>
+    <div id="achievementsScreen" class="overlay hidden">
+      <div class="shopPanel achPanel" role="dialog" aria-modal="true" aria-labelledby="achTitle">
+        <div class="shopHeader">
+          <h1 id="achTitle">ACHIEVEMENTS</h1>
+          <div id="achSummary" class="achSummary"></div>
+        </div>
+        <div id="achTabs" class="shopTabs"></div>
+        <div class="achTools">
+          <div id="achFilters" class="shopWeaponPick"></div>
+          <input id="achSearch" class="achSearch" type="text" placeholder="SEARCH..." maxlength="40" autocomplete="off" spellcheck="false">
+        </div>
+        <div id="achList" class="shopList achList"></div>
+        <div class="shopFooter">
+          <button id="achCloseBtn" class="bigButton" data-act="close">CLOSE</button>
+          <span class="shopHint">ESC = CLOSE</span>
+        </div>
       </div>
     </div>
 
@@ -4123,6 +4182,7 @@ class Weapon {
         explosive: this.config.explosive,       // undefined/false -> ordinary single-target bullet
         splashRadius: this.config.splashRadius, // only meaningful when explosive is true
         flame: !!this.config.flame,
+        weaponId: this.config.id,               // which weapon fired it (achievements credit the kill to this weapon)
       });
     }
     return specs;
@@ -4315,6 +4375,7 @@ class Bullet extends Entity {
     this.prevX = spec.x; this.prevY = spec.y; // where it was before the latest update(): collision sweeps this whole step
     this.explosive = !!spec.explosive;
     this.splashRadius = spec.splashRadius || 0;
+    this.weaponId = spec.weaponId;
 
     // Flamethrower particles: a small blocky pixel blob with its own random
     // shape and colour offsets, so a spray looks like varied licks of fire
@@ -4948,6 +5009,7 @@ class Player extends Entity {
     this.health = Utils.clamp(this.health - amount, 0, this.maxHealth);
     this.invulnTimer = 0.4;
     this.hurtTimer = 0.28; this.hurtAmount = amount;   // visual feedback only (see Game._updateHurtFx)
+    ACH.playerDamaged(amount, this.health, this.maxHealth); // achievements
     if (this.health <= 0) this.alive = false;
   }
 
@@ -4957,6 +5019,7 @@ class Player extends Entity {
   heal(amount) {
     const before = this.health;
     this.health = Utils.clamp(this.health + amount, 0, this.maxHealth);
+    if (this.health > before) ACH.playerHealed(this.health - before); // achievements
     return this.health - before;
   }
 
@@ -5335,6 +5398,7 @@ class Zombie extends Entity {
   }
 
   takeDamage(amount) {
+    ACH.zombieDamaged(this, amount); // achievements: damage dealt / first-hit time
     this.health -= amount;
     this.hitFlashTimer = 0.08;
     if (this.health <= 0 && this.alive) {
@@ -5883,6 +5947,7 @@ class ShopSystem {
     this.shopNumber += 1;
     while (this.nextShopAt <= g.survivalTime) this.nextShopAt += this.interval; // next scheduled slot, no drift, no repeats
     g.state = 'shop';
+    ACH.shopOpened(); // achievements: a shop visit
     g.input.mouseDown = false; g.input.prevMouseDown = false; // never keep firing underneath the shop
     this.message = null;
     if (this.tab === 'weapons' && !this._owned(this.selectedWeaponId)) this.selectedWeaponId = null;
@@ -5952,9 +6017,11 @@ class ShopSystem {
     if (!this.isOpen || !cfg) return;
     const lvl = p.upgrades[kind] || 0;
     if (lvl >= cfg.maxLevel) return this._say(cfg.name + ' IS ALREADY AT MAX LEVEL', 'bad');
-    if (!this._spend(ShopMath.price(cfg.basePrice, cfg.priceGrowth, lvl))) return;
+    const price = ShopMath.price(cfg.basePrice, cfg.priceGrowth, lvl);
+    if (!this._spend(price)) return;
     p.upgrades[kind] = lvl + 1;
     ShopSystem.applyPlayerStats(p);
+    ACH.purchase(kind, price, { healthLvl: p.upgrades.health, staminaLvl: p.upgrades.stamina, healthMax: SHOP_CONFIG.player.health.maxLevel, staminaMax: SHOP_CONFIG.player.stamina.maxLevel });
     if (kind === 'health' && cfg.healOnBuy > 0) p.heal(cfg.healOnBuy);
     this._done(`${cfg.name} UPGRADED TO LV ${lvl + 1}`);
   }
@@ -5967,8 +6034,10 @@ class ShopSystem {
     if (!s) return;
     const lvl = w.upgrades[key] || 0;
     if (lvl >= s.maxLevel) return this._say(`${w.name.toUpperCase()} ${s.name} IS ALREADY AT MAX LEVEL`, 'bad');
-    if (!this._spend(ShopMath.weaponPrice(w.config, key, lvl))) return;
+    const price = ShopMath.weaponPrice(w.config, key, lvl);
+    if (!this._spend(price)) return;
     w.upgrades[key] = lvl + 1;
+    ACH.purchase('weapon:' + key, price);
     let extra = '';
     if (key === 'ammo') { const n = ShopMath.ammoPack(w.config); w.reserveAmmo += n; extra = ` (+${n} ROUNDS)`; }
     this._done(`${w.name.toUpperCase()} ${this._statName(w.config, s)} UPGRADED TO LV ${lvl + 1}${extra}`);
@@ -6049,6 +6118,627 @@ class ShopSystem {
     const m = document.getElementById('shopMessage');
     m.textContent = this.message ? this.message.text : 'Spend your cash on upgrades. Weapons you have not found yet are not listed.';
     m.className = 'shopMessage' + (this.message ? ' ' + this.message.kind : '');
+  }
+}
+
+  </script>
+  <script>
+/**
+ * achievements.js — the achievement system for Operation Peanut.
+ *
+ *  - REGISTRY: ACH_DEFS (below) is the one list of achievements. To add one, add a line there (see "Adding an achievement").
+ *  - TRACKING: the game reports real events to the global `ACH` (kills with the weapon that caused them, shots, damage taken,
+ *    healing, purchases, weapon pickups, movement, run start/end). Counters are updated by those events and ONLY the
+ *    achievements that listen to that event are re-checked (no per-frame scanning of the whole list).
+ *  - SAVING: lifetime stats + unlocked ids are saved to localStorage (ACH_SAVE_KEY, versioned); run stats are kept
+ *    separately in `ACH.run` and are reset at the start of every run (and saved inside a saved run so Continue is exact).
+ *  - Nothing counts while Test Mode cheats are on (TEST_MODE.isActive()).
+ *
+ * Adding an achievement: ach(id, category, tier, name, description, icon, target, valueFn, [events], format, secret)
+ *   - id        stable unique id (never rename it once released: it is the save key)
+ *   - valueFn   (S) => current progress number (S.life = lifetime stats, S.run = this run); unlocks when >= target
+ *   - events    which events can change that value: kill fire tick damaged heal purchase shop weapon run dealt unlock
+ *   - format    'int' (default) | 'time' (seconds as m:ss) | 'km' (value in metres) | 'm' | 'bool'
+ * New counters: add them to defaultLife() / newRun() and update them in the matching ACH.<event> method.
+ */
+
+const ACH_SAVE_KEY = 'operationPeanut.achievements';
+const ACH_SAVE_VERSION = 1;
+
+const ACH_TIERS = {
+  bronze:   { label: 'BRONZE',   color: '#c98a4b' },
+  silver:   { label: 'SILVER',   color: '#c4ccd4' },
+  gold:     { label: 'GOLD',     color: '#f5c542' },
+  platinum: { label: 'PLATINUM', color: '#7fe3ff' },
+};
+
+const ACH_CATEGORIES = [
+  { id: 'slayer',    name: 'Zombie Slayer' },
+  { id: 'survival',  name: 'Survival' },
+  { id: 'weapon',    name: 'Weapon Mastery' },
+  { id: 'explore',   name: 'Exploration' },
+  { id: 'progress',  name: 'Progression & Upgrades' },
+  { id: 'challenge', name: 'Challenges' },
+  { id: 'secret',    name: 'Special & Secret' },
+];
+
+// ---- tuning for the "defined" milestones (all in one place) ----
+const ACH_TUNING = {
+  closeCallHp: 0.20,        // Close Call: kill a zombie at <= 20% health, then survive closeCallSurviveS more seconds
+  closeCallSurviveS: 10,
+  closeShaveHp: 10,         // Close Shave: a hit that leaves you with 1-10 health
+  secondWindLowFrac: 0.25,  // Second Wind: heal after dropping to <= 25% health
+  crowdKills: 5, crowdWindS: 3,                    // Crowd Control: 5 kills within 3 s
+  overkillDamage: 800, overkillWindS: 3,           // Overkill: 800 damage to zombies within 3 s
+  quickDrawS: 0.35,         // Quick Draw: kill a zombie within 0.35 s of the first hit on it
+  streetsKills: 8, streetsWindS: 8, streetsRadiusPx: 120, // Crowded Streets
+  lowHpFrac: 0.25,          // Against the Odds: kills while below 25% health
+  cellRoadM: 100, cellHoodM: 250,                  // map grids for Road Trip / Neighborhood Watch (metres per cell)
+};
+
+const ACH_DEFS = [];
+function ach(id, cat, tier, name, desc, icon, target, val, ev, fmt, secret) {
+  ACH_DEFS.push({ id, cat, tier, name, desc, icon, target, val, ev: ev || [], fmt: fmt || 'int', secret: !!secret });
+}
+// Proposed achievements that need a mechanic this game does not have. Shown greyed-out under "Coming soon"; never counted or unlockable.
+const ACH_FUTURE = [
+  { id: 'f_old_school',   cat: 'weapon',   name: 'Old-School Combat',  need: 'Needs a knife weapon (the knife was replaced by the hammer).' },
+  { id: 'f_ammo_conserv', cat: 'weapon',   name: 'Ammo Conservation',  need: 'Needs bullet hit/miss tracking (not tracked yet).' },
+  { id: 'f_speed_demon',  cat: 'progress', name: 'Speed Demon',        need: 'Needs a movement-speed upgrade (the shop has none).' },
+  { id: 'f_iron_peanut',  cat: 'survival', name: 'Iron Peanut',        need: 'Needs a way to finish a run (runs only end by dying).' },
+  { id: 'f_perfect_run',  cat: 'challenge',name: 'Perfect Run',        need: 'Needs a way to complete a run (runs only end by dying).' },
+  { id: 'f_secret_stash', cat: 'secret',   name: 'Secret Stash',       need: 'Needs a real hidden interaction (none exists).' },
+];
+
+const B = (k) => (S) => S.life.best[k] || 0;
+const LIFE = (k) => (S) => S.life[k] || 0;
+const WK = (...ids) => (S) => ids.reduce((n, id) => n + (S.life.weaponKills[id] || 0), 0);
+const FLAG = (k) => (S) => (S.life[k] ? 1 : 0);
+
+// ===== A. Zombie Slayer =====
+ach('first_blood',      'slayer', 'bronze',   'First Blood',        'Kill your first zombie.',                       '1',   1,    LIFE('kills'), ['kill']);
+ach('getting_started',  'slayer', 'bronze',   'Getting Started',    'Kill 10 zombies.',                              '10',  10,   LIFE('kills'), ['kill']);
+ach('zombie_hunter',    'slayer', 'bronze',   'Zombie Hunter',      'Kill 50 zombies.',                              '50',  50,   LIFE('kills'), ['kill']);
+ach('exterminator',     'slayer', 'silver',   'Exterminator',       'Kill 100 zombies.',                             '100', 100,  LIFE('kills'), ['kill']);
+ach('zombie_genocide',  'slayer', 'silver',   'Zombie Genocide',    'Kill 500 zombies.',                             '500', 500,  LIFE('kills'), ['kill']);
+ach('walking_apocalypse','slayer','gold',     'Walking Apocalypse', 'Kill 1,000 zombies.',                           '1K',  1000, LIFE('kills'), ['kill']);
+ach('zombie_legend',    'slayer', 'platinum', 'Zombie Legend',      'Kill 5,000 zombies.',                           '5K',  5000, LIFE('kills'), ['kill']);
+ach('one_man_army',     'slayer', 'silver',   'One-Man Army',       'Kill 100 zombies in a single run.',             '1M',  100,  B('runKills'), ['kill']);
+ach('mass_destruction', 'slayer', 'gold',     'Mass Destruction',   'Kill 250 zombies in a single run.',             'MD',  250,  B('runKills'), ['kill']);
+ach('unstoppable',      'slayer', 'bronze',   'Unstoppable',        'Kill 50 zombies without dying (in one run).',   'U',   50,   B('runKills'), ['kill']);
+ach('quick_draw',       'slayer', 'bronze',   'Quick Draw',         'Kill a zombie within 0.35 seconds of the first hit on it.', 'QD', 1, FLAG('quick'), ['kill'], 'bool');
+ach('close_call',       'slayer', 'silver',   'Close Call',         'Kill a zombie while at 20% health or less, then survive 10 more seconds.', 'CC', 1, FLAG('closeCall'), ['tick'], 'bool');
+ach('crowd_control',    'slayer', 'silver',   'Crowd Control',      'Kill 5 zombies within 3 seconds.',              'CK',  1,    FLAG('crowd'), ['kill'], 'bool');
+ach('overkill',         'slayer', 'silver',   'Overkill',           'Deal 800 damage to zombies within 3 seconds.',  'OK',  ACH_TUNING.overkillDamage, B('burst'), ['dealt']);
+ach('untouchable',      'slayer', 'platinum', 'Untouchable',        'Kill 100 zombies in one run without taking any damage.', 'UT', 100, B('noDmgKills'), ['kill']);
+
+// ===== B. Survival (elapsed gameplay time of one run: pausing / the shop do not count) =====
+ach('still_breathing',  'survival', 'bronze',   'Still Breathing',     'Survive for 1 minute.',   '1m',  60,   B('runTime'), ['tick'], 'time');
+ach('warm_up_complete', 'survival', 'bronze',   'Warm-Up Complete',    'Survive for 5 minutes.',  '5m',  300,  B('runTime'), ['tick'], 'time');
+ach('survivor',         'survival', 'silver',   'Survivor',            'Survive for 10 minutes.', '10m', 600,  B('runTime'), ['tick'], 'time');
+ach('against_all_odds', 'survival', 'gold',     'Against All Odds',    'Survive for 20 minutes.', '20m', 1200, B('runTime'), ['tick'], 'time');
+ach('the_long_haul',    'survival', 'gold',     'The Long Haul',       'Survive for 30 minutes.', '30m', 1800, B('runTime'), ['tick'], 'time');
+ach('endurance_expert', 'survival', 'platinum', 'Endurance Expert',    'Survive for 60 minutes.', '60m', 3600, B('runTime'), ['tick'], 'time');
+ach('close_shave',      'survival', 'silver',   'Close Shave',         'Survive a hit that leaves you with 10 health or less.', 'CS', 1, FLAG('closeShave'), ['damaged'], 'bool');
+ach('second_wind',      'survival', 'silver',   'Second Wind',         'Recover health after dropping to 25% health or less.', 'SW', 1, FLAG('secondWind'), ['heal'], 'bool');
+ach('no_easy_way_out',  'survival', 'gold',     'No Easy Way Out',     'Survive for 10 minutes on the hardest difficulty (Hard).', 'H10', 600,  B('hardTime'), ['tick'], 'time');
+ach('last_peanut',      'survival', 'gold',     'Last Peanut Standing','Survive for 20 minutes on the hardest difficulty (Hard).', 'H20', 1200, B('hardTime'), ['tick'], 'time');
+ach('nightmare_survivor','survival','platinum', 'Nightmare Survivor', 'Survive for 30 minutes on the hardest difficulty (Hard).', 'H30', 1800, B('hardTime'), ['tick'], 'time');
+
+// ===== C. Weapon Mastery (a kill is credited to the weapon whose bullet / blast / swing caused it) =====
+ach('first_shot',       'weapon', 'bronze', 'First Shot',       'Fire your first weapon.',          'FS', 1,    FLAG('fired'), ['fire'], 'bool');
+ach('trigger_happy',    'weapon', 'bronze', 'Trigger Happy',    'Fire 500 shots (guns, rockets and grenades).', '500', 500,  LIFE('shots'), ['fire']);
+ach('lead_storm',       'weapon', 'gold',   'Lead Storm',       'Fire 5,000 shots (guns, rockets and grenades).', '5K', 5000, LIFE('shots'), ['fire']);
+ach('pistol_expert',    'weapon', 'silver', 'Pistol Expert',    'Kill 100 zombies with the pistol.',     'PI', 100, WK('pistol'), ['kill']);
+ach('shotgun_specialist','weapon','silver', 'Shotgun Specialist','Kill 100 zombies with the shotgun.',   'SG', 100, WK('shotgun'), ['kill']);
+ach('marksman',         'weapon', 'silver', 'Marksman',         'Kill 100 zombies with the assault rifle.', 'AR', 100, WK('rifle'), ['kill']);
+ach('spray_and_pray',   'weapon', 'silver', 'Spray and Pray',   'Kill 100 zombies with the SMG or machine gun.', 'SM', 100, WK('smg', 'machinegun'), ['kill']);
+ach('fire_starter',     'weapon', 'silver', 'Fire Starter',     'Kill 100 zombies with the flamethrower.', 'FL', 100, WK('flamethrower'), ['kill']);
+ach('rocket_science',   'weapon', 'silver', 'Rocket Science',   'Kill 50 zombies with the RPG.',         'RP', 50,  WK('rpg'), ['kill']);
+ach('chop_shop',        'weapon', 'silver', 'Chop Shop',        'Kill 100 zombies with the chainsaw.',   'CH', 100, WK('chainsaw'), ['kill']);
+ach('hammer_time',      'weapon', 'bronze', 'Hammer Time',      'Kill 50 zombies with the hammer.',      'HM', 50,  WK('hammer'), ['kill']);
+ach('explosive_personality','weapon','silver','Explosive Personality','Kill 50 zombies with grenades.',  'GR', 50,  WK('grenade'), ['kill']);
+ach('jack_of_all_trades','weapon','silver', 'Jack of All Trades','Get at least one kill with five different weapons.', 'J5', 5, (S) => Object.keys(S.life.weaponKills).filter((k) => S.life.weaponKills[k] > 0).length, ['kill']);
+ach('weapons_expert',   'weapon', 'gold',   'Weapons Expert',   'Get at least one kill with every weapon in the game.', 'ALL',
+    () => Object.keys(CONFIG.WEAPONS).length, (S) => Object.keys(CONFIG.WEAPONS).filter((k) => S.life.weaponKills[k] > 0).length, ['kill']);
+ach('melee_master',     'weapon', 'silver', 'Melee Master',     'Kill 100 zombies with melee weapons (hammer or chainsaw).', 'MM', 100, WK('hammer', 'chainsaw'), ['kill']);
+ach('heavy_artillery',  'weapon', 'gold',   'Heavy Artillery',  'Kill 150 zombies with explosives (RPG or grenades).', 'HA', 150, WK('rpg', 'grenade'), ['kill']);
+
+// ===== D. Exploration (in-game map coordinates and the city you chose; no real-world location is used) =====
+ach('first_steps',      'explore', 'bronze',   'First Steps',       'Travel 100 metres.',  '100', 100,    LIFE('distanceM'), ['tick'], 'm');
+ach('marathon_peanut',  'explore', 'silver',   'Marathon Peanut',   'Travel 1 kilometre in total.',   '1K',  1000,   LIFE('distanceM'), ['tick'], 'km');
+ach('city_explorer',    'explore', 'gold',     'City Explorer',     'Travel 5 kilometres in total.',  '5K',  5000,   LIFE('distanceM'), ['tick'], 'km');
+ach('urban_wanderer',   'explore', 'platinum', 'Urban Wanderer',    'Travel 10 kilometres in total.', '10K', 10000,  LIFE('distanceM'), ['tick'], 'km');
+ach('road_trip',        'explore', 'silver',   'Road Trip',         'Explore 60 different 100 m x 100 m map squares in one run.', 'RT', 60, B('cellsRoad'), ['tick']);
+ach('off_the_beaten_path','explore','silver',  'Off the Beaten Path','Get 500 metres away from where your run started.', 'OB', 500, B('away'), ['tick'], 'm');
+ach('neighborhood_watch','explore','silver',   'Neighborhood Watch','Visit 8 different 250 m x 250 m map areas in one run.', 'NW', 8, B('cellsHood'), ['tick']);
+ach('new_horizons',     'explore', 'bronze',   'New Horizons',      'Start a run in a second, different city.', 'C2', 2, (S) => S.life.cities.length, ['run']);
+ach('world_traveler',   'explore', 'gold',     'World Traveler',    'Play in five different cities.',  'C5', 5,  (S) => S.life.cities.length, ['run']);
+ach('globe_trotter',    'explore', 'platinum', 'Globe Trotter',     'Play in ten different cities.',   'C10', 10, (S) => S.life.cities.length, ['run']);
+ach('urban_survivor',   'explore', 'silver',   'Urban Survivor',    'Kill 100 zombies in a single city.', 'US', 100, (S) => Math.max(0, ...Object.values(S.life.cityKills)), ['kill']);
+ach('local_legend',     'explore', 'silver',   'Local Legend',      'Survive 5 minutes in a run that started in a city you had never played before.', 'LL', 300, B('newCityTime'), ['tick'], 'time');
+
+// ===== E. Progression and Upgrades (shop purchases and weapon pickups) =====
+ach('shopping_spree',   'progress', 'bronze', 'Shopping Spree',     'Purchase your first upgrade.',  '$1', 1,  LIFE('purchases'), ['purchase']);
+ach('regular_customer', 'progress', 'bronze', 'Regular Customer',  'Purchase 10 upgrades.',         '$10', 10, LIFE('purchases'), ['purchase']);
+ach('fully_loaded',     'progress', 'silver', 'Fully Loaded',       'Purchase 25 upgrades.',         '$25', 25, LIFE('purchases'), ['purchase']);
+ach('health_nut',       'progress', 'bronze', 'Health Nut',         'Buy a max-health upgrade.',     'HP',  1,  (S) => S.life.upBought.health || 0, ['purchase']);
+ach('built_to_last',    'progress', 'silver', 'Built to Last',      'Reach max-health upgrade level 5 in a single run.', 'B5', 5, B('healthLvl'), ['purchase']);
+ach('armed_and_dangerous','progress','bronze','Armed and Dangerous','Find your first additional weapon.', 'W1', 1, (S) => S.life.weaponsGot.length, ['weapon']);
+ach('arsenal_builder',  'progress', 'silver', 'Arsenal Builder',    'Find five additional weapons.',     'W5', 5, (S) => S.life.weaponsGot.length, ['weapon']);
+ach('walking_armory',   'progress', 'gold',   'Walking Armory',     'Find every weapon that can be found on the map.', 'WA',
+    () => ACH.findableWeapons().length, (S) => ACH.findableWeapons().filter((k) => S.life.weaponsGot.includes(k)).length, ['weapon']);
+ach('big_spender',      'progress', 'silver', 'Big Spender',        'Spend $5,000 in the shop in total.', '$5K', 5000, LIFE('spent'), ['purchase']);
+ach('smart_investment', 'progress', 'silver', 'Smart Investment',   'Buy upgrades from three different categories (health, stamina, or a weapon stat).', 'SI', 3, (S) => S.life.upCats.length, ['purchase']);
+ach('fully_upgraded',   'progress', 'gold',   'Fully Upgraded',     'Max out both max health and max stamina in a single run.', 'MX', 1, (S) => (S.life.best.maxedBoth ? 1 : 0), ['purchase'], 'bool');
+ach('prepared_for_anything','progress','bronze','Prepared for Anything','Buy both a health upgrade and a weapon upgrade.', 'PA', 2, (S) => ((S.life.upBought.health || 0) > 0 ? 1 : 0) + ((S.life.upBought.weapon || 0) > 0 ? 1 : 0), ['purchase']);
+ach('shop_regular',     'progress', 'bronze', 'Shop Regular',       'Visit the shop five times.',     'SH', 5, LIFE('shopVisits'), ['shop']);
+
+// ===== F. Challenges (evaluated over the whole run) =====
+ach('hard_mode_hero',   'challenge', 'silver',   'Hard Mode Hero',   'Survive 5 minutes on Hard difficulty.', 'HH', 300, B('hardTime'), ['tick'], 'time');
+ach('nightmare_fuel',   'challenge', 'gold',     'Nightmare Fuel',   'Kill 100 zombies in one run on the hardest difficulty (Hard).', 'NF', 100, B('hardKills'), ['kill']);
+ach('pacifist_peanut',  'challenge', 'silver',   'Pacifist Peanut',  'Survive for 2 minutes without killing a zombie.', 'PP', 120, B('pacifistTime'), ['tick'], 'time');
+ach('melee_only',       'challenge', 'silver',   'Melee Only',       'Kill 25 zombies in one run using only melee weapons (no guns, rockets, grenades or flames).', 'MO', 25, B('meleeOnlyKills'), ['kill']);
+ach('pistol_only',      'challenge', 'gold',     'Pistol Only',      'Kill 50 zombies in one run using only the pistol (no other weapon used at all).', 'PO', 50, B('pistolOnlyKills'), ['kill']);
+ach('speedrunner',      'challenge', 'silver',   'Speedrunner',      'Kill 150 zombies within the first 5 minutes of a run.', 'SR', 150, B('kills5'), ['kill']);
+ach('resourceful',      'challenge', 'silver',   'Resourceful',      'Kill 100 zombies in one run without buying any upgrades.', 'RS', 100, B('killsNoBuy'), ['kill']);
+ach('minimalist',       'challenge', 'gold',     'Minimalist',       'Survive 10 minutes without picking up any additional weapon.', 'MN', 600, B('noWeaponTime'), ['tick'], 'time');
+ach('against_the_odds_c','challenge','gold',     'Against the Odds', 'Kill 30 zombies in one run while below 25% health.', 'AO', 30, B('lowHpKills'), ['kill']);
+ach('no_shopping_needed','challenge','silver',   'No Shopping Needed','Survive 8 minutes without buying any upgrades.', 'NS', 480, B('noBuyTime'), ['tick'], 'time');
+ach('crowded_streets',  'challenge', 'silver',   'Crowded Streets',  'Kill 8 zombies within 8 seconds inside a small area (about 120 px).', 'CR', 1, FLAG('streets'), ['kill'], 'bool');
+
+// ===== G. Special and Secret (hidden until unlocked) =====
+ach('peanut_power',     'secret', 'bronze',   'Peanut Power',       'Kill 100 zombies.',               'PW', 100,  LIFE('kills'), ['kill'], 'int', true);
+ach('shell_shocked',    'secret', 'silver',   'Shell Shocked',      'Take 500 total damage in one run and survive.', 'SS', 500, B('damageTaken'), ['tick'], 'int', true);
+ach('nuts_about_survival','secret','silver',  'Nuts About Survival','Survive for 15 minutes.',         'NU', 900,  B('runTime'), ['tick'], 'time', true);
+ach('thats_just_nuts',  'secret', 'gold',     "That's Just Nuts",   'Kill 1,000 zombies.',             'JN', 1000, LIFE('kills'), ['kill'], 'int', true);
+ach('going_nuts',       'secret', 'silver',   'Going Nuts',         'Kill 100 zombies in a single run.', 'GN', 100, B('runKills'), ['kill'], 'int', true);
+ach('overachiever',     'secret', 'gold',     'Overachiever',       'Unlock 25 achievements.',         'OA', 25,   () => ACH.unlockedCount(), ['unlock'], 'int', true);
+ach('completionist',    'secret', 'platinum', 'Completionist',      'Unlock every standard (non-secret) achievement.', 'CO', () => ACH.standardIds().length, () => ACH.standardUnlockedCount(), ['unlock'], 'int', true);
+ach('dedicated_survivor','secret','silver',   'Dedicated Survivor', 'Play on five different days.',     'DS', 5,   (S) => S.life.days.length, ['run'], 'int', true);
+ach('welcome_back',     'secret', 'bronze',   'Welcome Back',       'Come back to the game at least an hour after your last visit.', 'WB', 1, FLAG('welcomeBack'), ['run'], 'bool', true);
+ach('against_the_clock','secret', 'gold',     'Against the Clock',  'Kill 300 zombies within the first 6 minutes of a run.', 'AC', 300, B('kills6'), ['kill'], 'int', true);
+ach('peanut_perfection','secret', 'platinum', 'Peanut Perfection',  'Survive 15 minutes on the hardest difficulty without your health ever dropping below 50%.', 'PF', 900, B('perfectTime'), ['tick'], 'time', true);
+
+// ---- state ----
+function achDefaultLife() {
+  return {
+    kills: 0, shots: 0, fired: 0, distanceM: 0, timeS: 0, runs: 0,
+    weaponKills: {}, cityKills: {}, cities: [], days: [], weaponsGot: [], upCats: [], upBought: {},
+    purchases: 0, spent: 0, shopVisits: 0, damageTaken: 0,
+    quick: 0, closeCall: 0, closeShave: 0, secondWind: 0, crowd: 0, streets: 0, welcomeBack: 0,
+    sessions: 0, lastSessionAt: 0, firstSeenAt: 0,
+    best: {},
+  };
+}
+function achNewRun() {
+  return {
+    diff: null, hardest: false, city: null, cityNew: false, time: 0,
+    kills: 0, meleeKills: 0, pistolKills: 0, noDmgKills: 0, lowHpKills: 0, hardKills: 0,
+    usedNonMelee: false, usedNonPistol: false,
+    damageTaken: 0, minHpFrac: 1, wasLow: false, closeCallAt: -1,
+    purchases: 0, weaponsGot: 0, healthLvl: 0, staminaLvl: 0,
+    lastX: null, lastY: null, startX: null, startY: null, away: 0,
+    cellsRoad: [], cellsHood: [], recent: [], burst: [],
+  };
+}
+
+class AchievementSystem {
+  constructor() {
+    this.defs = ACH_DEFS;
+    this.byId = new Map();
+    this.byEv = {};
+    for (const d of this.defs) {
+      if (this.byId.has(d.id)) { console.warn('Duplicate achievement id', d.id); continue; }
+      this.byId.set(d.id, d);
+      for (const e of d.ev) (this.byEv[e] = this.byEv[e] || []).push(d);
+    }
+    this.unlocked = {};          // id -> unlock timestamp (ms)
+    this.life = achDefaultLife();
+    this.run = achNewRun();
+    this.sessionUnlocked = new Set();
+    this._roadSet = new Set(); this._hoodSet = new Set();
+    this._queue = []; this._toastActive = false;
+    this._dirty = false; this._lastSave = 0; this._tickAcc = 0; this._resuming = false;
+    this._load();
+    this._beginSession();
+    window.addEventListener('pagehide', () => this.save(true));
+    document.addEventListener('visibilitychange', () => { if (document.hidden) this.save(true); });
+  }
+
+  // ---- queries ----
+  get active() { return !TEST_MODE.isActive(); }   // Test Mode cheats: nothing counts
+  targetOf(d) { return typeof d.target === 'function' ? d.target() : d.target; }
+  valueOf(d) { try { const v = d.val(this); return Number.isFinite(v) ? v : 0; } catch (e) { return 0; } }
+  isUnlocked(id) { return !!this.unlocked[id]; }
+  status(d) {
+    const target = this.targetOf(d), done = this.isUnlocked(d.id);
+    const val = done ? target : Math.min(this.valueOf(d), target);
+    return { done, val, target, frac: target > 0 ? Math.min(1, val / target) : 0, at: this.unlocked[d.id] || 0, session: this.sessionUnlocked.has(d.id) };
+  }
+  unlockedCount() { let n = 0; for (const d of this.defs) if (this.unlocked[d.id]) n++; return n; }
+  standardIds() { return this.defs.filter((d) => !d.secret).map((d) => d.id); }
+  standardUnlockedCount() { return this.defs.filter((d) => !d.secret && this.unlocked[d.id]).length; }
+  counts() {
+    const total = this.defs.length, unlocked = this.unlockedCount();
+    const byCat = {};
+    for (const c of ACH_CATEGORIES) byCat[c.id] = { total: 0, unlocked: 0 };
+    for (const d of this.defs) { byCat[d.cat].total++; if (this.unlocked[d.id]) byCat[d.cat].unlocked++; }
+    return { total, unlocked, pct: total ? Math.round((unlocked / total) * 100) : 0, byCat };
+  }
+  // Weapons that appear as map pickups (everything except the ones you start with).
+  findableWeapons() { return Object.keys(CONFIG.WEAPONS).filter((k) => !CONFIG.PLAYER.startingWeaponIds.includes(k)); }
+  hardestDifficulty() {
+    const L = CONFIG.DIFFICULTY_LEVELS; let best = null, score = -1;
+    for (const k of Object.keys(L)) { const s = L[k].zombieHealthMult * L[k].zombieDamageMult; if (s >= score) { score = s; best = k; } }
+    return best;
+  }
+
+  // ---- unlocking ----
+  _eval(ev) {
+    const list = this.byEv[ev];
+    if (!list) return;
+    for (const d of list) {
+      if (this.unlocked[d.id]) continue;
+      if (this.valueOf(d) >= this.targetOf(d)) this._unlock(d);
+    }
+  }
+  _unlock(d) {
+    if (this.unlocked[d.id]) return; // never twice
+    this.unlocked[d.id] = Date.now();
+    this.sessionUnlocked.add(d.id);
+    this._dirty = true;
+    this._enqueue(d);
+    this.save(true);
+    this._eval('unlock'); // Overachiever / Completionist (re-entrancy is safe: each id can only unlock once)
+  }
+  _best(key, v) { if (v > (this.life.best[key] || 0)) { this.life.best[key] = v; this._dirty = true; } }
+
+  // ---- run lifecycle ----
+  startRun(info) {
+    const wasResuming = this._resuming;
+    this.run = achNewRun();
+    this._roadSet = new Set(); this._hoodSet = new Set();
+    const run = this.run;
+    run.diff = (info && info.difficulty) || null;
+    run.hardest = run.diff === this.hardestDifficulty();
+    run.city = (info && info.city) || null;
+    if (!this.active) return;
+    if (!wasResuming) {
+      this.life.runs++;
+      if (run.city) {
+        run.cityNew = !this.life.cities.includes(run.city);
+        if (run.cityNew) this.life.cities.push(run.city);
+      }
+      const day = this._today();
+      if (!this.life.days.includes(day)) this.life.days.push(day);
+    }
+    this._dirty = true;
+    this._eval('run');
+    this.save(true);
+  }
+  runEnded() {
+    if (!this.active) return;
+    this._best('runTime', this.run.time);
+    this.save(true);
+    this._eval('run');
+  }
+  _today() { const d = new Date(); return d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate(); }
+  _beginSession() {
+    const now = Date.now(), L = this.life;
+    if (!L.firstSeenAt) L.firstSeenAt = now;
+    if (!L.lastSessionAt || now - L.lastSessionAt > 30 * 60 * 1000) {
+      if (L.lastSessionAt && now - L.lastSessionAt >= 60 * 60 * 1000) L.welcomeBack = 1; // came back an hour or more later
+      L.sessions++; L.lastSessionAt = now; this._dirty = true;
+    }
+    this.save(true);
+  }
+
+  // ---- per-frame update: cheap counters every frame, achievement checks once a second ----
+  tick(dt, game) {
+    if (!this.active) return;
+    const p = game.player, run = this.run, L = this.life;
+    run.time = game.survivalTime;
+    L.timeS += dt;
+    const ppm = game._pxPerMeter();
+    if (run.lastX !== null) {
+      const d = Math.hypot(p.x - run.lastX, p.y - run.lastY);
+      if (d < 120) { L.distanceM += d / ppm; } // a jump (respawn / restore) is not walking
+    } else { run.startX = p.x; run.startY = p.y; }
+    run.lastX = p.x; run.lastY = p.y;
+    const away = Math.hypot(p.x - run.startX, p.y - run.startY) / ppm;
+    if (away > run.away) run.away = away;
+    this._cell(this._roadSet, run.cellsRoad, p.x, p.y, ppm * ACH_TUNING.cellRoadM);
+    this._cell(this._hoodSet, run.cellsHood, p.x, p.y, ppm * ACH_TUNING.cellHoodM);
+
+    this._tickAcc += dt;
+    if (this._tickAcc < 1) return;
+    this._tickAcc = 0;
+    this._secondly(game);
+  }
+  _cell(set, arr, x, y, size) {
+    const key = Math.floor(x / size) * 4096 + Math.floor(y / size);
+    if (!set.has(key)) { set.add(key); arr.push(key); }
+  }
+  _secondly(game) {
+    const run = this.run, L = this.life, t = run.time;
+    this._best('runTime', t);
+    if (run.hardest) this._best('hardTime', t);
+    if (run.kills === 0) this._best('pacifistTime', t);
+    if (run.purchases === 0) this._best('noBuyTime', t);
+    if (run.weaponsGot === 0) this._best('noWeaponTime', t);
+    if (run.cityNew) this._best('newCityTime', t);
+    if (run.hardest && run.minHpFrac >= 0.5) this._best('perfectTime', t);
+    this._best('cellsRoad', run.cellsRoad.length);
+    this._best('cellsHood', run.cellsHood.length);
+    this._best('away', Math.floor(run.away));
+    this._best('damageTaken', Math.floor(run.damageTaken));
+    if (run.closeCallAt >= 0 && game.player.alive && t >= run.closeCallAt) { L.closeCall = 1; run.closeCallAt = -1; this._dirty = true; }
+    this._eval('tick');
+    if (this._dirty) this.save(false);
+  }
+
+  // ---- gameplay events ----
+  killed(zombie, srcId, game) {
+    if (!this.active) return;
+    const L = this.life, run = this.run, p = game.player, t = run.time;
+    L.kills++; run.kills++; run.noDmgKills++;
+    const id = srcId || 'unknown';
+    L.weaponKills[id] = (L.weaponKills[id] || 0) + 1;
+    const cfg = CONFIG.WEAPONS[id];
+    const melee = !!(cfg && cfg.melee);
+    if (melee) run.meleeKills++;
+    if (id === 'pistol') run.pistolKills++;
+    if (run.city) L.cityKills[run.city] = (L.cityKills[run.city] || 0) + 1;
+    if (run.hardest) run.hardKills++;
+    const frac = p.maxHealth > 0 ? p.health / p.maxHealth : 1;
+    if (frac < ACH_TUNING.lowHpFrac) run.lowHpKills++;
+    if (frac <= ACH_TUNING.closeCallHp && run.closeCallAt < 0 && !L.closeCall) run.closeCallAt = t + ACH_TUNING.closeCallSurviveS;
+    // quick draw: died within 0.35 s of the first hit it took
+    if (zombie._achT0 !== undefined && t - zombie._achT0 <= ACH_TUNING.quickDrawS && !L.quick) L.quick = 1;
+    // recent kills (time, x, y) for Crowd Control / Crowded Streets
+    const rc = run.recent; rc.push([t, zombie.x, zombie.y]); if (rc.length > 16) rc.shift();
+    if (!L.crowd) { let n = 0; for (const r of rc) if (t - r[0] <= ACH_TUNING.crowdWindS) n++; if (n >= ACH_TUNING.crowdKills) L.crowd = 1; }
+    if (!L.streets) {
+      let n = 0, R2 = ACH_TUNING.streetsRadiusPx * ACH_TUNING.streetsRadiusPx;
+      for (const r of rc) if (t - r[0] <= ACH_TUNING.streetsWindS && (r[1] - zombie.x) ** 2 + (r[2] - zombie.y) ** 2 <= R2) n++;
+      if (n >= ACH_TUNING.streetsKills) L.streets = 1;
+    }
+    // "best in a run" trackers (persisted, so the menu shows real progress)
+    this._best('runKills', run.kills);
+    this._best('noDmgKills', run.noDmgKills);
+    this._best('lowHpKills', run.lowHpKills);
+    if (run.hardest) this._best('hardKills', run.hardKills);
+    if (!run.usedNonMelee) this._best('meleeOnlyKills', run.meleeKills);
+    if (!run.usedNonPistol) this._best('pistolOnlyKills', run.pistolKills);
+    if (t <= 300) this._best('kills5', run.kills);
+    if (t <= 360) this._best('kills6', run.kills);
+    if (run.purchases === 0) this._best('killsNoBuy', run.kills);
+    this._dirty = true;
+    this._eval('kill');
+  }
+  zombieDamaged(z, amount) {
+    if (!this.active) return;
+    const t = this.run.time;
+    if (z._achT0 === undefined) z._achT0 = t;
+    // rolling damage dealt over the last few seconds (4 one-second slots)
+    const sec = Math.floor(t), slots = this.run.burst, i = sec & 3;
+    if (!slots[i] || slots[i][0] !== sec) slots[i] = [sec, 0];
+    slots[i][1] += amount;
+    let sum = 0;
+    for (const s of slots) if (s && sec - s[0] < ACH_TUNING.overkillWindS) sum += s[1];
+    if (sum > (this.life.best.burst || 0)) { this.life.best.burst = Math.round(sum); this._dirty = true; this._eval('dealt'); }
+  }
+  fired(cfg) {
+    if (!this.active) return;
+    const L = this.life, run = this.run;
+    const first = !L.fired;
+    L.fired = 1;
+    if (!cfg.melee) run.usedNonMelee = true;
+    if (cfg.id !== 'pistol') run.usedNonPistol = true;
+    if (cfg.melee || cfg.fuelTank || cfg.flame) { if (first) { this._dirty = true; this._eval('fire'); } return; } // swings and flame ticks are not "shots"
+    L.shots++; this._dirty = true;
+    this._eval('fire');
+  }
+  playerDamaged(amount, hp, maxHp) {
+    if (!this.active) return;
+    const run = this.run;
+    this.life.damageTaken += amount; run.damageTaken += amount; run.noDmgKills = 0;
+    const frac = maxHp > 0 ? hp / maxHp : 1;
+    if (frac < run.minHpFrac) run.minHpFrac = frac;
+    if (frac <= ACH_TUNING.secondWindLowFrac) run.wasLow = true;
+    if (hp > 0 && hp <= ACH_TUNING.closeShaveHp) this.life.closeShave = 1;
+    this._dirty = true;
+    this._eval('damaged');
+  }
+  playerHealed(amount) {
+    if (!this.active || !(amount > 0)) return;
+    if (this.run.wasLow && !this.life.secondWind) { this.life.secondWind = 1; this._dirty = true; this._eval('heal'); }
+  }
+  purchase(kind, price, info) {
+    if (!this.active) return;
+    const L = this.life, run = this.run;
+    const group = kind.startsWith('weapon') ? 'weapon' : kind;
+    L.purchases++; L.spent += price; run.purchases++;
+    L.upBought[group] = (L.upBought[group] || 0) + 1;
+    if (!L.upCats.includes(kind)) L.upCats.push(kind);
+    if (info) {
+      run.healthLvl = info.healthLvl || 0; run.staminaLvl = info.staminaLvl || 0;
+      this._best('healthLvl', run.healthLvl);
+      if (info.healthMax && run.healthLvl >= info.healthMax && run.staminaLvl >= info.staminaMax) { L.best.maxedBoth = 1; }
+    }
+    this._dirty = true;
+    this._eval('purchase');
+  }
+  shopOpened() { if (!this.active) return; this.life.shopVisits++; this._dirty = true; this._eval('shop'); }
+  weaponAcquired(id) {
+    if (!this.active || CONFIG.PLAYER.startingWeaponIds.includes(id)) return;
+    this.run.weaponsGot++;
+    if (!this.life.weaponsGot.includes(id)) this.life.weaponsGot.push(id);
+    this._dirty = true;
+    this._eval('weapon');
+  }
+
+  // ---- saved runs: the run stats travel inside a saved run so Continue picks up exactly where it stopped ----
+  serializeRun() { return JSON.parse(JSON.stringify(this.run)); }
+  restoreRun(data) {
+    if (!data || typeof data !== 'object') return;
+    const fresh = achNewRun();
+    for (const k of Object.keys(fresh)) if (k in data && typeof data[k] === typeof fresh[k]) fresh[k] = data[k];
+    for (const k of ['cellsRoad', 'cellsHood', 'recent', 'burst']) if (!Array.isArray(fresh[k])) fresh[k] = [];
+    fresh.lastX = null; fresh.lastY = null; // the next frame re-bases the movement tracking
+    this.run = fresh;
+    this._roadSet = new Set(fresh.cellsRoad); this._hoodSet = new Set(fresh.cellsHood);
+  }
+
+  // ---- persistence ----
+  save(force) {
+    const now = Date.now();
+    if (!force && (!this._dirty || now - this._lastSave < 5000)) return;
+    this._lastSave = now; this._dirty = false;
+    try {
+      localStorage.setItem(ACH_SAVE_KEY, JSON.stringify({ v: ACH_SAVE_VERSION, savedAt: now, unlocked: this.unlocked, life: this.life }));
+    } catch (e) { /* storage full / blocked: the game keeps working, progress just isn't kept */ }
+  }
+  _load() {
+    let raw = null;
+    try { raw = localStorage.getItem(ACH_SAVE_KEY); } catch (e) { return; }
+    if (!raw) return;
+    let data = null;
+    try { data = JSON.parse(raw); } catch (e) { data = null; }
+    if (!data || typeof data !== 'object' || !data.life || typeof data.life !== 'object') {
+      try { localStorage.setItem(ACH_SAVE_KEY + '.corrupt', raw); } catch (e) { /* ignore */ }
+      return;
+    }
+    data = this._migrate(data);
+    const L = achDefaultLife(), src = data.life;
+    for (const k of Object.keys(L)) {
+      const def = L[k], v = src[k];
+      if (typeof def === 'number') { if (Number.isFinite(v)) L[k] = v; }
+      else if (Array.isArray(def)) { if (Array.isArray(v)) L[k] = v.filter((x) => typeof x === 'string' || Number.isFinite(x)); }
+      else if (def && typeof def === 'object') {
+        if (v && typeof v === 'object' && !Array.isArray(v)) for (const kk of Object.keys(v)) if (Number.isFinite(v[kk])) def[kk] = v[kk];
+      }
+    }
+    this.life = L;
+    if (data.unlocked && typeof data.unlocked === 'object') {
+      for (const id of Object.keys(data.unlocked)) if (Number.isFinite(data.unlocked[id]) && data.unlocked[id] > 0) this.unlocked[id] = data.unlocked[id];
+    }
+  }
+  _migrate(data) { // older save versions are upgraded here (only v1 exists so far)
+    return data;
+  }
+
+  // ---- notifications (queued: one at a time, never blocking input) ----
+  _enqueue(d) { this._queue.push(d); this._pump(); }
+  _pump() {
+    if (this._toastActive || !this._queue.length) return;
+    const host = document.getElementById('achToasts');
+    if (!host) { this._queue.length = 0; return; }
+    const d = this._queue.shift(), tier = ACH_TIERS[d.tier];
+    const major = d.tier === 'gold' || d.tier === 'platinum';
+    const el = document.createElement('div');
+    el.className = 'achToast tier-' + d.tier + (major ? ' major' : '');
+    el.innerHTML = `<div class="achIcon" style="--tier:${tier.color}">${d.icon}</div>` +
+      `<div class="achToastText"><div class="achToastHead">${major ? 'MAJOR ' : ''}ACHIEVEMENT UNLOCKED</div>` +
+      `<div class="achToastName">${d.name}</div><div class="achToastDesc">${d.secret ? 'Secret achievement' : d.desc}</div></div>`;
+    host.appendChild(el);
+    this._toastActive = true; this._current = el;
+    try { if (major) Sound.weaponUnlock(); else Sound.pickup('weapon'); } catch (e) { /* audio not ready */ }
+    const showMs = major ? 5200 : 3600;
+    setTimeout(() => el.classList.add('out'), showMs);
+    setTimeout(() => { el.remove(); if (this._current === el) { this._current = null; this._toastActive = false; this._pump(); } }, showMs + 500);
+  }
+}
+
+const ACH = new AchievementSystem();
+
+// ===== The Achievements menu =====
+class AchievementMenu {
+  constructor(sys) {
+    this.sys = sys; this.isOpen = false; this.cat = 'all'; this.filter = 'all'; this.q = '';
+    this.el = document.getElementById('achievementsScreen');
+    this._bind();
+  }
+  open() { if (this.isOpen) return; this.isOpen = true; this.render(); this.el.classList.remove('hidden'); const l = document.getElementById('achList'); if (l) l.scrollTop = 0; }
+  close() { if (!this.isOpen) return; this.isOpen = false; this.el.classList.add('hidden'); }
+  _bind() {
+    this.el.addEventListener('click', (e) => {
+      const t = e.target.closest('[data-act]'); if (!t || !this.isOpen) return;
+      const a = t.dataset.act;
+      if (a === 'close') { Sound.uiClick(); this.close(); }
+      else if (a === 'cat') { Sound.uiClick(); this.cat = t.dataset.cat; this.render(); }
+      else if (a === 'filter') { Sound.uiClick(); this.filter = t.dataset.filter; this.render(); }
+    });
+    const input = document.getElementById('achSearch');
+    input.addEventListener('input', () => { this.q = input.value.trim().toLowerCase(); this._renderList(); });
+    input.addEventListener('keydown', (e) => { e.stopPropagation(); if (e.code === 'Escape') this.close(); }); // typing must never reach the game's key handler (e.g. P = pause)
+    // While open, keys never reach the game underneath (movement / pause / weapon keys).
+    window.addEventListener('keydown', (e) => {
+      if (!this.isOpen || e.target === input) return;
+      if (e.ctrlKey || e.metaKey || e.altKey || /^F\d+$/.test(e.code)) return;
+      e.stopImmediatePropagation();
+      if (e.code === 'Escape') { e.preventDefault(); if (!e.repeat) this.close(); }
+      else if (e.code !== 'Tab' && e.code !== 'Enter' && e.code !== 'Space') e.preventDefault();
+    }, true);
+  }
+  _fmt(d, v) {
+    switch (d.fmt) {
+      case 'time': return Utils.formatTime(Math.floor(v));
+      case 'km': return (v / 1000).toFixed(v >= 10000 ? 0 : 1) + ' km';
+      case 'm': return Math.floor(v) + ' m';
+      case 'bool': return v >= 1 ? 'Done' : 'Not yet';
+      default: return String(Math.floor(v)).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+    }
+  }
+  render() {
+    const c = this.sys.counts();
+    document.getElementById('achSummary').innerHTML =
+      `<b>${c.unlocked}</b> / ${c.total} UNLOCKED <span class="achPct">${c.pct}%</span>` +
+      `<div class="achBar"><i style="width:${c.pct}%"></i></div>`;
+    const cats = [{ id: 'all', name: 'All' }, ...ACH_CATEGORIES];
+    document.getElementById('achTabs').innerHTML = cats.map((k) => {
+      const n = k.id === 'all' ? `${c.unlocked}/${c.total}` : `${c.byCat[k.id].unlocked}/${c.byCat[k.id].total}`;
+      return `<button class="shopTab achTab${this.cat === k.id ? ' active' : ''}" data-act="cat" data-cat="${k.id}">${k.name.toUpperCase()} <em>${n}</em></button>`;
+    }).join('');
+    document.getElementById('achFilters').innerHTML = [['all', 'ALL'], ['unlocked', 'UNLOCKED'], ['locked', 'LOCKED']].map(([id, label]) =>
+      `<button class="shopWpn${this.filter === id ? ' active' : ''}" data-act="filter" data-filter="${id}">${label}</button>`).join('');
+    this._renderList();
+  }
+  _renderList() {
+    const sys = this.sys, q = this.q;
+    let html = '', shown = 0;
+    for (const d of sys.defs) {
+      if (this.cat !== 'all' && d.cat !== this.cat) continue;
+      const s = sys.status(d), hidden = d.secret && !s.done;
+      if (this.filter === 'unlocked' && !s.done) continue;
+      if (this.filter === 'locked' && s.done) continue;
+      if (q && (hidden || !(d.name.toLowerCase().includes(q) || d.desc.toLowerCase().includes(q)))) continue; // secrets are never searchable
+      shown++;
+      const tier = ACH_TIERS[d.tier];
+      const desc = hidden ? 'A secret achievement. Can you discover it?' : d.desc;
+      const name = hidden ? '???' : d.name;
+      const icon = hidden ? '?' : d.icon;
+      let prog = '';
+      if (!hidden) {
+        const text = s.done ? 'COMPLETE' : (d.fmt === 'bool' ? 'Not yet' : `${this._fmt(d, s.val)} / ${this._fmt(d, s.target)}`);
+        prog = `<div class="achProg"><div class="achBar${s.done ? ' done' : ''}"><i style="width:${Math.round(s.frac * 100)}%"></i></div><span>${text}</span></div>`;
+      }
+      const when = s.done ? `<div class="achWhen">Unlocked ${new Date(s.at).toLocaleDateString()}${s.session ? ' - this session' : ''}</div>` : '';
+      html += `<div class="achRow${s.done ? ' done' : ' locked'}${hidden ? ' secret' : ''}">` +
+        `<div class="achIcon" style="--tier:${hidden ? '#555b63' : tier.color}">${icon}</div>` +
+        `<div class="achBody"><div class="achName">${name}<span class="achTier" style="color:${hidden ? '#8a9099' : tier.color}">${hidden ? 'SECRET' : tier.label}</span></div>` +
+        `<div class="achDesc">${desc}</div>${prog}${when}</div></div>`;
+    }
+    // Proposed achievements whose mechanic does not exist yet (not counted, cannot unlock)
+    for (const f of ACH_FUTURE) {
+      if (this.cat !== 'all' && f.cat !== this.cat) continue;
+      if (this.filter === 'unlocked') continue;
+      if (q && !f.name.toLowerCase().includes(q)) continue;
+      shown++;
+      html += `<div class="achRow future"><div class="achIcon" style="--tier:#3a3f47">-</div><div class="achBody"><div class="achName">${f.name}<span class="achTier" style="color:#8a9099">COMING SOON</span></div><div class="achDesc">${f.need}</div></div></div>`;
+    }
+    document.getElementById('achList').innerHTML = shown ? html : '<div class="achEmpty">No achievements match.</div>';
   }
 }
 
@@ -6252,6 +6942,7 @@ class Game {
     this.spawner = new SpawnSystem();
     this.weaponUnlocks = new WeaponUnlockSystem();
     this.shop = new ShopSystem(this); // upgrade shop every 2 minutes (see shop.js)
+    this.achMenu = new AchievementMenu(ACH); // achievements menu (see achievements.js)
 
     this.state = 'menu'; // 'menu' | 'playing' | 'paused' | 'shop' | 'gameover'
     this._lastTimestamp = null;
@@ -6361,6 +7052,8 @@ class Game {
     });
     document.getElementById('muteBtn').textContent = Sound.muted ? '🔇' : '🔊'; // reflect a persisted mute preference immediately
 
+    document.getElementById('achievementsBtn').addEventListener('click', () => { Sound.uiClick(); this.achMenu.open(); });
+    document.getElementById('pauseAchievementsBtn').addEventListener('click', () => { Sound.uiClick(); this.achMenu.open(); });
     document.getElementById('howToPlayBtn').addEventListener('click', () => {
       Sound.uiClick();
       document.getElementById('startScreen').classList.add('hidden');
@@ -6484,9 +7177,23 @@ class Game {
     }
     this._attachWorld3d();
 
+    ACH.startRun({ difficulty: CONFIG.activeDifficulty, city: this._achCityKey() }); // fresh run stats (lifetime stats / unlocks are kept)
+
     this.state = 'playing';
     this._lastTimestamp = null;
     requestAnimationFrame((t) => this._loop(t));
+  }
+
+  // The "city" of a 3D run (its geographic origin rounded to ~11 km), or null on the 2D fallback map.
+  _achCityKey() {
+    const b = this.world3d && this.world3d.bridge;
+    return b && Number.isFinite(b.originLat) ? b.originLat.toFixed(1) + ',' + b.originLng.toFixed(1) : null;
+  }
+  // World pixels per metre (3D bridge, or the 2D map's scale), used for distance tracking.
+  _pxPerMeter() {
+    const b = this.world3d && this.world3d.bridge;
+    if (b && b.pxPerMeterX > 0) return b.pxPerMeterX;
+    return CONFIG.WORLD.width / MAP_CONFIG.PLAYABLE_MAP_SIZE.widthMeters || 1;
   }
 
   // ---- 3D MapTiler world (stage 2: player, movement, camera, collision only) ----
@@ -6677,6 +7384,7 @@ class Game {
         weapons: pl.weapons.map((w) => ({ id: w.config.id, ammo: w.currentAmmo, reserve: w.reserveAmmo, up: { ...w.upgrades } })),
       },
       shop: this.shop.serialize(),
+      ach: ACH.serializeRun(), // this run's achievement stats, so Continue picks up exactly where it stopped
       zombies: this.zombies.filter((z) => z.alive !== false).map((z) => ({ type: z.type.id, x: r1(z.x), y: r1(z.y), health: z.health })),
       pickups: this.pickups.map((p) => ({ kind: p.kind, x: r1(p.x), y: r1(p.y), v: p.kind === 'weapon' ? p.weaponId : p.amount })),
       spawner: { elapsed: this.spawner.elapsed, timer: this.spawner.timer, nextBossAt: this.spawner.nextBossAt },
@@ -6811,7 +7519,9 @@ class Game {
     this.currentCityName = save.cityName || '';
     this._pendingWorld = world; // the freshly entered 3D world, or null = the 2D map
     if (world && !generated) generated = { obstacles: [], roads: [] }; // 3D: collision comes from the MapTiler buildings
+    ACH._resuming = true;   // a resumed run is not a new run for the lifetime run / city / day counters
     this.start(save.spawn, generated);
+    ACH._resuming = false;
 
     // --- saved state on top of the fresh run ---
     const pl = this.player;
@@ -6843,6 +7553,7 @@ class Game {
     this.spawner.nextBossAt = save.spawner.nextBossAt;
     this.weaponUnlocks.spawned = new Set(save.unlocked);
     this.shop.restore(save.shop, this.survivalTime);
+    ACH.restoreRun(save.ach);
 
     const diff = CONFIG.DIFFICULTY_LEVELS[CONFIG.activeDifficulty];
     this.zombies = [];
@@ -6922,6 +7633,7 @@ class Game {
 
     // --- Shop: opens once per scheduled interval; _update (and so every gameplay timer) stops while it is open ---
     if (this.shop.due(this.survivalTime)) { this.shop.open(); return; }
+    ACH.tick(dt, this); // achievements: movement / survival counters (checks run once a second)
 
     // --- Player ---
     this.player.handleMovement(this.input, dt, world.width, world.height, this.obstacles);
@@ -6974,6 +7686,7 @@ class Game {
       if (weapon.config.melee) {
         if (this.player.tryMelee()) {
           this._meleeAttack(weapon);
+          ACH.fired(weapon.config);
           Sound.shoot(weapon.config.id);
         } else if (firePressed && weapon.config.fuelTank && weapon.currentAmmo === 0) {
           Sound.emptyClick(); // chainsaw out of gas
@@ -6998,6 +7711,7 @@ class Game {
         const specs = this.player.tryShoot(); // array of bullet specs (1 per pellet) or null
         if (specs) {
           for (const spec of specs) this.bullets.push(new Bullet(spec));
+          ACH.fired(weapon.config);
           this.fx.muzzle(weapon.config, this.player, specs[0]);
           Sound.shoot(weapon.config.id);
         }
@@ -7043,7 +7757,7 @@ class Game {
             const died = zombie.takeDamage(bullet.damage);
             this.fx.hit(bullet, zombie); zombie.flinch(bullet.vx, bullet.vy);
             bullet.alive = false;
-            if (died) this._onZombieKilled(zombie);
+            if (died) this._onZombieKilled(zombie, bullet.weaponId);
             else Sound.zombieHit();
           }
           break;
@@ -7153,6 +7867,7 @@ class Game {
           const added = this.player.addWeapon(weaponConfig);
           if (added) {
             pickup.alive = false;
+            ACH.weaponAcquired(weaponConfig.id); // achievements
             this._addFloatingText(pickup.x, pickup.y, `${weaponConfig.name} EQUIPPED`, '#9b59b6'); this.fx.pulse(pickup.x, pickup.y, 'weapon');
             Sound.pickup('weapon');
           }
@@ -7245,9 +7960,10 @@ class Game {
 
   // Shared by both an ordinary direct-hit kill and an explosive splash
   // kill, so drop odds/floating feedback stay identical either way.
-  _onZombieKilled(zombie) {
+  _onZombieKilled(zombie, srcId) {
     this.fx.death(zombie);   // short death effect (the zombie itself is removed from play as before)
     this.player.kills += 1;
+    ACH.killed(zombie, srcId, this); // achievements: credited to the weapon that caused the kill
     const reward = ShopSystem.killReward(zombie.type); // cash for the shop (bosses / brutes pay more)
     this.player.money += reward;
     this._addFloatingText(zombie.x, zombie.y - 18, `+$${reward}`, '#f5c542');
@@ -7281,12 +7997,12 @@ class Game {
   // not a separate zombieHit()/zombieDeath() per zombie caught in it —
   // a splash that catches several zombies at once would otherwise stack
   // up an ugly pile of overlapping hit sounds.
-  _explodeAt(x, y, splashRadius, damage) {
+  _explodeAt(x, y, splashRadius, damage, srcId) {
     for (const zombie of this.zombies) {
       if (!zombie.alive) continue;
       if (Utils.distance(x, y, zombie.x, zombie.y) <= splashRadius + zombie.radius) {
         const died = zombie.takeDamage(damage);
-        if (died) this._onZombieKilled(zombie); // still plays its own zombieDeath() — a kill is worth calling out even during an explosion
+        if (died) this._onZombieKilled(zombie, srcId); // still plays its own zombieDeath() — a kill is worth calling out even during an explosion
       }
     }
 
@@ -7324,7 +8040,7 @@ class Game {
   // Handles an explosive bullet (currently just the RPG) on impact.
   _explodeBullet(bullet) {
     bullet.alive = false;
-    this._explodeAt(bullet.x, bullet.y, bullet.splashRadius, bullet.damage);
+    this._explodeAt(bullet.x, bullet.y, bullet.splashRadius, bullet.damage, bullet.weaponId);
   }
 
   // Handles a melee swing (the hammer; the chainsaw uses it too): hits every zombie
@@ -7346,7 +8062,7 @@ class Game {
 
       const died = zombie.takeDamage(weapon.damage);
       this.fx.meleeHit(zombie, weapon, player); zombie.flinch(zombie.x - player.x, zombie.y - player.y);
-      if (died) this._onZombieKilled(zombie);
+      if (died) this._onZombieKilled(zombie, weapon.config.id);
       else if (!weapon.config.fuelTank) Sound.zombieHit(); // the chainsaw ticks 15x/s — its own buzz is enough, a hit sound per tick would be noise
     }
   }
@@ -7384,7 +8100,7 @@ class Game {
 
     if (this.world3d) { const t = this._grenadeLanding(player.x, player.y, targetX, targetY, weapon.config.arcHeight); targetX = t.x; targetY = t.y; }
 
-    if (!player.tryThrow()) return; // out of grenades / still on cooldown — canShoot() already covers both, same gate every other weapon uses
+    if (!player.tryThrow()) return; ACH.fired(weapon.config); // out of grenades / still on cooldown — canShoot() already covers both, same gate every other weapon uses
 
     const throwDist = Math.max(1, Math.hypot(targetX - player.x, targetY - player.y));
     this.grenades.push({
@@ -7449,7 +8165,7 @@ class Game {
       // lands — after the arc finishes it just sits at its landing point.
       if (grenade.elapsed >= grenade.fuseTime) {
         grenade.exploded = true;
-        this._explodeAt(grenade.targetX, grenade.targetY, grenade.splashRadius, grenade.damage);
+        this._explodeAt(grenade.targetX, grenade.targetY, grenade.splashRadius, grenade.damage, 'grenade');
       }
     }
     this.grenades = this.grenades.filter((g) => !g.exploded);
@@ -7573,6 +8289,7 @@ class Game {
   _gameOver() {
     this.state = 'gameover';
     this.shop.forceClose();
+    ACH.runEnded(); // achievements: final bests are stored; lifetime progress is kept
     SavedRun.clear(); // the run is over — nothing left to continue
     document.getElementById('finalStats').textContent =
       `Survived ${Utils.formatTime(this.survivalTime)} — ${this.player.kills} kills` +
