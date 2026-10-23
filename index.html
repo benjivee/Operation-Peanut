@@ -996,6 +996,17 @@ html, body, button, input, select, textarea {
 .stTable { width: 100%; border-collapse: collapse; font-size: 8px; } .stTable th { text-align: right; color: #f5c542; padding: 4px 6px; font-weight: normal; } .stTable td { padding: 5px 6px; text-align: right; border-top: 1px solid #2b3037; color: #fff; } .stTable td:first-child { text-align: left; color: var(--px-dim); }
 @media (max-width: 720px) { .stBarRow { grid-template-columns: 80px 1fr 44px; } .stBig b { font-size: 16px; } .stGrid { grid-template-columns: 1fr; } }
 @media (min-width: 1100px) and (min-height: 700px) { .stRow, .stBarRow, .stTable, .cosReq { font-size: 10px; } .cosNote, .stNote { font-size: 9px; } .cosName { font-size: 11px; } .stBig span { font-size: 9px; } }
+/* ---- Accessories ---- */
+#accessoriesScreen { z-index: 25; padding: 12px; box-sizing: border-box; cursor: default; user-select: none; -webkit-user-select: none; }
+.accTop { display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-start; }
+#accPreview { width: 176px; height: 176px; image-rendering: pixelated; background: #14171b; border: 3px solid var(--px-ink); flex: 0 0 auto; }
+.accTopRight { flex: 1 1 260px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.accWorn { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 4px 12px; }
+.accWornRow { display: flex; justify-content: space-between; gap: 8px; font-size: 8px; padding: 3px 0; border-bottom: 1px solid #2b3037; } .accWornRow span { color: var(--px-dim); } .accWornRow b { color: #fff; text-align: right; }
+.accBtns { display: flex; flex-wrap: wrap; gap: 8px; }
+.cosTag.art { background: #4a3a10; color: #f5c542; }
+.accIcon { width: 80px; height: 80px; }
+@media (min-width: 1100px) and (min-height: 700px) { .accWornRow { font-size: 10px; } }
   </style>
   <script>
 // Auto-generated for the single-file build: maps each original
@@ -1590,7 +1601,7 @@ const EMBEDDED_ASSETS = {
     <!-- ===================== Start overlay (home page) ===================== -->
     <div id="startScreen" class="overlay homePage">
       <!-- Version: major.minor.patch. The patch digit goes 0-9 and rolls into the minor number (v3.88.9 -> v3.89.0); the minor number is two digits and rolls into the major number (v3.99.9 -> v4.00.0). Bumped by 1 on every change. -->
-      <div id="versionTag" class="versionTag">v3.91.2</div>
+      <div id="versionTag" class="versionTag">v3.91.3</div>
       <div id="homeSidebar" class="homeSidebar">
         <div class="homeSidebarTitle">Your Stats</div>
         <div class="homeSidebarStat">
@@ -1609,7 +1620,8 @@ const EMBEDDED_ASSETS = {
         <button id="testModeBtn" class="testModeButton">Test Mode</button>
         <button id="howToPlayBtn" class="testModeButton">How to Play</button>
         <button id="achievementsBtn" class="testModeButton">Achievements</button>
-        <button id="cosmeticsBtn" class="testModeButton">Cosmetics</button>
+        <button id="accessoriesBtn" class="testModeButton">Accessories</button>
+        <button id="cosmeticsBtn" class="testModeButton">Weapon Skins</button>
         <button id="statsBtn" class="testModeButton">Statistics</button>
         <div id="difficultyRow" class="difficultyRow"><span class="diffLabel">Difficulty</span><div class="diffButtons"><button class="testModeButton diffBtn" data-diff="easy">Easy</button><button class="testModeButton diffBtn" data-diff="normal">Normal</button><button class="testModeButton diffBtn" data-diff="hard">Hard</button></div></div>
       </div>
@@ -1659,7 +1671,8 @@ const EMBEDDED_ASSETS = {
         <p class="subtitle">Press <b>P</b> to resume</p>
         <button id="resumeBtn" class="bigButton">Resume</button>
         <button id="pauseAchievementsBtn" class="smallLinkButton">Achievements</button>
-        <button id="pauseCosmeticsBtn" class="smallLinkButton">Cosmetics</button>
+        <button id="pauseAccessoriesBtn" class="smallLinkButton">Accessories</button>
+        <button id="pauseCosmeticsBtn" class="smallLinkButton">Weapon Skins</button>
         <button id="pauseStatsBtn" class="smallLinkButton">Statistics</button>
         <button id="pauseSaveQuitBtn" class="smallLinkButton">Save &amp; Quit</button>
         <p id="pauseMessage" class="inputError hidden"></p>
@@ -1714,9 +1727,30 @@ const EMBEDDED_ASSETS = {
     <!-- ===================== Cosmetics ===================== -->
     <div id="cosmeticsScreen" class="overlay hidden">
       <div class="shopPanel achPanel" role="dialog" aria-modal="true" aria-labelledby="cosTitle">
-        <div class="shopHeader"><h1 id="cosTitle">COSMETICS</h1><div id="cosSummary" class="achSummary"></div></div>
-        <div id="cosTabs" class="shopTabs"></div>
+        <div class="shopHeader"><h1 id="cosTitle">WEAPON SKINS</h1><div id="cosSummary" class="achSummary"></div></div>
         <div id="cosGrid" class="shopList cosGrid"></div>
+        <div class="shopFooter"><button class="bigButton" data-act="close">CLOSE</button><span class="shopHint">ESC = CLOSE</span></div>
+      </div>
+    </div>
+
+    <!-- ===================== Accessories ===================== -->
+    <div id="accessoriesScreen" class="overlay hidden">
+      <div class="shopPanel achPanel" role="dialog" aria-modal="true" aria-labelledby="accTitle">
+        <div class="shopHeader"><h1 id="accTitle">ACCESSORIES</h1><div id="accSummary" class="achSummary"></div></div>
+        <div class="accTop">
+          <canvas id="accPreview" width="176" height="176"></canvas>
+          <div class="accTopRight">
+            <div id="accWorn" class="accWorn"></div>
+            <div class="accBtns">
+              <button class="shopWpn" data-act="rotate">ROTATE</button>
+              <button class="shopWpn" data-act="unequipAll">UNEQUIP ALL</button>
+              <button id="accMarkersBtn" class="shopWpn" data-act="markers">MARKERS: OFF</button>
+            </div>
+            <div class="stNote">Wearables need PixelLab art to be visible. "Markers" shows where an art-less wearable would attach (a testing aid, not art).</div>
+          </div>
+        </div>
+        <div id="accTabs" class="shopTabs"></div>
+        <div id="accGrid" class="shopList cosGrid"></div>
         <div class="shopFooter"><button class="bigButton" data-act="close">CLOSE</button><span class="shopHint">ESC = CLOSE</span></div>
       </div>
     </div>
@@ -5086,8 +5120,15 @@ class Player extends Entity {
     const cx = pp.x;
     const cy = pp.y - (camera.rig3d && GAME3D.feetAnchor ? BUILDING_OCCLUSION_CONFIG.playerFeetOffset * PLAYER_SCALE : 0);
 
+    ACCESSORIES.drawCompanions(ctx, this, camera, canvas, true);   // companions that are farther from the camera than the player
+
     ctx.save();
     camera.applyEntityScale(ctx, pp); // 3D: perspective + entityScale, about the feet
+
+    // Accessories are separate layers around the character: 'behind' now, 'body' right after the sprite, 'top' after the weapon.
+    const af = ACCESSORIES.playerFrame(this, cx, cy);
+    const drawChar = () => { this._drawCharacterSprite(ctx, cx, cy); ACCESSORIES.drawPhase(ctx, af, 'body'); };
+    ACCESSORIES.drawPhase(ctx, af, 'behind');
 
     if (this.currentWeapon.config.melee && !this.currentWeapon.config.spriteFolder) {
       // A melee weapon with no art of its own isn't part of the sprite-based attachment system below
@@ -5099,7 +5140,7 @@ class Player extends Entity {
       ctx.fillStyle = this.currentWeapon.config.color;
       ctx.fillRect(0, -2 * PLAYER_SCALE, (this.radius + 12) * PLAYER_SCALE, 4 * PLAYER_SCALE);
       ctx.restore();
-      this._drawCharacterSprite(ctx, cx, cy);
+      drawChar();
     } else {
       // Real per-direction attachment: which of the weapon's 8 pre-
       // rotated images to show, where to place it relative to the
@@ -5110,14 +5151,16 @@ class Player extends Entity {
       const attachment = WEAPON_ATTACHMENTS[weaponDir];
       if (attachment.layer === 'behind') {
         this._drawWeaponSprite(ctx, cx, cy, weaponDir, attachment);
-        this._drawCharacterSprite(ctx, cx, cy);
+        drawChar();
       } else {
-        this._drawCharacterSprite(ctx, cx, cy);
+        drawChar();
         this._drawWeaponSprite(ctx, cx, cy, weaponDir, attachment);
       }
     }
 
+    ACCESSORIES.drawPhase(ctx, af, 'top'); // hats, face items, front-facing back items, effects
     ctx.restore();
+    ACCESSORIES.drawCompanions(ctx, this, camera, canvas, false);   // companions nearer to the camera than the player
   }
 
   // Draws the currently-equipped weapon's sprite for `weaponDir` at the
@@ -5213,7 +5256,7 @@ class Player extends Entity {
     // move the way the body is actually travelling (no moonwalking). Frame
     // 0 stays frame 0, then 7, 6, 5, ... so the loop stays seamless.
     const frame = this.walkingBackward ? (8 - this.animFrame) % 8 : this.animFrame;
-    return pickSpriteFrame(COSMETICS.playerSheet(), this.facing, this.isMoving, frame); // the equipped skin's sheet (or the original)
+    return pickSpriteFrame(PLAYER_SPRITES, this.facing, this.isMoving, frame);
   }
 }
 
@@ -6198,7 +6241,7 @@ class ShopSystem {
  */
 
 const ACH_SAVE_KEY = 'operationPeanut.achievements';
-const ACH_SAVE_VERSION = 2; // v2: adds cosmetics (inside the same save) and the extra lifetime statistics; v1 saves are upgraded in _migrate()
+const ACH_SAVE_VERSION = 3; // v2: cosmetics + extra statistics; v3: accessories (player skins were removed). Older saves are upgraded in _migrate()
 
 const ACH_TIERS = {
   bronze:   { label: 'BRONZE',   color: '#c98a4b' },
@@ -6398,6 +6441,7 @@ class AchievementSystem {
     this._queue = []; this._toastActive = false;
     this._dirty = false; this._lastSave = 0; this._tickAcc = 0; this._resuming = false;
     this._cosRaw = null; this.cosSerialize = null; this.onUnlock = null; // set up by CosmeticsSystem
+    this._accRaw = null; this.accSerialize = null; this.onEvent = null;   // set up by AccessorySystem
     this._load();
     this._beginSession();
     window.addEventListener('pagehide', () => this.save(true));
@@ -6434,6 +6478,7 @@ class AchievementSystem {
 
   // ---- unlocking ----
   _eval(ev) {
+    if (this.onEvent) this.onEvent(ev); // accessory unlocks listen to the same gameplay events
     const list = this.byEv[ev];
     if (!list) return;
     for (const d of list) {
@@ -6660,7 +6705,7 @@ class AchievementSystem {
     if (!force && (!this._dirty || now - this._lastSave < 5000)) return;
     this._lastSave = now; this._dirty = false;
     try {
-      localStorage.setItem(ACH_SAVE_KEY, JSON.stringify({ v: ACH_SAVE_VERSION, savedAt: now, unlocked: this.unlocked, life: this.life, cos: this.cosSerialize ? this.cosSerialize() : this._cosRaw }));
+      localStorage.setItem(ACH_SAVE_KEY, JSON.stringify({ v: ACH_SAVE_VERSION, savedAt: now, unlocked: this.unlocked, life: this.life, cos: this.cosSerialize ? this.cosSerialize() : this._cosRaw, acc: this.accSerialize ? this.accSerialize() : this._accRaw }));
     } catch (e) { /* storage full / blocked: the game keeps working, progress just isn't kept */ }
   }
   _load() {
@@ -6675,6 +6720,7 @@ class AchievementSystem {
     }
     data = this._migrate(data);
     this._cosRaw = data.cos && typeof data.cos === 'object' ? data.cos : null;
+    this._accRaw = data.acc && typeof data.acc === 'object' ? data.acc : null;
     const L = achDefaultLife(), src = data.life;
     for (const k of Object.keys(L)) {
       const def = L[k], v = src[k];
@@ -6691,6 +6737,7 @@ class AchievementSystem {
   }
   _migrate(data) { // older save versions are upgraded here. Nothing is ever dropped: new fields simply start from their defaults.
     if (!(data.v >= 2)) { data.cos = data.cos || null; data.v = 2; } // v1 -> v2: no cosmetics yet; new statistics start at 0
+    if (!(data.v >= 3)) { data.acc = data.acc || null; data.v = 3; }   // v2 -> v3: accessories start empty; AccessorySystem converts old player skins and grants earned ones
     return data;
   }
 
@@ -6807,20 +6854,13 @@ class AchievementMenu {
   }
 }
 
-// ===== Cosmetics: player skins and weapon skins earned through achievements =====
+
+// ===== Weapon skins (the player-skin system was removed; accessories replace it - see below) =====
 //
-// HOW IT WORKS
-//  - COSMETIC_DEFS is the one registry of rewards. Each has a requirement (an achievement, or a number of achievements).
-//  - A skin is a PALETTE SWAP of your existing sprites: the original PNG is recoloured pixel-by-pixel (see cosRecolor) once, cached,
-//    and drawn in exactly the same place / size / direction as the original, so animation and directional alignment never change.
-//  - To use dedicated art instead of a recolour, give a def `art: 'assets/...'` (see "Adding art" below) - no other change is needed.
-//  - Skins are purely visual: nothing here touches speed, health, damage or hitboxes.
-//
-// Adding a reward:  add a line to COSMETIC_DEFS.  Adding art for it: put the PNGs in the folder layout the original uses and set `art`:
-//    player skin : <art>/idle/<dir>.png and <art>/walk/<dir>/frame_000..007.png   (same as assets/player)
-//    weapon skin : <art>/<dir>.png for the 8 directions                            (same as assets/weapons/<id>)
-//  (with the single-file build the images must also be added to EMBEDDED_ASSETS under those paths).
-const COS_SAVE_VERSION = 1;
+// A weapon skin is a PALETTE SWAP of an existing weapon sprite (recoloured once, cached, drawn exactly like the original so directions
+// and animation never change). To use dedicated art instead, give a def `art` and add the PNGs (same 8-direction layout as assets/weapons/<id>).
+// Skins are purely visual: nothing here touches damage, speed, health or hitboxes.
+const COS_SAVE_VERSION = 2;
 const COS_RAMPS = {  // colour ramps (dark -> light) used to recolour grey metal weapons by brightness
   gold:     [[38, 22, 0], [140, 92, 8], [232, 178, 34], [255, 236, 130]],
   tactical: [[4, 4, 7], [34, 36, 42], [84, 88, 98], [146, 150, 160]],
@@ -6830,17 +6870,9 @@ const COS_RAMPS = {  // colour ramps (dark -> light) used to recolour grey metal
   frost:    [[6, 22, 44], [30, 92, 150], [110, 190, 236], [226, 248, 255]],
   obsidian: [[6, 2, 14], [38, 14, 64], [92, 44, 140], [170, 120, 210]],
   chrome:   [[14, 18, 24], [90, 104, 118], [190, 204, 216], [250, 254, 255]],
+  ghost:    [[120, 150, 190], [170, 200, 236], [214, 232, 252], [250, 254, 255]],
 };
 const COSMETIC_DEFS = [
-  // ---- player skins ----
-  { id: 'classic',         kind: 'player', name: 'Classic Peanut',   desc: 'The original peanut.', isDefault: true },
-  { id: 'golden_peanut',   kind: 'player', name: 'Golden Peanut',    desc: 'A shiny gold shell.',                 req: { type: 'achCount', n: 10 },          reqText: 'Unlock 10 achievements.',                       recipe: { hue: 14, sat: 1.7, val: 1.1 } },
-  { id: 'zombie_peanut',   kind: 'player', name: 'Zombie Peanut',    desc: 'Sickly green. Survived the worst.',   req: { type: 'ach', id: 'survivor' },     reqText: 'Survive for 10 minutes in a run.',              recipe: { hue: 65, sat: 0.85, val: 0.88 } },
-  { id: 'military_peanut', kind: 'player', name: 'Military Peanut',  desc: 'Olive drab, fully equipped.',         req: { type: 'ach', id: 'walking_armory' }, reqText: 'Find every weapon that appears on the map.', recipe: { hue: 28, sat: 0.6, val: 0.78 } },
-  { id: 'shadow_peanut',   kind: 'player', name: 'Shadow Peanut',    desc: 'Dark and mysterious.',                req: { type: 'ach', id: 'nuts_about_survival' }, reqText: 'A secret reward. Can you discover it?', secret: true, secretReq: 'Survive for 15 minutes in a run.', recipe: { sat: 0.2, val: 0.4, mul: [0.85, 0.9, 1.25] } },
-  { id: 'elite_peanut',    kind: 'player', name: 'Elite Peanut',     desc: 'For the best survivors on Hard.',     req: { type: 'ach', id: 'last_peanut' },  reqText: 'Survive for 20 minutes on Hard difficulty.',   recipe: { hue: 240, sat: 1.25, val: 1.05 } },
-  { id: 'platinum_peanut', kind: 'player', name: 'Platinum Peanut',  desc: 'The completionist\'s skin.',          req: { type: 'ach', id: 'completionist' }, reqText: 'Unlock every standard achievement.',          recipe: { hue: 150, sat: 0.3, val: 1.3 } },
-  // ---- weapon skins ----
   { id: 'golden_pistol',     kind: 'weapon', weapon: 'pistol',       name: 'Golden Pistol',      desc: 'Solid gold sidearm.',        req: { type: 'ach', id: 'zombie_genocide' },    reqText: 'Kill 500 zombies.',                       recipe: { ramp: 'gold' } },
   { id: 'tactical_shotgun',  kind: 'weapon', weapon: 'shotgun',      name: 'Tactical Shotgun',   desc: 'Blacked-out finish.',        req: { type: 'ach', id: 'shotgun_specialist' }, reqText: 'Kill 100 zombies with the shotgun.',      recipe: { ramp: 'tactical' } },
   { id: 'military_rifle',    kind: 'weapon', weapon: 'rifle',        name: 'Military Rifle',     desc: 'Olive drab issue.',          req: { type: 'ach', id: 'marksman' },           reqText: 'Kill 100 zombies with the assault rifle.', recipe: { ramp: 'olive' } },
@@ -6896,72 +6928,47 @@ function cosRecolor(src, recipe) {
   return c;
 }
 
-class CosmeticsSystem {
+class CosmeticsSystem {   // weapon skins only
   constructor(ach) {
     this.ach = ach;
     this.defs = COSMETIC_DEFS;
     this.byId = new Map(this.defs.map((d) => [d.id, d]));
     this.unlocked = {};                       // id -> unlock timestamp
-    this.equipped = { player: null, weapons: {} };
-    this._pc = {}; this._wc = {};             // caches of recoloured sheets / weapon images
+    this.equipped = { weapons: {} };
+    this._wc = {}; this._pv = {};
     this._load(ach._cosRaw);
     ach.cosSerialize = () => this.serialize();
     ach.onUnlock = () => this.check();
-    this.check(); // existing players: grant rewards their current achievements already earned (each notifies once)
+    this.check(); // grant weapon skins already earned (each notifies once)
   }
-  // ---- requirements ----
   _req(d) {
-    const r = d.req;
-    if (!r) return { done: true, val: 1, target: 1 };
-    if (r.type === 'achCount') { const v = this.ach.unlockedCount(); return { done: v >= r.n, val: Math.min(v, r.n), target: r.n }; }
-    if (r.type === 'ach') { const a = this.ach.byId.get(r.id); if (!a) return { done: false, val: 0, target: 1 }; const s = this.ach.status(a); return { done: s.done, val: s.val, target: s.target, ach: a }; }
-    return { done: false, val: 0, target: 1 };
+    const a = this.ach.byId.get(d.req.id);
+    if (!a) return { done: false, val: 0, target: 1 };
+    const s = this.ach.status(a);
+    return { done: s.done, val: s.val, target: s.target, ach: a };
   }
-  isUnlocked(id) { const d = this.byId.get(id); return !!d && (d.isDefault || !!this.unlocked[id]); }
-  // Grants every reward whose requirement is genuinely met. Safe to call any time: a reward unlocks once, and notifies once.
+  isUnlocked(id) { return !!this.byId.get(id) && !!this.unlocked[id]; }
   check() {
     for (const d of this.defs) {
-      if (d.isDefault || this.unlocked[d.id]) continue;
+      if (this.unlocked[d.id]) continue;
       if (this._req(d).done) {
         this.unlocked[d.id] = Date.now();
         this.ach._dirty = true;
-        this.ach._enqueue({ tier: 'gold', icon: d.kind === 'player' ? 'SKIN' : 'GUN', name: d.name, desc: 'New ' + (d.kind === 'player' ? 'player skin' : 'weapon skin') + ' unlocked - equip it in Cosmetics.', header: 'REWARD UNLOCKED' });
+        this.ach._enqueue({ tier: 'gold', icon: 'GUN', name: d.name, desc: 'New weapon skin unlocked - equip it in Weapon Skins.', header: 'REWARD UNLOCKED' });
         this.ach.save(true);
       }
     }
   }
-  // ---- equipping ----
   equip(id) {
     const d = this.byId.get(id);
-    if (!d || !this.isUnlocked(id)) return false;                    // locked cosmetics can never be equipped
-    if (d.kind === 'player') this.equipped.player = d.isDefault ? null : id;
-    else this.equipped.weapons[d.weapon] = id;
+    if (!d || !this.isUnlocked(id)) return false;                    // locked skins can never be equipped
+    this.equipped.weapons[d.weapon] = id;
     this.ach.save(true);
     return true;
   }
-  unequip(kind, weaponId) {
-    if (kind === 'player') this.equipped.player = null; else delete this.equipped.weapons[weaponId];
-    this.ach.save(true);
-  }
-  isEquipped(d) { return d.kind === 'player' ? (d.isDefault ? !this.equipped.player : this.equipped.player === d.id) : this.equipped.weapons[d.weapon] === d.id; }
-  // ---- drawing (called by Player.draw every frame: cached lookups only) ----
-  playerSheet() {
-    const id = this.equipped.player;
-    if (!id || !PLAYER_SPRITES) return PLAYER_SPRITES;
-    if (this._pc[id]) return this._pc[id];
-    const d = this.byId.get(id), base = PLAYER_SPRITES;
-    for (const dir of SPRITE_DIRECTIONS) { // only build once every frame of the original has loaded
-      if (!isSpriteReady(base.idle[dir])) return base;
-      for (const f of base.walk[dir]) if (!isSpriteReady(f)) return base;
-    }
-    const sheet = { idle: {}, walk: {} };
-    for (const dir of SPRITE_DIRECTIONS) {
-      sheet.idle[dir] = cosRecolor(base.idle[dir], d.recipe);
-      sheet.walk[dir] = base.walk[dir].map((f) => cosRecolor(f, d.recipe));
-    }
-    this._pc[id] = sheet;
-    return sheet;
-  }
+  unequip(weaponId) { delete this.equipped.weapons[weaponId]; this.ach.save(true); }
+  isEquipped(d) { return this.equipped.weapons[d.weapon] === d.id; }
+  // Called by Player.draw every frame: cached lookups only.
   weaponSprite(weaponId, dir) {
     const id = this.equipped.weapons[weaponId];
     if (!id) return null;
@@ -6974,34 +6981,22 @@ class CosmeticsSystem {
     }
     return c;
   }
-  // Small preview image of a skin (player: idle facing south; weapon: facing east). Returns an Image/canvas or null.
   preview(d) {
-    if (d.kind === 'player') {
-      const base = PLAYER_SPRITES && PLAYER_SPRITES.idle.south;
-      if (!isSpriteReady(base)) return null;
-      if (d.isDefault) return base;
-      return (this._pv = this._pv || {})[d.id] || (this._pv[d.id] = cosRecolor(base, d.recipe));
-    }
     const base = WEAPON_SPRITES[d.weapon] && WEAPON_SPRITES[d.weapon].east;
     if (!isSpriteReady(base)) return null;
-    return (this._pv = this._pv || {})[d.id] || (this._pv[d.id] = cosRecolor(base, d.recipe));
+    return this._pv[d.id] || (this._pv[d.id] = cosRecolor(base, d.recipe));
   }
-  // ---- persistence (stored inside the achievements save, key ACH_SAVE_KEY) ----
   serialize() { return { v: COS_SAVE_VERSION, unlocked: this.unlocked, equipped: this.equipped }; }
-  _load(raw) {
+  _load(raw) {  // (player skins that older saves contain are ignored here: they are converted to accessories by AccessorySystem)
     if (!raw || typeof raw !== 'object') return;
     if (raw.unlocked && typeof raw.unlocked === 'object') {
       for (const id of Object.keys(raw.unlocked)) if (this.byId.has(id) && Number.isFinite(raw.unlocked[id]) && raw.unlocked[id] > 0) this.unlocked[id] = raw.unlocked[id];
     }
     const eq = raw.equipped;
-    if (eq && typeof eq === 'object') {
-      const p = this.byId.get(eq.player);
-      if (p && p.kind === 'player' && !p.isDefault && this.unlocked[p.id]) this.equipped.player = p.id; // an equipped skin must be one you have unlocked
-      if (eq.weapons && typeof eq.weapons === 'object') {
-        for (const w of Object.keys(eq.weapons)) {
-          const d = this.byId.get(eq.weapons[w]);
-          if (d && d.kind === 'weapon' && d.weapon === w && this.unlocked[d.id]) this.equipped.weapons[w] = d.id;
-        }
+    if (eq && eq.weapons && typeof eq.weapons === 'object') {
+      for (const w of Object.keys(eq.weapons)) {
+        const d = this.byId.get(eq.weapons[w]);
+        if (d && d.weapon === w && this.unlocked[d.id]) this.equipped.weapons[w] = d.id; // an equipped skin must be one you have unlocked
       }
     }
   }
@@ -7026,54 +7021,37 @@ class PanelMenu {
   onAct(act) { if (act === 'close') { Sound.uiClick(); this.close(); } }
 }
 
-// ===== Cosmetics menu =====
+// ===== Weapon skins menu =====
 class CosmeticsMenu extends PanelMenu {
-  constructor(cos) { super('cosmeticsScreen'); this.cos = cos; this.tab = 'player'; }
+  constructor(cos) { super('cosmeticsScreen'); this.cos = cos; }
   onAct(act, t) {
-    if (act === 'tab') { Sound.uiClick(); this.tab = t.dataset.tab; this.render(); }
-    else if (act === 'equip') { if (this.cos.equip(t.dataset.id)) Sound.uiClick(); else Sound.emptyClick(); this.render(); }
-    else if (act === 'unequip') { const d = this.cos.byId.get(t.dataset.id); this.cos.unequip(d.kind, d.weapon); Sound.uiClick(); this.render(); }
+    if (act === 'equip') { if (this.cos.equip(t.dataset.id)) Sound.uiClick(); else Sound.emptyClick(); this.render(); }
+    else if (act === 'unequip') { const d = this.cos.byId.get(t.dataset.id); this.cos.unequip(d.weapon); Sound.uiClick(); this.render(); }
     else super.onAct(act);
   }
   render() {
-    const cos = this.cos, ach = cos.ach;
-    const list = cos.defs.filter((d) => d.kind === this.tab);
-    const un = cos.defs.filter((d) => !d.isDefault && cos.isUnlocked(d.id)).length, total = cos.defs.filter((d) => !d.isDefault).length;
-    document.getElementById('cosSummary').innerHTML = `<b>${un}</b> / ${total} REWARDS UNLOCKED`;
-    document.getElementById('cosTabs').innerHTML = [['player', 'PLAYER SKINS'], ['weapon', 'WEAPON SKINS']].map(([id, label]) =>
-      `<button class="shopTab achTab${this.tab === id ? ' active' : ''}" data-act="tab" data-tab="${id}">${label}</button>`).join('');
-    let html = '';
-    if (this.tab === 'weapon') html += `<div class="cosNote">A weapon skin only changes how the weapon looks while you hold it. Equip one per weapon.</div>`;
-    for (const d of list) {
-      const open = cos.isUnlocked(d.id), eq = cos.isEquipped(d), hidden = d.secret && !open;
-      const r = cos._req(d);
-      const reqText = hidden ? 'A secret reward. Can you discover it?' : (d.reqText || '');
+    const cos = this.cos;
+    const un = cos.defs.filter((d) => cos.isUnlocked(d.id)).length;
+    document.getElementById('cosSummary').innerHTML = `<b>${un}</b> / ${cos.defs.length} WEAPON SKINS UNLOCKED`;
+    let html = `<div class="cosNote">A weapon skin only changes how the weapon looks while you hold it. Equip one per weapon. (Player appearance is changed with Accessories.)</div>`;
+    for (const d of cos.defs) {
+      const open = cos.isUnlocked(d.id), eq = cos.isEquipped(d), r = cos._req(d);
       let prog = '';
-      if (!open && !hidden && d.req) prog = `<div class="achProg"><div class="achBar"><i style="width:${Math.round(100 * Math.min(1, r.val / Math.max(1, r.target)))}%"></i></div><span>${this._pv(d, r)}</span></div>`;
-      const wname = d.kind === 'weapon' && CONFIG.WEAPONS[d.weapon] ? CONFIG.WEAPONS[d.weapon].name.toUpperCase() : '';
-      let btn;
-      if (!open) btn = `<button class="shopBuyBtn cant" disabled>LOCKED</button>`;
-      else if (d.isDefault) btn = eq ? `<span class="siMaxed">EQUIPPED</span>` : `<button class="shopBuyBtn" data-act="equip" data-id="${d.id}">EQUIP</button>`;
-      else btn = eq ? `<button class="shopBuyBtn cosUn" data-act="unequip" data-id="${d.id}">UNEQUIP</button>` : `<button class="shopBuyBtn" data-act="equip" data-id="${d.id}">EQUIP</button>`;
+      if (!open) prog = `<div class="achProg"><div class="achBar"><i style="width:${Math.round(100 * Math.min(1, r.val / Math.max(1, r.target)))}%"></i></div><span>${this._pv(d, r)}</span></div>`;
+      const wname = CONFIG.WEAPONS[d.weapon] ? CONFIG.WEAPONS[d.weapon].name.toUpperCase() : '';
+      const btn = !open ? `<button class="shopBuyBtn cant" disabled>LOCKED</button>`
+        : eq ? `<button class="shopBuyBtn cosUn" data-act="unequip" data-id="${d.id}">UNEQUIP</button>` : `<button class="shopBuyBtn" data-act="equip" data-id="${d.id}">EQUIP</button>`;
       html += `<div class="cosCard${open ? ' open' : ' locked'}${eq ? ' equipped' : ''}">` +
-        `<canvas class="cosPrev" width="96" height="96" data-id="${d.id}" data-state="${hidden ? 'secret' : open ? 'open' : 'locked'}"></canvas>` +
-        `<div class="cosName">${hidden ? '???' : d.name}</div>` +
-        `<div class="cosTag ${eq ? 'eq' : open ? 'un' : 'lk'}">${eq ? 'EQUIPPED' : open ? 'UNLOCKED' : 'LOCKED'}${wname && !hidden ? ' - ' + wname : ''}</div>` +
-        `<div class="achDesc">${hidden ? '' : d.desc}</div>` +
-        `<div class="cosReq">${open ? (d.isDefault ? 'Always available.' : 'Earned: ' + reqText) : 'To unlock: ' + reqText}</div>${prog}<div class="cosBtn">${btn}</div></div>`;
+        `<canvas class="cosPrev" width="96" height="96" data-id="${d.id}" data-state="${open ? 'open' : 'locked'}"></canvas>` +
+        `<div class="cosName">${d.name}</div><div class="cosTag ${eq ? 'eq' : open ? 'un' : 'lk'}">${eq ? 'EQUIPPED' : open ? 'UNLOCKED' : 'LOCKED'} - ${wname}</div>` +
+        `<div class="achDesc">${d.desc}</div><div class="cosReq">${open ? 'Earned: ' : 'To unlock: '}${d.reqText}</div>${prog}<div class="cosBtn">${btn}</div></div>`;
     }
     document.getElementById('cosGrid').innerHTML = html;
     for (const cv of document.querySelectorAll('#cosGrid canvas.cosPrev')) this._drawPreview(cv, cos.byId.get(cv.dataset.id), cv.dataset.state);
   }
-  _pv(d, r) {
-    if (d.req.type === 'achCount') return `${r.val} / ${r.target}`;
-    const a = r.ach; if (!a) return '';
-    return a.fmt === 'bool' ? 'Not yet' : `${this._fmtNum(a, r.val)} / ${this._fmtNum(a, r.target)}`;
-  }
-  _fmtNum(a, v) { return a.fmt === 'time' ? Utils.formatTime(Math.floor(v)) : a.fmt === 'km' ? (v / 1000).toFixed(1) + ' km' : a.fmt === 'm' ? Math.floor(v) + ' m' : String(Math.floor(v)); }
+  _pv(d, r) { const a = r.ach; return !a ? '' : `${Math.floor(r.val)} / ${Math.floor(r.target)}`; }
   _drawPreview(cv, d, state) {
     const g = cv.getContext('2d'); g.clearRect(0, 0, 96, 96); g.imageSmoothingEnabled = false;
-    if (state === 'secret') { g.fillStyle = '#555b63'; g.font = '36px monospace'; g.textAlign = 'center'; g.fillText('?', 48, 62); return; }
     const img = this.cos.preview(d);
     if (!img) return;
     const w = img.naturalWidth || img.width, h = img.naturalHeight || img.height, k = Math.min(96 / w, 96 / h);
@@ -7131,7 +7109,535 @@ class StatsMenu extends PanelMenu {
   }
 }
 
-const COSMETICS = new CosmeticsSystem(ACH);
+// ===== ACCESSORIES: five categories, one item per category can be worn at the same time =====
+//
+// WHERE THINGS LIVE
+//  - ACCESSORY_DEFS (below): the registry of all 52 accessories (id, category, name, unlock requirement, art).
+//  - Unlocking: each requirement is a gameplay statistic (ACC_STATS) or an achievement. The game's achievement events call
+//    AccessorySystem.check(event); only accessories whose statistic can change on that event are re-checked (never every frame).
+//  - Drawing: AccessorySystem draws accessories as separate layers around the existing player sprite (see "Drawing" below).
+//  - Art: wearable accessories (head / face / back / body) are PixelLab sprites placed by per-direction anchors; add the PNGs and an
+//    `art` entry to turn one on (see ACCESSORY_ART_GUIDE). Special effects / companions are drawn by code (particles, glows) or from
+//    your existing sprites, so they work without any new art.
+//
+// ADDING AN ACCESSORY LATER: add one acc(...) line to ACCESSORY_DEFS. Nothing else changes.
+// ADDING ART FOR ONE: put the PNGs in assets/accessories/<id>/ (see the guide) and add  art: { ... }  to its acc(...) line:
+//     art: {}                          8 directions: <id>/south|south-east|east|north-east|north|north-west|west|south-west .png
+//     art: { mirror: true }            only 5 files needed (south, south-east, east, north-east, north); west sides are mirrored
+//     art: { mode: 'single' }          one file assets/accessories/<id>.png used for every direction
+//     art: { mode: 'overlay' }         full-frame layer: same canvas size as assets/player/idle/<dir>.png, already positioned on the peanut
+//     optional: pivot:[0.5,1] (which point of your sprite sits on the anchor), anchor:'head'|'face'|'neck'|'body'|'back'|'feet',
+//               off:{ east:[dx,dy], ... } per-direction nudges in art pixels.
+// With the single-file build the images must also be added to EMBEDDED_ASSETS under those paths.
+const ACC_SAVE_VERSION = 1;
+const ACC_CATS = [
+  { id: 'head', name: 'Headwear' }, { id: 'face', name: 'Face' }, { id: 'back', name: 'Back' }, { id: 'body', name: 'Body' }, { id: 'fx', name: 'Special' },
+];
+const ACC_STATS = {   // the statistics requirements are measured with. ev = which game events can change the value
+  kills:          { ev: ['kill'],     get: (S) => S.life.kills },
+  runKills:       { ev: ['kill'],     get: (S) => S.life.best.runKills || 0 },
+  noDmgKills:     { ev: ['kill'],     get: (S) => S.life.best.noDmgKills || 0 },
+  rifleKills:     { ev: ['kill'],     get: (S) => S.life.weaponKills.rifle || 0 },
+  rpgKills:       { ev: ['kill'],     get: (S) => S.life.weaponKills.rpg || 0 },
+  flameKills:     { ev: ['kill'],     get: (S) => S.life.weaponKills.flamethrower || 0 },
+  chainsawKills:  { ev: ['kill'],     get: (S) => S.life.weaponKills.chainsaw || 0 },
+  meleeKills:     { ev: ['kill'],     get: (S) => Object.keys(S.life.weaponKills).reduce((n, k) => n + (CONFIG.WEAPONS[k] && CONFIG.WEAPONS[k].melee ? S.life.weaponKills[k] : 0), 0) },
+  rangedKills:    { ev: ['kill'],     get: (S) => Object.keys(S.life.weaponKills).reduce((n, k) => n + (CONFIG.WEAPONS[k] && !CONFIG.WEAPONS[k].melee ? S.life.weaponKills[k] : 0), 0) },
+  runTime:        { ev: ['tick'],     get: (S) => S.life.best.runTime || 0 },
+  hardTime:       { ev: ['tick'],     get: (S) => S.life.best.hardTime || 0 },
+  perfectTime:    { ev: ['tick'],     get: (S) => S.life.best.perfectTime || 0 },
+  distance:       { ev: ['tick'],     get: (S) => S.life.distanceM },
+  shots:          { ev: ['fire'],     get: (S) => S.life.shots },
+  purchases:      { ev: ['purchase'], get: (S) => S.life.purchases },
+  healthUpgrades: { ev: ['purchase'], get: (S) => S.life.upBought.health || 0 },
+  healthLevel:    { ev: ['purchase'], get: (S) => S.life.best.healthLvl || 0 },
+  spent:          { ev: ['purchase'], get: (S) => S.life.spent },
+  weaponsFound:   { ev: ['weapon'],   get: (S) => S.life.weaponsGot.length },
+  cities:         { ev: ['run'],      get: (S) => S.life.cities.length },
+  deaths:         { ev: ['run'],      get: (S) => S.life.deaths || 0 },
+  achievements:   { ev: ['unlock'],   get: (S) => S.unlockedCount() },
+  secretAch:      { ev: ['unlock'],   get: (S) => S.defs.filter((d) => d.secret && S.unlocked[d.id]).length },
+};
+const ACCESSORY_DEFS = [];
+const AS = (stat, n) => ({ stat, n });
+const AA = (id) => ({ ach: id });
+function acc(id, cat, name, req, reqText, opts) { ACCESSORY_DEFS.push(Object.assign({ id, cat, name, req, reqText }, opts || {})); }
+
+// ---- A. Headwear ----
+acc('military_helmet', 'head', 'Military Helmet',     AS('kills', 50),          'Kill 50 zombies.',                         { note: 'Olive-green army helmet with a chin strap.' });
+acc('police_cap',      'head', 'Police Cap',          AS('runTime', 600),       'Survive 10 minutes in a run.',             { note: 'Dark-blue peaked cap with a small gold badge.' });
+acc('blue_cap',        'head', 'Blue Baseball Cap',   AS('kills', 25),          'Kill 25 zombies.',                         { note: 'Blue baseball cap, brim pointing the way the peanut faces.' });
+acc('cowboy_hat',      'head', 'Cowboy Hat',          AS('distance', 1000),     'Travel 1 kilometre.',                      { note: 'Brown wide-brim cowboy hat.' });
+acc('viking_helmet',   'head', 'Viking Helmet',       AS('kills', 500),         'Reach 500 lifetime kills.',                { note: 'Steel helmet with two curved horns.' });
+acc('crown',           'head', 'Crown',               AS('achievements', 25),   'Unlock 25 achievements.',                  { note: 'Small gold crown with red gems.' });
+acc('pirate_hat',      'head', 'Pirate Hat',          AS('cities', 3),          'Play in 3 different cities.',              { note: 'Black tricorn hat with a skull emblem.' });
+acc('hard_hat',        'head', 'Construction Hard Hat', AS('kills', 100),       'Kill 100 zombies.',                        { note: 'Yellow construction helmet with a centre ridge.' });
+acc('santa_hat',       'head', 'Santa Hat',           AS('achievements', 10),   'Unlock 10 achievements.',                  { note: 'Red Santa hat with white trim and pom-pom.' });
+acc('wizard_hat',      'head', 'Wizard Hat',          AS('kills', 250),         'Kill 250 zombies.',                        { note: 'Tall purple pointed hat with stars.' });
+acc('top_hat',         'head', 'Top Hat',             AS('purchases', 10),      'Purchase 10 upgrades.',                    { note: 'Black top hat with a red band.' });
+acc('cat_ears',        'head', 'Cat Ears',            AS('achievements', 5),    'Unlock 5 achievements.',                   { note: 'Two small pointed cat ears on a thin band.' });
+// ---- B. Face ----
+acc('black_sunglasses', 'face', 'Black Sunglasses',   AS('kills', 100),         'Kill 100 zombies.',                        { note: 'Classic black sunglasses.' });
+acc('deal_with_it',     'face', 'Deal-With-It Sunglasses', AS('kills', 500),    'Kill 500 zombies.',                        { note: 'Pixelated black "Deal With It" shades.' });
+acc('night_vision',     'face', 'Night-Vision Goggles', AS('runTime', 900),     'Survive 15 minutes in a run.',             { note: 'Dark goggles with two glowing green lenses.' });
+acc('tactical_goggles', 'face', 'Tactical Goggles',   AS('rifleKills', 50),     'Kill 50 zombies with the assault rifle.',  { note: 'Black strap goggles with amber lenses.' });
+acc('gas_mask',         'face', 'Gas Mask',           AS('runTime', 1200),      'Survive 20 minutes in a run.',             { note: 'Grey gas mask with round filter and dark lenses.' });
+acc('medical_mask',     'face', 'Medical Mask',       AS('healthUpgrades', 5),  'Purchase 5 max-health upgrades.',          { note: 'Light-blue surgical mask over the lower face.' });
+acc('eyepatch',         'face', 'Eyepatch',           AA('close_shave'),        'Survive a hit that leaves you with 10 health or less.', { note: 'Black eyepatch with a thin strap.' });
+acc('nerd_glasses',     'face', 'Round Nerd Glasses', AS('shots', 500),         'Fire 500 shots.',                          { note: 'Large round black-rimmed glasses.' });
+acc('red_glasses',      'face', 'Glowing Red Glasses', AS('kills', 1000),       'Kill 1,000 zombies.',                      { note: 'Dark glasses with glowing red lenses.' });
+acc('zombie_eyes',      'face', 'Zombie Eyes',        AS('secretAch', 1),       'Unlock a secret achievement.',             { note: 'Bloodshot yellow-green zombie eyes (replaces the eyes area).' });
+// ---- C. Back ----
+acc('tactical_backpack', 'back', 'Tactical Backpack',    AS('kills', 250),      'Kill 250 zombies.',                        { note: 'Olive-green military backpack with straps and pouches.' });
+acc('hiking_backpack',   'back', 'Large Hiking Backpack', AS('distance', 5000), 'Travel 5 kilometres.',                     { note: 'Tall orange hiking backpack with a rolled mat on top.' });
+acc('ammo_backpack',     'back', 'Ammunition Backpack',  AS('rangedKills', 100), 'Get 100 kills with guns, rockets or grenades.', { note: 'Brown pack with ammo-box and bullet-belt details.' });
+acc('rocket_pack',       'back', 'Mini Rocket Launcher Pack', AS('rpgKills', 50), 'Kill 50 zombies with the RPG.',           { note: 'Backpack with two small rocket tubes pointing up.' });
+acc('oxygen_tank',       'back', 'Oxygen Tank',          AS('runTime', 1800),   'Survive 30 minutes in a run.',             { note: 'Blue-grey gas cylinder with a valve.' });
+acc('jetpack',           'back', 'Jetpack',              AS('hardTime', 1800),  'Survive 30 minutes on Hard difficulty.',   { note: 'Twin silver thrusters with straps (optional small flame).' });
+acc('radio_antenna',     'back', 'Radio Antenna',        AS('cities', 5),       'Play in 5 different cities.',              { note: 'Small radio box with a tall thin antenna.' });
+acc('sleeping_bag',      'back', 'Rolled Sleeping Bag',  AS('deaths', 5),       'Finish 5 runs.',                           { note: 'Green rolled sleeping bag strapped across the back.' });
+acc('zombie_arm_pack',   'back', 'Zombie Arm Backpack',  AS('kills', 500),      'Kill 500 zombies.',                        { note: 'Backpack made from a green zombie arm and hand.' });
+acc('teddy_pack',        'back', 'Teddy Bear Backpack',  AS('achievements', 10), 'Unlock 10 achievements.',                 { note: 'Brown teddy-bear-shaped backpack with ears.' });
+// ---- D. Body ----
+acc('gold_chain',        'body', 'Gold Chain',           AS('purchases', 25),   'Purchase 25 upgrades.',                    { note: 'Thick gold chain with a pendant.' });
+acc('dog_tags',          'body', 'Military Dog Tags',    AS('runKills', 100),   'Kill 100 zombies in a single run (without dying).', { note: 'Two silver dog tags on a ball chain.' });
+acc('bandolier',         'body', 'Bullet Bandolier',     AS('shots', 2000),     'Fire 2,000 shots.',                        { note: 'Diagonal brown strap with brass bullets.' });
+acc('shoulder_armour',   'body', 'Shoulder Armour',      AS('healthLevel', 3),  'Reach max-health upgrade level 3 in one run.', { note: 'Steel pauldrons on both shoulders.' });
+acc('chest_plate',       'body', 'Chest Armour Plate',   AS('runTime', 1500),   'Survive 25 minutes in a run.',             { note: 'Grey tactical chest plate.' });
+acc('utility_belt',      'body', 'Utility Belt',         AS('weaponsFound', 5), 'Find 5 weapons on the map.',               { note: 'Brown belt with pouches and a buckle.' });
+acc('red_neckerchief',   'body', 'Red Neckerchief',      AS('meleeKills', 100), 'Kill 100 zombies with melee weapons.',     { note: 'Red knotted neckerchief.' });
+acc('ninja_scarf',       'body', 'Ninja Scarf',          AS('noDmgKills', 50),  'Kill 50 zombies in one run without taking damage.', { note: 'Long dark scarf with trailing ends.' });
+acc('police_badge',      'body', 'Police Badge',         AS('achievements', 15), 'Unlock 15 achievements.',                 { note: 'Small gold star badge on the chest.' });
+acc('tiny_cape',         'body', 'Tiny Cape',            AS('kills', 1000),     'Kill 1,000 zombies.',                      { note: 'Short red cape hanging from the shoulders.' });
+// ---- E. Special effects and companions (drawn by code / from your existing sprites: no new art needed) ----
+acc('sparkle_aura',      'fx', 'Golden Sparkle Aura',    AS('achievements', 25), 'Unlock 25 achievements.',                 { fx: 'sparkle' });
+acc('radioactive_glow',  'fx', 'Green Radioactive Glow', AS('kills', 2500),     'Kill 2,500 zombies.',                      { fx: 'radioactive' });
+acc('small_flames',      'fx', 'Small Flames',           AS('flameKills', 100), 'Kill 100 zombies with the flamethrower.',  { fx: 'flames' });
+acc('electric_sparks',   'fx', 'Electric Sparks',        AS('chainsawKills', 100), 'Kill 100 zombies with the chainsaw.',   { fx: 'sparks' });
+acc('mini_peanut',       'fx', 'Floating Mini Peanut',   AS('achievements', 50), 'Unlock 50 achievements.',                 { fx: 'miniPeanut', companion: true });
+acc('mini_zombies',      'fx', 'Orbiting Mini Zombies',  AS('kills', 5000),     'Kill 5,000 zombies.',                      { fx: 'miniZombies', companion: true });
+acc('shadow_aura',       'fx', 'Shadow Aura',            AS('hardTime', 1200),  'Survive 20 minutes on Hard difficulty.',   { fx: 'shadow' });
+acc('halo',              'fx', 'Glowing Halo',           AS('perfectTime', 900), 'Survive 15 minutes on Hard without your health ever dropping below 50%.', { fx: 'halo' });
+acc('dollar_signs',      'fx', 'Floating Dollar Signs',  AS('spent', 5000),     'Spend $5,000 in the shop in total.',       { fx: 'dollars' });
+acc('ghost',             'fx', 'Tiny Ghost Companion',   AS('secretAch', 3),    'Unlock 3 secret achievements.',            { fx: 'ghost', companion: true });
+
+// Old player skins -> the accessory that matches what earned them (players keep what they earned).
+const ACC_SKIN_MIGRATION = {
+  golden_peanut: 'santa_hat', zombie_peanut: 'police_cap', military_peanut: 'utility_belt',
+  shadow_peanut: 'night_vision', elite_peanut: 'gas_mask', platinum_peanut: 'mini_peanut',
+};
+
+// ---- art guide: what PixelLab art each wearable needs (printed by ACCESSORIES.artReport()) ----
+const ACCESSORY_ART_GUIDE = 'Sprites are drawn at the SAME pixel scale as the peanut (assets/player). Head items: pivot bottom-centre, sits on the top of the head. ' +
+  'Face items: pivot centre, sits on the face (not drawn when the peanut faces away from the camera). Back items: pivot centre, drawn BEHIND the peanut when it faces the camera and IN FRONT when it faces away. ' +
+  'Body items: pivot centre, drawn over the torso. Provide south, south-east, east, north-east, north (+ the three west directions, or use mirror:true).';
+const ACC_ANCHOR = { head: 'head', face: 'face', back: 'back', body: 'body' };         // default anchor per category
+const ACC_PIVOT = { head: [0.5, 1], face: [0.5, 0.5], back: [0.5, 0.5], body: [0.5, 0.5] }; // default pivot (fraction of the accessory sprite) per category
+const ACC_MIRROR_OF = { west: ['east', true], 'north-west': ['north-east', true], 'south-west': ['south-east', true] };
+const ACC_MARK = { head: '#ffd54a', face: '#4ad8ff', back: '#ff9a3c', body: '#ff5cd6' };
+
+// Alpha-based measurements of a character sprite frame (cached per image): the anchors follow every walk frame automatically.
+const ACC_ANCHOR_CACHE = new WeakMap();
+let _accScan = null;
+function accAnchors(img) {
+  let a = ACC_ANCHOR_CACHE.get(img);
+  if (a) return a;
+  const w = img.naturalWidth, h = img.naturalHeight;
+  if (!_accScan) { _accScan = document.createElement('canvas'); }
+  _accScan.width = w; _accScan.height = h;
+  const g = _accScan.getContext('2d', { willReadFrequently: true });
+  g.clearRect(0, 0, w, h); g.drawImage(img, 0, 0);
+  const d = g.getImageData(0, 0, w, h).data;
+  let l = w, r = -1, t = h, b = -1;
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (d[(y * w + x) * 4 + 3] > 16) { if (x < l) l = x; if (x > r) r = x; if (y < t) t = y; if (y > b) b = y; }
+  if (r < 0) { l = 0; r = w - 1; t = 0; b = h - 1; }
+  const H = b - t + 1, W = r - l + 1;
+  const cen = (r0, r1) => { let sx = 0, n = 0; for (let y = Math.floor(t + r0 * H); y < Math.floor(t + r1 * H); y++) for (let x = 0; x < w; x++) if (d[(y * w + x) * 4 + 3] > 16) { sx += x; n++; } return n ? sx / n : (l + r) / 2; };
+  a = { l, r, t, b, W, H, headCx: cen(0, 0.3), midCx: cen(0.4, 0.7) };
+  ACC_ANCHOR_CACHE.set(img, a);
+  return a;
+}
+// Anchor point (in sprite pixels) for a named place on the peanut, adjusted for the facing direction.
+function accPoint(a, name, v) {
+  switch (name) {
+    case 'head': return { x: a.headCx + v.x * 0.03 * a.W, y: a.t + 0.07 * a.H };
+    case 'face': return { x: a.headCx + v.x * 0.10 * a.W, y: a.t + 0.22 * a.H };
+    case 'neck': return { x: (a.headCx + a.midCx) / 2 + v.x * 0.04 * a.W, y: a.t + 0.38 * a.H };
+    case 'body': return { x: a.midCx + v.x * 0.03 * a.W, y: a.t + 0.56 * a.H };
+    case 'back': return { x: a.midCx - v.x * 0.26 * a.W, y: a.t + 0.50 * a.H - v.y * 0.24 * a.H }; // facing the camera it rides higher so it peeks out above the shoulders
+    case 'feet': return { x: (a.l + a.r) / 2, y: a.b };
+    default: return { x: (a.l + a.r) / 2, y: a.t + 0.5 * a.H };
+  }
+}
+
+// ---- Drawing: procedural effects ----
+function accRand(seed) { const x = Math.sin(seed * 127.1 + 311.7) * 43758.5453; return x - Math.floor(x); }
+const ACC_FX = {
+  sparkle: {
+    behind(ctx, f, t) { const p = f.pt('body'); ctx.save(); const gr = ctx.createRadialGradient(p.x, p.y, 2, p.x, p.y, f.size * 0.6); gr.addColorStop(0, 'rgba(255,214,90,0.28)'); gr.addColorStop(1, 'rgba(255,214,90,0)'); ctx.fillStyle = gr; ctx.beginPath(); ctx.arc(p.x, p.y, f.size * 0.6, 0, 7); ctx.fill(); ctx.restore(); this.stars(ctx, f, t, true); },
+    top(ctx, f, t) { this.stars(ctx, f, t, false); },
+    stars(ctx, f, t, back) {
+      const p = f.pt('body'), u = Math.max(1, f.k * 1.4);
+      for (let i = 0; i < 10; i++) {
+        const ang = i * 2.399 + t * 0.55, rx = f.size * (0.34 + 0.1 * accRand(i)), ry = f.size * (0.4 + 0.1 * accRand(i + 9));
+        const x = p.x + Math.cos(ang) * rx, y = p.y + Math.sin(ang) * ry;
+        if ((Math.sin(ang) < 0) !== back) continue;                 // upper half of the orbit is behind the peanut, lower half in front
+        const tw = 0.5 + 0.5 * Math.sin(t * 4 + i * 1.7);
+        ctx.globalAlpha = 0.25 + 0.75 * tw; ctx.fillStyle = i % 3 === 0 ? '#ffffff' : '#ffd95a';
+        ctx.fillRect(x - u / 2, y - u * 1.5, u, u * 3); ctx.fillRect(x - u * 1.5, y - u / 2, u * 3, u);
+      }
+      ctx.globalAlpha = 1;
+    },
+  },
+  radioactive: {
+    behind(ctx, f, t) { const p = f.pt('body'), pulse = 0.85 + 0.15 * Math.sin(t * 3); ctx.save(); const R = f.size * 0.62 * pulse; const gr = ctx.createRadialGradient(p.x, p.y, 3, p.x, p.y, R); gr.addColorStop(0, 'rgba(90,255,70,0.42)'); gr.addColorStop(0.6, 'rgba(60,220,50,0.18)'); gr.addColorStop(1, 'rgba(60,220,50,0)'); ctx.fillStyle = gr; ctx.beginPath(); ctx.arc(p.x, p.y, R, 0, 7); ctx.fill(); ctx.restore(); },
+    top(ctx, f, t) { const p = f.pt('body'), u = Math.max(1, f.k * 1.6); ctx.fillStyle = '#9dff7a'; for (let i = 0; i < 5; i++) { const life = (t * 0.6 + i * 0.2) % 1; ctx.globalAlpha = 1 - life; ctx.fillRect(p.x + (accRand(i) - 0.5) * f.size * 0.7, p.y + f.size * 0.2 - life * f.size * 0.6, u, u); } ctx.globalAlpha = 1; },
+  },
+  flames: {
+    top(ctx, f, t) {
+      const p = f.pt('neck'), u = Math.max(1, f.k * 1.8);
+      for (let i = 0; i < 6; i++) {
+        const life = (t * 1.3 + i * 0.37) % 1, x = p.x + (i - 2.5) * 0.13 * f.size + Math.sin(t * 6 + i) * u * 0.5, y = p.y - life * 0.32 * f.size;
+        ctx.globalAlpha = 1 - life * 0.9; ctx.fillStyle = life < 0.3 ? '#ffe45c' : life < 0.65 ? '#ff9a2a' : '#e8461c';
+        const s = u * (2.4 - 1.5 * life); ctx.fillRect(x - s / 2, y - s * 0.65, s, s * 1.3);
+      }
+      ctx.globalAlpha = 1;
+    },
+  },
+  sparks: {
+    top(ctx, f, t) {
+      const p = f.pt('body'), bucket = Math.floor(t * 9);
+      ctx.save(); ctx.lineJoin = 'miter'; ctx.lineCap = 'butt';
+      for (let i = 0; i < 3; i++) {
+        const seed = bucket * 7.13 + i * 3.1, ang = accRand(seed) * 6.283;
+        let x = p.x + Math.cos(ang) * f.size * 0.3, y = p.y + Math.sin(ang) * f.size * 0.36;
+        ctx.beginPath(); ctx.moveTo(x, y);
+        for (let s = 0; s < 3; s++) { x += (accRand(seed + s + 1) - 0.5) * f.size * 0.2 + Math.cos(ang) * f.size * 0.07; y += (accRand(seed + s + 5) - 0.5) * f.size * 0.2 + Math.sin(ang) * f.size * 0.07; ctx.lineTo(x, y); }
+        ctx.strokeStyle = '#7fe8ff'; ctx.lineWidth = Math.max(1.5, f.k * 1.6); ctx.stroke();
+        ctx.strokeStyle = '#ffffff'; ctx.lineWidth = Math.max(1, f.k * 0.7); ctx.stroke();
+      }
+      ctx.restore();
+    },
+  },
+  shadow: {
+    behind(ctx, f, t) { const p = f.pt('body'), R = f.size * (0.68 + 0.05 * Math.sin(t * 2)); ctx.save(); ctx.translate(p.x, p.y); ctx.scale(1, 1.15); const gr = ctx.createRadialGradient(0, 0, 3, 0, 0, R); gr.addColorStop(0, 'rgba(10,0,24,0.7)'); gr.addColorStop(0.6, 'rgba(30,0,60,0.35)'); gr.addColorStop(1, 'rgba(30,0,60,0)'); ctx.fillStyle = gr; ctx.beginPath(); ctx.arc(0, 0, R, 0, 7); ctx.fill(); ctx.restore(); },
+    top(ctx, f, t) { const p = f.pt('body'), u = Math.max(1, f.k * 1.8); ctx.fillStyle = '#1c0a30'; for (let i = 0; i < 6; i++) { const life = (t * 0.5 + i / 6) % 1; ctx.globalAlpha = 0.9 * (1 - life); ctx.fillRect(p.x + (accRand(i + 3) - 0.5) * f.size * 0.8, p.y + f.size * 0.25 - life * f.size * 0.7, u * 1.4, u * 1.4); } ctx.globalAlpha = 1; },
+  },
+  halo: {
+    top(ctx, f, t) { const p = f.pt('head'); const y = p.y - f.size * 0.05 + Math.sin(t * 2) * f.k; ctx.save(); ctx.shadowColor = '#ffe27a'; ctx.shadowBlur = 6; ctx.strokeStyle = '#ffd84a'; ctx.lineWidth = Math.max(1.5, f.k * 1.6); ctx.beginPath(); ctx.ellipse(p.x, y, f.size * 0.17, f.size * 0.055, 0, 0, 7); ctx.stroke(); ctx.restore(); },
+  },
+  dollars: {
+    top(ctx, f, t) {
+      const p = f.pt('head'); ctx.save(); ctx.font = `bold ${Math.max(8, Math.round(f.size * 0.17))}px monospace`; ctx.textAlign = 'center'; ctx.lineWidth = 3; ctx.strokeStyle = '#0b2a0f'; ctx.fillStyle = '#5cff6a';
+      for (let i = 0; i < 3; i++) { const life = (t * 0.7 + i / 3) % 1, x = p.x + (i - 1) * f.size * 0.2 + Math.sin(t * 2 + i * 2) * f.k * 2, y = p.y - f.size * 0.04 - life * f.size * 0.3; ctx.globalAlpha = Math.sin(life * Math.PI); ctx.strokeText('$', x, y); ctx.fillText('$', x, y); }
+      ctx.restore();
+    },
+  },
+};
+
+class AccessorySystem {
+  constructor(ach) {
+    this.ach = ach;
+    this.defs = ACCESSORY_DEFS;
+    this.byId = new Map();
+    this._byEv = {};
+    for (const d of this.defs) {
+      if (this.byId.has(d.id)) { console.warn('Duplicate accessory id', d.id); continue; }
+      this.byId.set(d.id, d);
+      const evs = d.req.ach ? ['unlock'] : ACC_STATS[d.req.stat].ev;
+      for (const e of evs) (this._byEv[e] = this._byEv[e] || []).push(d);
+    }
+    this.unlocked = {};
+    this.equipped = { head: null, face: null, back: null, body: null, fx: null };
+    this.settings = { markers: false };       // dev aid: draw small markers at the anchors of art-less wearables
+    this.migrated = false;
+    this.art = {};                             // id -> { dir: Image } (or { single: Image })
+    this._f = null; this._lt = 0; this._ghost = {};
+    this._load(ach._accRaw);
+    ach.accSerialize = () => this.serialize();
+    ach.onEvent = (ev) => this.check(ev);
+    for (const d of this.defs) if (d.art) this._loadArt(d);
+    this._startup(ach._cosRaw);
+  }
+
+  // ---- unlocking ----
+  progress(d) {
+    if (d.req.ach) { const a = this.ach.byId.get(d.req.ach); const s = a ? this.ach.status(a) : { val: 0, target: 1, done: false }; return { val: s.done ? 1 : 0, target: 1, done: s.done }; }
+    const v = ACC_STATS[d.req.stat].get(this.ach);
+    return { val: Math.min(v, d.req.n), target: d.req.n, done: v >= d.req.n };
+  }
+  _met(d) { return this.progress(d).done; }
+  isUnlocked(id) { return !!this.unlocked[id]; }
+  unlockedCount() { return this.defs.filter((d) => this.unlocked[d.id]).length; }
+  // Re-checks only the accessories whose statistic can change on this event (called by the achievement system).
+  check(ev) {
+    const list = ev ? this._byEv[ev] : this.defs;
+    if (!list) return;
+    for (const d of list) if (!this.unlocked[d.id] && this._met(d)) this._grant(d, true);
+  }
+  _grant(d, notify) {
+    if (this.unlocked[d.id]) return false;       // an accessory unlocks once and notifies once
+    this.unlocked[d.id] = Date.now();
+    this.ach._dirty = true;
+    if (notify) this.ach._enqueue({ tier: 'gold', icon: 'ACC', name: d.name, desc: 'New accessory unlocked - equip it in Accessories.', header: 'ACCESSORY UNLOCKED' });
+    this.ach.save(true);
+    return true;
+  }
+  // First start with accessories: convert old player-skin rewards, then grant (silently, with ONE summary toast) everything the
+  // player's existing progress already earned, so a long-time player is not flooded with dozens of notifications.
+  _startup(legacyCos) {
+    if (this.migrated) { this.check(); return; }
+    const before = this.unlockedCount();
+    const lu = legacyCos && legacyCos.unlocked && typeof legacyCos.unlocked === 'object' ? legacyCos.unlocked : {};
+    for (const skin of Object.keys(ACC_SKIN_MIGRATION)) if (Number.isFinite(lu[skin]) && this.byId.has(ACC_SKIN_MIGRATION[skin])) this._grant(this.byId.get(ACC_SKIN_MIGRATION[skin]), false);
+    for (const d of this.defs) if (!this.unlocked[d.id] && this._met(d)) this._grant(d, false);
+    const eq = legacyCos && legacyCos.equipped && legacyCos.equipped.player;       // an equipped skin becomes the matching accessory
+    const mapped = ACC_SKIN_MIGRATION[eq] && this.byId.get(ACC_SKIN_MIGRATION[eq]);
+    if (mapped && this.unlocked[mapped.id] && !this.equipped[mapped.cat]) this.equipped[mapped.cat] = mapped.id;
+    this.migrated = true; this.ach._dirty = true;
+    const n = this.unlockedCount() - before;
+    if (n > 0) this.ach._enqueue({ tier: 'gold', icon: 'ACC', name: n + (n === 1 ? ' accessory' : ' accessories') + ' unlocked', desc: 'Earned from your existing progress - equip them in Accessories.', header: 'ACCESSORIES UNLOCKED' });
+    this.ach.save(true);
+  }
+
+  // ---- equipping ----
+  equip(id) {
+    const d = this.byId.get(id);
+    if (!d || !this.unlocked[id]) return false;                      // locked accessories can never be equipped
+    this.equipped[d.cat] = id; this.ach.save(true); return true;     // one per category; the other categories are untouched
+  }
+  unequip(cat) { this.equipped[cat] = null; this.ach.save(true); }
+  unequipAll() { for (const c of ACC_CATS) this.equipped[c.id] = null; this.ach.save(true); }
+  isEquipped(d) { return this.equipped[d.cat] === d.id; }
+  setMarkers(on) { this.settings.markers = !!on; this.ach.save(true); }
+
+  // ---- art ----
+  _loadArt(d) {
+    const a = d.art, store = (this.art[d.id] = {});
+    if (a.mode === 'single') _loadImage(`assets/accessories/${d.id}.png`).then((img) => { store.single = img; });
+    else for (const dir of (a.mirror ? ['south', 'south-east', 'east', 'north-east', 'north'] : SPRITE_DIRECTIONS)) _loadImage(`assets/accessories/${d.id}/${dir}.png`).then((img) => { store[dir] = img; });
+  }
+  // Runtime art registration (tests / tools): images = { direction: Image|canvas } (or { single: Image }), opts = the same fields as `art`.
+  setArt(id, images, opts) { const d = this.byId.get(id); d.art = Object.assign({}, opts || {}); this.art[id] = images; }
+  hasArt(d) { return !!d.art || !!d.fx; }
+  _artFor(d, dir) {
+    const store = this.art[d.id]; if (!store) return null;
+    if (d.art.mode === 'single') return isSpriteReady(store.single) ? { img: store.single, flip: false } : null;
+    if (d.art.mode === 'overlay') return isSpriteReady(store[dir]) ? { img: store[dir], flip: false } : null;
+    if (isSpriteReady(store[dir])) return { img: store[dir], flip: false };
+    const m = d.art.mirror && ACC_MIRROR_OF[dir];
+    return m && isSpriteReady(store[m[0]]) ? { img: store[m[0]], flip: m[1] } : null;
+  }
+  artReport() {   // what still needs art (console: ACCESSORIES.artReport())
+    const missing = this.defs.filter((d) => !d.fx && !d.art);
+    return { guide: ACCESSORY_ART_GUIDE, count: missing.length, needed: missing.map((d) => ({ id: d.id, category: d.cat, name: d.name, folder: 'assets/accessories/' + d.id + '/', note: d.note })) };
+  }
+
+  // ---- drawing: frames ----
+  // A "frame" describes where the character sprite is on screen, so accessories can be placed on it.
+  frameFromSprite(sprite, dir, cx, cy, displaySize) {
+    const size = spriteScaledSize(PLAYER_SPRITES, sprite, displaySize), k = size / sprite.naturalWidth;
+    const A = accAnchors(sprite), v = DIRECTION_VECTORS[dir] || DIRECTION_VECTORS.south, x0 = cx - size / 2, y0 = cy - size / 2;
+    return { sprite, dir, v, A, k, size, cx, cy, x0, y0, pt: (name) => { const p = accPoint(A, name, v); return { x: x0 + p.x * k, y: y0 + p.y * k }; } };
+  }
+  playerFrame(player, cx, cy) {
+    const sprite = player._currentSpriteImage();
+    if (!isSpriteReady(sprite)) return null;
+    return this.frameFromSprite(sprite, player.facing, cx, cy, CONFIG.PLAYER.spriteDisplaySize * PLAYER_SCALE);
+  }
+  _anyEquipped() { const e = this.equipped; return e.head || e.face || e.back || e.body || e.fx; }
+  // phase: 'behind' (before the character), 'body' (right after it), 'top' (after the weapon). t = seconds, for animated effects.
+  drawPhase(ctx, f, phase, t) {
+    if (!f || !this._anyEquipped()) return;
+    t = t === undefined ? performance.now() / 1000 : t;
+    const e = this.equipped, v = f.v, backBehind = v.y > -0.3, faceShown = v.y > -0.3;
+    if (phase === 'behind') {
+      this._fx(ctx, f, e.fx, 'behind', t);
+      if (e.back && backBehind) this._wearable(ctx, f, this.byId.get(e.back));
+    } else if (phase === 'body') {
+      if (e.body) this._wearable(ctx, f, this.byId.get(e.body));
+    } else {
+      if (e.back && !backBehind) this._wearable(ctx, f, this.byId.get(e.back));
+      if (e.head) this._wearable(ctx, f, this.byId.get(e.head));
+      if (e.face && (faceShown || this.byId.get(e.face).visibleFromBack)) this._wearable(ctx, f, this.byId.get(e.face));
+      this._fx(ctx, f, e.fx, 'top', t);
+    }
+  }
+  _wearable(ctx, f, d) {
+    const a = d.art;
+    if (a) {
+      const found = this._artFor(d, f.dir);
+      if (found) { a.mode === 'overlay' ? this._drawOverlay(ctx, f, found.img) : this._drawAnchored(ctx, f, d, found.img, found.flip); return; }
+    }
+    if (this.settings.markers) this._marker(ctx, f, d);
+  }
+  _drawAnchored(ctx, f, d, img, flip) {
+    const a = d.art, piv = a.pivot || ACC_PIVOT[d.cat], off = (a.off && a.off[f.dir]) || [0, 0];
+    const p = f.pt(a.anchor || ACC_ANCHOR[d.cat]), w = img.naturalWidth * f.k, h = img.naturalHeight * f.k;
+    ctx.save(); ctx.imageSmoothingEnabled = false;                  // pixel art: never smoothed, never rotated
+    ctx.translate(p.x + (flip ? -off[0] : off[0]) * f.k, p.y + off[1] * f.k);
+    if (flip) ctx.scale(-1, 1);                                     // west sides reuse the east art mirrored about its pivot
+    ctx.drawImage(img, -piv[0] * w, -piv[1] * h, w, h);
+    ctx.restore();
+  }
+  _drawOverlay(ctx, f, img) {   // a full-frame layer authored on the idle canvas: re-aligned to the current walk frame by the head position
+    const ref = accAnchors(PLAYER_SPRITES.idle[f.dir]), cur = f.A;
+    const x = f.x0 + cur.headCx * f.k - ref.headCx * f.k, y = f.y0 + cur.t * f.k - ref.t * f.k;
+    ctx.save(); ctx.imageSmoothingEnabled = false; ctx.drawImage(img, x, y, img.naturalWidth * f.k, img.naturalHeight * f.k); ctx.restore();
+  }
+  _marker(ctx, f, d) {          // dev placeholder: NOT art, just shows where this accessory attaches
+    const p = f.pt(d.art && d.art.anchor || ACC_ANCHOR[d.cat]), s = Math.max(3, 7 * f.k);
+    ctx.save(); ctx.fillStyle = '#10131a'; ctx.fillRect(p.x - s / 2 - 1, p.y - s / 2 - 1, s + 2, s + 2); ctx.fillStyle = ACC_MARK[d.cat]; ctx.fillRect(p.x - s / 2, p.y - s / 2, s, s);
+    ctx.fillStyle = '#10131a'; ctx.font = `bold ${Math.max(5, Math.round(s * 0.85))}px monospace`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(d.name[0], p.x, p.y + 0.5); ctx.restore();
+  }
+  _fx(ctx, f, id, phase, t) {
+    if (!id) return;
+    const d = this.byId.get(id), fx = d.fx && ACC_FX[d.fx];
+    if (fx && fx[phase]) { ctx.save(); fx[phase](ctx, f, t); ctx.restore(); }
+  }
+
+  // ---- companions: follow the player in WORLD space (smoothly, with a little lag), drawn like any other entity ----
+  _companionSprite(kind, dir) {
+    if (kind === 'miniPeanut') return PLAYER_SPRITES ? { img: PLAYER_SPRITES.idle[dir] || PLAYER_SPRITES.idle.south, sheet: PLAYER_SPRITES, size: CONFIG.PLAYER.spriteDisplaySize * PLAYER_SCALE * 0.4, alpha: 1 } : null;
+    const Z = ZOMBIE_SPRITES.walker;
+    if (!Z) return null;
+    const zsize = zombieVisualSize(CONFIG.ZOMBIE_TYPES.walker);
+    if (kind === 'miniZombies') return { img: Z.idle[dir] || Z.idle.south, sheet: Z, size: zsize * 0.36, alpha: 1 };
+    const base = Z.idle[dir] || Z.idle.south;                       // ghost: your zombie sprite, recoloured pale-blue and see-through
+    if (!isSpriteReady(base)) return null;
+    const g = this._ghost[dir] || (this._ghost[dir] = cosRecolor(base, { ramp: 'ghost' }));
+    return { img: g, sheet: Z, size: zsize * 0.4, alpha: 0.62 };
+  }
+  _companionList(player, t) {   // [{x, y (world), hover (px), kind, dir}]
+    const d = this.byId.get(this.equipped.fx), kind = d && d.companion ? d.fx : null;
+    if (!kind) return null;
+    const now = performance.now(), dt = Math.min(0.05, Math.max(0, (now - this._lt) / 1000));
+    if (now !== this._lt) {
+      this._lt = now;
+      const tx = player.x + (kind === 'miniZombies' ? 0 : 34) + Math.sin(t * 1.3) * 3, ty = player.y + (kind === 'miniZombies' ? 0 : -16) + Math.cos(t * 1.7) * 3;
+      if (!this._f || Math.hypot(this._f.x - tx, this._f.y - ty) > 500) this._f = { x: tx, y: ty };   // first frame / teleport: no long glide
+      const k = 1 - Math.exp(-5 * dt);
+      this._f.x += (tx - this._f.x) * k; this._f.y += (ty - this._f.y) * k;
+    }
+    const out = [];
+    if (kind === 'miniZombies') for (let i = 0; i < 3; i++) { const a = t * 1.5 + i * 2.094; out.push({ x: this._f.x + Math.cos(a) * 40, y: this._f.y + Math.sin(a) * 30, hover: 2 + Math.sin(t * 6 + i) * 1.2, kind, dir: Utils.directionFromVector(-Math.cos(a), -Math.sin(a)) }); }
+    else out.push({ x: this._f.x, y: this._f.y, hover: 12 + Math.sin(t * 3) * 3, kind, dir: 'south' });
+    return out;
+  }
+  // Called by Player.draw outside its own transform: behindOnly=true draws the ones farther from the camera than the player.
+  drawCompanions(ctx, player, camera, canvas, behindOnly) {
+    if (!this.equipped.fx) return;
+    const t = performance.now() / 1000, list = this._companionList(player, t);
+    if (!list) return;
+    for (const c of list) {
+      if ((c.y <= player.y) !== behindOnly) continue;
+      const s = this._companionSprite(c.kind, c.dir);
+      if (!s || !isSpriteReady(s.img)) continue;
+      const p = camera.worldToScreen(c.x, c.y, canvas);
+      const lift = camera.rig3d && GAME3D.feetAnchor ? BUILDING_OCCLUSION_CONFIG.playerFeetOffset * PLAYER_SCALE * (s.size / (CONFIG.PLAYER.spriteDisplaySize * PLAYER_SCALE)) : 0;
+      ctx.save(); camera.applyEntityScale(ctx, p); ctx.imageSmoothingEnabled = false; ctx.globalAlpha = s.alpha;
+      const size = spriteScaledSize(s.sheet, s.img, s.size);
+      ctx.drawImage(s.img, p.x - size / 2, p.y - lift - c.hover - size / 2, size, size);
+      ctx.restore();
+    }
+  }
+
+  // ---- previews (menu) ----
+  // Draws the peanut wearing the equipped accessories, facing `dir`, with the same code path as the game.
+  drawPreview(ctx, W, H, dir, t, equipped) {
+    ctx.clearRect(0, 0, W, H); ctx.imageSmoothingEnabled = false;
+    const sprite = PLAYER_SPRITES && PLAYER_SPRITES.idle[dir];
+    if (!isSpriteReady(sprite)) return;
+    const saved = this.equipped; if (equipped) this.equipped = equipped;
+    const f = this.frameFromSprite(sprite, dir, W / 2, H * 0.54, W * 0.62);
+    this.drawPhase(ctx, f, 'behind', t);
+    ctx.drawImage(sprite, f.x0, f.y0, f.size, f.size);
+    this.drawPhase(ctx, f, 'body', t);
+    this.drawPhase(ctx, f, 'top', t);
+    const d = this.equipped.fx && this.byId.get(this.equipped.fx);
+    if (d && d.companion) {   // companions in the preview sit at fixed spots beside the peanut
+      const spots = d.fx === 'miniZombies' ? [[-0.34, 0.1], [0.3, -0.2], [0.34, 0.28]] : [[0.36, -0.18]];
+      for (const [ox, oy] of spots) { const s = this._companionSprite(d.fx, 'south'); if (s && isSpriteReady(s.img)) { const sz = spriteScaledSize(s.sheet, s.img, s.size * (W * 0.62) / (CONFIG.PLAYER.spriteDisplaySize * PLAYER_SCALE)); ctx.save(); ctx.globalAlpha = s.alpha; ctx.drawImage(s.img, W / 2 + ox * W - sz / 2, H * 0.5 + oy * H + Math.sin(t * 3) * 2 - sz / 2, sz, sz); ctx.restore(); } }
+    }
+    this.equipped = saved;
+  }
+  serialize() { return { v: ACC_SAVE_VERSION, unlocked: this.unlocked, equipped: this.equipped, settings: this.settings, migrated: this.migrated }; }
+  _load(raw) {
+    if (!raw || typeof raw !== 'object') return;
+    if (raw.unlocked && typeof raw.unlocked === 'object') for (const id of Object.keys(raw.unlocked)) if (this.byId.has(id) && Number.isFinite(raw.unlocked[id]) && raw.unlocked[id] > 0) this.unlocked[id] = raw.unlocked[id];
+    if (raw.equipped && typeof raw.equipped === 'object') for (const c of ACC_CATS) { const d = this.byId.get(raw.equipped[c.id]); if (d && d.cat === c.id && this.unlocked[d.id]) this.equipped[c.id] = d.id; }
+    if (raw.settings && typeof raw.settings === 'object') this.settings.markers = !!raw.settings.markers;
+    this.migrated = raw.migrated === true;
+  }
+}
+
+// ===== Accessories menu =====
+class AccessoriesMenu extends PanelMenu {
+  constructor(sys) {
+    super('accessoriesScreen');
+    this.sys = sys; this.cat = 'all'; this.dirIdx = 0; this._timer = null;
+    this.pv = document.getElementById('accPreview');
+  }
+  open() { if (this.isOpen) return; super.open(); this._timer = setInterval(() => this._tickPreview(), 90); }
+  close() { if (!this.isOpen) return; super.close(); clearInterval(this._timer); this._timer = null; }
+  onAct(act, t) {
+    const s = this.sys;
+    if (act === 'cat') { Sound.uiClick(); this.cat = t.dataset.cat; this.render(); }
+    else if (act === 'equip') { if (s.equip(t.dataset.id)) Sound.uiClick(); else Sound.emptyClick(); this.render(); }
+    else if (act === 'unequip') { s.unequip(s.byId.get(t.dataset.id).cat); Sound.uiClick(); this.render(); }
+    else if (act === 'unequipAll') { s.unequipAll(); Sound.uiClick(); this.render(); }
+    else if (act === 'rotate') { Sound.uiClick(); this.dirIdx = (this.dirIdx + 1) % SPRITE_DIRECTIONS.length; this._tickPreview(); }
+    else if (act === 'markers') { s.setMarkers(!s.settings.markers); Sound.uiClick(); this.render(); }
+    else super.onAct(act);
+  }
+  _tickPreview() { if (this.isOpen) this.sys.drawPreview(this.pv.getContext('2d'), this.pv.width, this.pv.height, SPRITE_DIRECTIONS[this.dirIdx], performance.now() / 1000); }
+  render() {
+    const s = this.sys, un = s.unlockedCount(), total = s.defs.length, pct = Math.round((un / total) * 100);
+    document.getElementById('accSummary').innerHTML = `<b>${un}</b> / ${total} UNLOCKED <span class="achPct">${pct}%</span><div class="achBar"><i style="width:${pct}%"></i></div>`;
+    const cats = [{ id: 'all', name: 'All' }, ...ACC_CATS];
+    document.getElementById('accTabs').innerHTML = cats.map((c) => {
+      const list = c.id === 'all' ? s.defs : s.defs.filter((d) => d.cat === c.id);
+      return `<button class="shopTab achTab${this.cat === c.id ? ' active' : ''}" data-act="cat" data-cat="${c.id}">${c.name.toUpperCase()} <em>${list.filter((d) => s.unlocked[d.id]).length}/${list.length}</em></button>`;
+    }).join('');
+    document.getElementById('accWorn').innerHTML = ACC_CATS.map((c) => { const d = s.equipped[c.id] && s.byId.get(s.equipped[c.id]); return `<div class="accWornRow"><span>${c.name.toUpperCase()}</span><b>${d ? d.name : '-'}</b></div>`; }).join('');
+    document.getElementById('accMarkersBtn').textContent = 'MARKERS: ' + (s.settings.markers ? 'ON' : 'OFF');
+    const list = s.defs.filter((d) => this.cat === 'all' || d.cat === this.cat);
+    let html = '';
+    for (const d of list) {
+      const open = !!s.unlocked[d.id], eq = s.isEquipped(d), p = s.progress(d), needsArt = !s.hasArt(d);
+      const prog = open ? '' : `<div class="achProg"><div class="achBar"><i style="width:${Math.round(100 * p.val / Math.max(1, p.target))}%"></i></div><span>${d.req.ach ? 'Not yet' : this._fmt(d, p.val) + ' / ' + this._fmt(d, p.target)}</span></div>`;
+      const btn = !open ? '<button class="shopBuyBtn cant" disabled>LOCKED</button>' : eq ? `<button class="shopBuyBtn cosUn" data-act="unequip" data-id="${d.id}">UNEQUIP</button>` : `<button class="shopBuyBtn" data-act="equip" data-id="${d.id}">EQUIP</button>`;
+      html += `<div class="cosCard${open ? ' open' : ' locked'}${eq ? ' equipped' : ''}" data-cat="${d.cat}">` +
+        `<canvas class="cosPrev accIcon" width="80" height="80" data-id="${d.id}" data-state="${open ? 'open' : 'locked'}"></canvas>` +
+        `<div class="cosName">${d.name}</div><div class="cosTag ${eq ? 'eq' : open ? 'un' : 'lk'}">${eq ? 'EQUIPPED' : open ? 'UNLOCKED' : 'LOCKED'} - ${ACC_CATS.find((c) => c.id === d.cat).name.toUpperCase()}</div>` +
+        `${needsArt ? '<div class="cosTag art">ART NEEDED</div>' : ''}<div class="cosReq">${open ? 'Earned: ' : 'To unlock: '}${d.reqText}</div>${prog}<div class="cosBtn">${btn}</div></div>`;
+    }
+    document.getElementById('accGrid').innerHTML = html;
+    for (const cv of document.querySelectorAll('#accGrid canvas.accIcon')) this._icon(cv, s.byId.get(cv.dataset.id), cv.dataset.state);
+    this._tickPreview();
+  }
+  _fmt(d, v) {
+    const st = d.req.stat;
+    if (st === 'runTime' || st === 'hardTime' || st === 'perfectTime') return Utils.formatTime(Math.floor(v));
+    if (st === 'distance') return v >= 1000 ? (v / 1000).toFixed(1) + ' km' : Math.floor(v) + ' m';
+    if (st === 'spent') return '$' + Math.floor(v);
+    return String(Math.floor(v));
+  }
+  _icon(cv, d, state) {   // real art when the accessory has it, a live effect for effects, otherwise a plain labelled tile (never fake art)
+    const g = cv.getContext('2d'), W = cv.width, H = cv.height; g.clearRect(0, 0, W, H); g.imageSmoothingEnabled = false;
+    const s = this.sys;
+    if (d.fx) s.drawPreview(g, W, H, 'south', 1.3, { head: null, face: null, back: null, body: null, fx: d.id });
+    else {
+      const found = d.art ? s._artFor(d, d.cat === 'back' ? 'north' : 'south') || s._artFor(d, 'east') : null;
+      if (found && d.art.mode !== 'overlay') { const k = Math.min((W - 8) / found.img.naturalWidth, (H - 8) / found.img.naturalHeight); g.drawImage(found.img, (W - found.img.naturalWidth * k) / 2, (H - found.img.naturalHeight * k) / 2, found.img.naturalWidth * k, found.img.naturalHeight * k); }
+      else { g.fillStyle = '#1b1f26'; g.fillRect(0, 0, W, H); g.strokeStyle = '#3a3f47'; g.setLineDash([4, 3]); g.strokeRect(4, 4, W - 8, H - 8); g.setLineDash([]); g.fillStyle = ACC_MARK[d.cat]; g.font = 'bold 11px monospace'; g.textAlign = 'center'; g.fillText(ACC_CATS.find((c) => c.id === d.cat).name.toUpperCase(), W / 2, H / 2 - 2); g.fillStyle = '#8a9099'; g.font = '9px monospace'; g.fillText('art needed', W / 2, H / 2 + 12); }
+    }
+    if (state === 'locked') { g.globalCompositeOperation = 'source-atop'; g.fillStyle = 'rgba(8,10,14,0.78)'; g.fillRect(0, 0, W, H); }
+  }
+}
+
+const COSMETICS = new CosmeticsSystem(ACH);          // weapon skins
+const ACCESSORIES = new AccessorySystem(ACH);       // player accessories (replaced the player skins)
 
   </script>
   <script>
@@ -7334,7 +7840,8 @@ class Game {
     this.weaponUnlocks = new WeaponUnlockSystem();
     this.shop = new ShopSystem(this); // upgrade shop every 2 minutes (see shop.js)
     this.achMenu = new AchievementMenu(ACH); // achievements menu (see achievements.js)
-    this.cosMenu = new CosmeticsMenu(COSMETICS); // cosmetics (player / weapon skins)
+    this.cosMenu = new CosmeticsMenu(COSMETICS); // weapon skins
+    this.accMenu = new AccessoriesMenu(ACCESSORIES); // player accessories
     this.statsMenu = new StatsMenu(ACH, () => this.state === 'playing' || this.state === 'paused' || this.state === 'shop'); // lifetime statistics
 
     this.state = 'menu'; // 'menu' | 'playing' | 'paused' | 'shop' | 'gameover'
@@ -7447,6 +7954,8 @@ class Game {
 
     document.getElementById('achievementsBtn').addEventListener('click', () => { Sound.uiClick(); this.achMenu.open(); });
     document.getElementById('pauseAchievementsBtn').addEventListener('click', () => { Sound.uiClick(); this.achMenu.open(); });
+    document.getElementById('accessoriesBtn').addEventListener('click', () => { Sound.uiClick(); this.accMenu.open(); });
+    document.getElementById('pauseAccessoriesBtn').addEventListener('click', () => { Sound.uiClick(); this.accMenu.open(); });
     document.getElementById('cosmeticsBtn').addEventListener('click', () => { Sound.uiClick(); this.cosMenu.open(); });
     document.getElementById('pauseCosmeticsBtn').addEventListener('click', () => { Sound.uiClick(); this.cosMenu.open(); });
     document.getElementById('statsBtn').addEventListener('click', () => { Sound.uiClick(); this.statsMenu.open(); });
