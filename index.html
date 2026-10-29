@@ -970,6 +970,7 @@ html, body, button, input, select, textarea {
 @media (max-width: 720px) { .achSummary { text-align: left; } .achDesc { font-size: 8px; } .achProg .achBar { max-width: none; } }
 @media (min-width: 1100px) and (min-height: 700px) { .achDesc, .achProg span { font-size: 10px; } .achName { font-size: 12px; } .achTab { font-size: 9px; } }
 /* ---- Cosmetics + Statistics screens ---- */
+#customizeScreen { z-index: 25; user-select: none; -webkit-user-select: none; }
 #cosmeticsScreen, #statsScreen { z-index: 25; padding: 12px; box-sizing: border-box; cursor: default; user-select: none; -webkit-user-select: none; }
 .cosGrid { display: grid !important; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; align-content: start; }
 .cosNote { grid-column: 1 / -1; font-size: 8px; line-height: 1.7; color: var(--px-dim); }
@@ -1945,7 +1946,7 @@ const EMBEDDED_ASSETS = {
     <!-- ===================== Start overlay (home page) ===================== -->
     <div id="startScreen" class="overlay homePage">
       <!-- Version: major.minor.patch. The patch digit goes 0-9 and rolls into the minor number (v3.88.9 -> v3.89.0); the minor number is two digits and rolls into the major number (v3.99.9 -> v4.00.0). Bumped by 1 on every change. -->
-      <div id="versionTag" class="versionTag">v3.91.8</div>
+      <div id="versionTag" class="versionTag">v3.92.5</div>
       <div id="homeSidebar" class="homeSidebar">
         <div class="homeSidebarTitle">Your Stats</div>
         <div class="homeSidebarStat">
@@ -1963,9 +1964,7 @@ const EMBEDDED_ASSETS = {
         <button id="startBtn" class="bigButton" disabled>Loading…</button>
         <button id="testModeBtn" class="testModeButton">Test Mode</button>
         <button id="howToPlayBtn" class="testModeButton">How to Play</button>
-        <button id="achievementsBtn" class="testModeButton">Achievements</button>
-        <button id="accessoriesBtn" class="testModeButton">Accessories</button>
-        <button id="cosmeticsBtn" class="testModeButton">Weapon Skins</button>
+        <button id="customizeBtn" class="testModeButton">Customize</button>
         <button id="statsBtn" class="testModeButton">Statistics</button>
       </div>
     </div>
@@ -2013,9 +2012,7 @@ const EMBEDDED_ASSETS = {
         <h1>PAUSED</h1>
         <p class="subtitle">Press <b>P</b> to resume</p>
         <button id="resumeBtn" class="bigButton">Resume</button>
-        <button id="pauseAchievementsBtn" class="smallLinkButton">Achievements</button>
-        <button id="pauseAccessoriesBtn" class="smallLinkButton">Accessories</button>
-        <button id="pauseCosmeticsBtn" class="smallLinkButton">Weapon Skins</button>
+        <button id="pauseCustomizeBtn" class="smallLinkButton">Customize</button>
         <button id="pauseStatsBtn" class="smallLinkButton">Statistics</button>
         <button id="pauseSaveQuitBtn" class="smallLinkButton">Save &amp; Quit</button>
         <p id="pauseMessage" class="inputError hidden"></p>
@@ -2076,6 +2073,17 @@ const EMBEDDED_ASSETS = {
       </div>
     </div>
 
+    <!-- ===================== Customize (hub for Accessories + Weapon Skins) ===================== -->
+    <div id="customizeScreen" class="overlay hidden">
+      <div class="overlayBox" role="dialog" aria-modal="true" aria-labelledby="custTitle">
+        <h1 id="custTitle">CUSTOMIZE</h1>
+        <p class="subtitle">Choose what to customize</p>
+        <button class="bigButton" data-act="accessories">Accessories</button>
+        <button class="bigButton" data-act="skins">Weapon Skins</button>
+        <button class="smallLinkButton" data-act="close">Back</button>
+      </div>
+    </div>
+
     <!-- ===================== Accessories ===================== -->
     <div id="accessoriesScreen" class="overlay hidden">
       <div class="shopPanel achPanel" role="dialog" aria-modal="true" aria-labelledby="accTitle">
@@ -2086,6 +2094,8 @@ const EMBEDDED_ASSETS = {
             <div id="accWorn" class="accWorn"></div>
             <div class="accBtns">
               <button class="shopWpn" data-act="rotate">ROTATE</button>
+              <button id="accSpinBtn" class="shopWpn" data-act="spin">SPIN: OFF</button>
+              <button id="accWalkBtn" class="shopWpn" data-act="walk">WALK: OFF</button>
               <button class="shopWpn" data-act="unequipAll">UNEQUIP ALL</button>
               <button id="accMarkersBtn" class="shopWpn" data-act="markers">MARKERS: OFF</button>
               <button id="accDebugBtn" class="shopWpn" data-act="debug">DEBUG: OFF</button>
@@ -2104,7 +2114,7 @@ const EMBEDDED_ASSETS = {
       <div class="shopPanel achPanel" role="dialog" aria-modal="true" aria-labelledby="stTitleMain">
         <div class="shopHeader"><h1 id="stTitleMain">STATISTICS</h1></div>
         <div id="statsBody" class="shopList statsBody"></div>
-        <div class="shopFooter"><button class="bigButton" data-act="close">CLOSE</button><span class="shopHint">ESC = CLOSE</span></div>
+        <div class="shopFooter"><button class="bigButton" data-act="achievements">ACHIEVEMENTS</button><button class="bigButton" data-act="close">CLOSE</button><span class="shopHint">ESC = CLOSE</span></div>
       </div>
     </div>
 
@@ -7389,6 +7399,25 @@ class PanelMenu {
   onAct(act) { if (act === 'close') { Sound.uiClick(); this.close(); } }
 }
 
+// Opens `child` from `parent`: the parent hides while the child is open and comes back when the child closes (Close / Esc steps back one level).
+function openChildMenu(parent, child) {
+  if (!child._origClose) {
+    child._origClose = child.close;
+    child.close = function () { const wasOpen = this.isOpen; this._origClose(); if (wasOpen && this._returnTo) { const p = this._returnTo; this._returnTo = null; p.open(); } };
+  }
+  child._returnTo = parent; parent.close(); child.open();
+}
+// ===== Customize hub: Accessories + Weapon Skins =====
+class CustomizeMenu extends PanelMenu {
+  constructor(acc, cos) { super('customizeScreen'); this.acc = acc; this.cos = cos; }
+  render() {}
+  onAct(act) {
+    if (act === 'accessories') { Sound.uiClick(); openChildMenu(this, this.acc); }
+    else if (act === 'skins') { Sound.uiClick(); openChildMenu(this, this.cos); }
+    else super.onAct(act);
+  }
+}
+
 // ===== Weapon skins menu =====
 class CosmeticsMenu extends PanelMenu {
   constructor(cos) { super('cosmeticsScreen'); this.cos = cos; }
@@ -7430,7 +7459,8 @@ class CosmeticsMenu extends PanelMenu {
 
 // ===== Statistics screen =====
 class StatsMenu extends PanelMenu {
-  constructor(sys, isRunActive) { super('statsScreen'); this.sys = sys; this.isRunActive = isRunActive; }
+  constructor(sys, isRunActive) { super('statsScreen'); this.sys = sys; this.isRunActive = isRunActive; this.achMenu = null; }
+  onAct(act) { if (act === 'achievements' && this.achMenu) { Sound.uiClick(); openChildMenu(this, this.achMenu); } else super.onAct(act); }   // Achievements live under Statistics
   _n(v) { return String(Math.floor(v)).replace(/\B(?=(\d{3})+(?!\d))/g, ','); }
   _t(s) { s = Math.floor(s); const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), x = s % 60; return h > 0 ? `${h}:${String(m).padStart(2, '0')}:${String(x).padStart(2, '0')}` : `${m}:${String(x).padStart(2, '0')}`; }
   _km(m) { return m >= 1000 ? (m / 1000).toFixed(2) + ' km' : Math.floor(m) + ' m'; }
@@ -7501,11 +7531,29 @@ const ACC_SAVE_VERSION = 1;
 // TESTING SWITCH: while true, every wearable that has art (the 42 head / face / back / body items) can be equipped without meeting its
 // unlock requirement. The requirements stay in ACCESSORY_DEFS untouched - set this to false to lock them behind progression again.
 const ACC_UNLOCK_ALL_WEARABLES = true;
-// Strap-split backpack placement, measured per facing direction of the peanut ([dx, dy] source pixels on top of the 'back' socket).
-// Used by the tactical, hiking and teddy packs; copy and edit per item (off = whole pack, strapOff = straps only) to fine-tune one pack.
-function accPackArt() {
-  return { artView: 'away', straps: true, strapOff: {},
-    off: { south: [0, 7], 'south-east': [2, 0], east: [1, -3], 'north-east': [3, -3], north: [0, -3], 'north-west': [-3, -3], west: [-1, -3], 'south-west': [-2, 0] } };
+// Neckwear (neckerchief, scarf, chain, dog tags) hangs from the neck, which sits higher in the north views (the head tilts back) and a little lower
+// in the side views: small per-direction vertical nudges on top of the stable collar row (ACC_ROWS.collar).
+function accNeckOff() { return { south: [0, 0], 'south-east': [0, 1], east: [0, 1], 'north-east': [0, -3], north: [0, -4], 'north-west': [0, -3], west: [0, 1], 'south-west': [0, 1] }; }
+// Tiny Cape (a BACK accessory): its collar end sits at the neck, the cape streams behind the peanut. pivots = where the collar is in each direction's
+// image (fractions of its visible pixels); the side views are nudged further back so the streamer shows behind the shoulder.
+function accCapeArt() {
+  const off = accNeckOff(); off.east = [-5, 1]; off.west = [5, 1];
+  return { anchor: 'collar', off, pivots: { south: [0.5, 0.7], 'south-east': [0.85, 0.8], east: [0.95, 0.1], 'north-east': [0.8, 0.05], north: [0.5, 0.02], 'north-west': [0.2, 0.05], west: [0.05, 0.1], 'south-west': [0.15, 0.8] } };
+}
+// Back-item (backpack) attachment settings, shared by all 10 packs and overridable per item.
+//  artView:'away'  a worn pack shows the image of the OPPOSITE direction (the image is the pack seen from its own pocketed front)
+//  straps          what part of the image is shoulder strap and must be drawn in FRONT of the torso (see accStrapRule): true = colour rule,
+//                  { edge / color / byDir } = other detectors, false = this design has no shoulder straps (tank, radio, sleeping bag, zombie arm)
+//  inset           fraction of the pack's visible width tucked behind the torso in side views (the rest sticks out behind the peanut)
+//  off / strapOff  per facing-direction nudges [dx, dy] (source pixels) for the whole pack / for the straps only
+function accPackArt(straps, extra, off) {   // off: per-direction overrides merged into the default off table
+  const a = { artView: 'away', strapOff: { south: [0, 4] },   // south: the harness image's strap tops would cover the mouth, so only the straps drop 4px
+    // Heights are no longer tuned per direction: the whole pack hangs at head top + ACC_BACK_ROW in all 8 directions. Only horizontal nudges remain.
+    off: { south: [0, 0], 'south-east': [0, 0], east: [0, 0], 'north-east': [3, 0], north: [0, 0], 'north-west': [-3, 0], west: [0, 0], 'south-west': [0, 0] } };
+  if (straps) a.straps = straps;
+  Object.assign(a, extra || {});
+  if (off) Object.assign(a.off, off);
+  return a;
 }
 // ==ACC-CORE-BEGIN==
 // ---- Measured attachment system -------------------------------------------------------------------------------------------------
@@ -7534,11 +7582,13 @@ function accBounds(img) {
   let l = w, r = -1, t = h, b = -1;
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (d[(y * w + x) * 4 + 3] > 16) { if (x < l) l = x; if (x > r) r = x; if (y < t) t = y; if (y > b) b = y; }
   if (r < 0) { l = 0; r = w - 1; t = 0; b = h - 1; }
-  // rim: the row where a hat's shell ends. A chin strap or tail hanging below it must not count as the hat's bottom edge, so this is
-  // the last row that is still at least 70% as wide as the widest row.
-  let mw = 0; const rw = [];
-  for (let y = t; y <= b; y++) { let n = 0; for (let x = l; x <= r; x++) if (d[(y * w + x) * 4 + 3] > 16) n++; rw.push(n); if (n > mw) mw = n; }
-  let rim = b + 1; for (let i = rw.length - 1; i >= 0; i--) if (rw[i] >= 0.7 * mw) { rim = t + i + 1; break; }
+  // rim: the row where a hat's shell ends. A chin strap or tail hanging below it must not count as the hat's bottom edge, and neither may horns or
+  // ears sticking out near the top (they are the widest rows in some views: the Viking helmet sat 6px lower facing south/north than facing east).
+  // So the width reference is the widest row in the LOWER half of the image, and rim = the last row still at least 70% as wide as that.
+  const rw = [];
+  for (let y = t; y <= b; y++) { let n = 0; for (let x = l; x <= r; x++) if (d[(y * w + x) * 4 + 3] > 16) n++; rw.push(n); }
+  const half = rw.length >> 1; let mw = 0; for (let i = half; i < rw.length; i++) if (rw[i] > mw) mw = rw[i];
+  let rim = b + 1; for (let i = rw.length - 1; i >= half; i--) if (rw[i] >= 0.7 * mw) { rim = t + i + 1; break; }
   B = { l, r, t, b, W: r - l + 1, H: b - t + 1, rim };
   ACC_MEASURE_CACHE.set(img, B);
   return B;
@@ -7551,7 +7601,7 @@ function accMeasure(img) {
   const rl = new Array(h).fill(-1), rr = new Array(h).fill(-1);
   let l = w, r = -1, t = h, b = -1;
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (A(x, y)) { if (rl[y] < 0) rl[y] = x; rr[y] = x; if (x < l) l = x; if (x > r) r = x; if (y < t) t = y; if (y > b) b = y; }
-  if (r < 0) { M = { l: 0, r: w - 1, t: 0, b: h - 1, W: w, H: h, hx: w / 2, hcx: w / 2, eye: null, neckY: h * 0.5, bcx: w / 2, trailL: w * 0.3, trailR: w * 0.7 }; ACC_SPRITE_CACHE.set(img, M); return M; }
+  if (r < 0) { M = { l: 0, r: w - 1, t: 0, b: h - 1, W: w, H: h, hx: w / 2, hcx: w / 2, eye: null, neckY: h * 0.5, bcx: w / 2, tcx: w / 2, trailL: w * 0.3, trailR: w * 0.7 }; ACC_SPRITE_CACHE.set(img, M); return M; }
   const H = b - t + 1, rowSpan = (y0, y1, f) => { let s = 0, n = 0; for (let y = y0; y <= y1; y++) if (rl[y] >= 0) { s += f(y); n++; } return n ? s / n : null; };
   let sx = 0, sn = 0;                                                  // head-top column: centroid of the first 6 rows
   for (let y = t; y < t + 6; y++) for (let x = 0; x < w; x++) if (A(x, y)) { sx += x; sn++; }
@@ -7569,7 +7619,8 @@ function accMeasure(img) {
   const bcx = rowSpan(y0, y1, (y) => (rl[y] + rr[y]) / 2) ?? hcx;
   let trailL = 1e9, trailR = -1e9;
   for (let y = y0; y <= y1; y++) if (rl[y] >= 0) { trailL = Math.min(trailL, rl[y]); trailR = Math.max(trailR, rr[y]); }
-  M = { l, r, t, b, W: r - l + 1, H, hx, hcx, eye, neckY, bcx, trailL, trailR };
+  const tcx = rowSpan(t + 35, Math.min(b, t + 47), (y) => (rl[y] + rr[y]) / 2) ?? bcx;   // torso centre over FIXED rows below the head top (stable; bcx's rows depend on the detected neck row)
+  M = { l, r, t, b, W: r - l + 1, H, hx, hcx, eye, neckY, bcx, tcx, trailL, trailR };
   ACC_SPRITE_CACHE.set(img, M);
   return M;
 }
@@ -7577,22 +7628,27 @@ function accMeasure(img) {
 // Measured from the peanut art: facing east/west the visible eye is ~9px in front of the head centre, so a glasses image (whose
 // middle is the bridge of the nose) needs to sit slightly behind the visible eye; facing south/south-east both eyes are visible.
 const ACC_SOCKET_OFF = {
-  face: { south: [0, 0], 'south-east': [-1, 0], east: [-4, 0], 'south-west': [1, 0], west: [4, 0] },
+  face: { south: [0, 0], 'south-east': [-1, 0], east: [-4, 0], 'south-west': [2, 0], west: [6, 0] },   // west/south-west sit 2px further back than the mirror of east/south-east: the west sprites' faces end ~2px further back (measured as lens protrusion past the head silhouette)
   head: { south: [0, 0], 'south-east': [0, 0], east: [0, 0], 'north-east': [0, 0], north: [0, 0], 'north-west': [0, 0], west: [0, 0], 'south-west': [0, 0] },
 };
+// Back accessories hang at this many source pixels below the head top, in every direction and animation frame. The head top is the one
+// landmark that is stable (the peanut is drawn with the same head-to-body proportions in all 8 directions); each item adds its own dy.
+const ACC_BACK_ROW = 36.5;
+// Body sockets, in source pixels below the head top (read off the peanut art: mouth ~t+30, shoulders ~t+34, chest ~t+40, belt ~t+47).
+const ACC_ROWS = { collar: 33, chest: 40, waist: 47 };
 // Source-pixel position of a named socket on a measured frame (null for unknown names).
 function accSocket(M, v, dir, name) {
   const so = (ACC_SOCKET_OFF[name] && ACC_SOCKET_OFF[name][dir]) || [0, 0];
   switch (name) {
     case 'head':   return { x: M.hcx + so[0], y: M.t + so[1] };
     case 'face':   return M.eye ? { x: M.eye.x + so[0], y: M.eye.y + so[1] } : { x: M.hcx + v.x * 8 + so[0], y: M.t + 24 + so[1] };
-    case 'collar': return { x: (M.hcx + M.bcx) / 2, y: M.neckY + 3 };
-    case 'chest':  return { x: M.bcx, y: M.neckY + 11 };
-    case 'waist':  return { x: M.bcx, y: M.neckY + 18 };
+    case 'collar': return { x: (M.hcx + M.tcx) / 2, y: M.t + ACC_ROWS.collar };   // body sockets hang a fixed distance below the head top, like the back socket
+    case 'chest':  return { x: M.tcx, y: M.t + ACC_ROWS.chest };
+    case 'waist':  return { x: M.tcx, y: M.t + ACC_ROWS.waist };
     case 'back':   {   // on the torso's trailing edge (sides), centred on the spine (front/back views); rides higher when facing the camera
-      const side = v.y > -0.3;   // pack hangs off the trailing edge in side / front views; sits on the spine when seen from behind
-      const x = !side ? M.bcx - v.x * 4 : v.x > 0.3 ? M.trailL + 3 : v.x < -0.3 ? M.trailR - 3 : M.bcx;
-      return { x, y: M.neckY + (v.y > 0 ? 7 : 10) };
+      const side = v.y > -0.3;   // side / front views: attached at the torso's trailing edge (accPlace tucks the pack's inner edge into the torso); seen from behind: centred on the spine
+      const x = !side ? M.bcx - v.x * 4 : v.x > 0.3 ? M.trailL : v.x < -0.3 ? M.trailR : M.bcx;
+      return { x, y: M.t + ACC_BACK_ROW };   // stable height: a fixed distance below the head top (NOT the detected neck row, which varies 24-30 px between directions and jitters between walk frames)
     }
     default: return null;
   }
@@ -7604,7 +7660,7 @@ function accSocket(M, v, dir, name) {
 const ACC_TUNE = {
   head: { anchor: 'head', pivot: [0.5, 'rim'], scale: 1, dy: 5 },
   face: { anchor: 'face', pivot: [0.5, 0.5], scale: 1 },
-  back: { anchor: 'back', pivot: [0.5, 0.5], scale: 1 },
+  back: { anchor: 'back', pivot: ['inner', 0.5], inset: 0.68, scale: 1 },   // inner = the harness-side edge of the image; inset = how much of the pack's width tucks behind the torso
   body: { anchor: 'chest', pivot: [0.5, 0.5], scale: 1 },
 };
 // Draw layer of a wearable for a facing direction: 'behind' (before the sprite), 'body' (right after it, before the weapon),
@@ -7625,24 +7681,50 @@ function accLayer(d, v) {
 // (the pack's own green/brown/black are different), plus the black outline pixels touching it. Per-direction nudges: strapOff:{ dir:[dx,dy] }.
 const ACC_OPPOSITE = { south: 'north', north: 'south', east: 'west', west: 'east', 'south-east': 'north-west', 'north-west': 'south-east', 'north-east': 'south-west', 'south-west': 'north-east' };
 function accArtDir(d, dir) { return d.art && d.art.artView === 'away' ? ACC_OPPOSITE[dir] : dir; }
-function accStrapMask(w, h, data) {
-  const fill = new Uint8Array(w * h), mask = new Uint8Array(w * h);
-  for (let i = 0; i < w * h; i++) {
-    const r = data[i * 4], g = data[i * 4 + 1], b = data[i * 4 + 2], mx = Math.max(r, g, b), mn = Math.min(r, g, b);
-    if (data[i * 4 + 3] > 16 && mx > 22 && mx <= 85 && mx - mn <= 30 && g - r <= 4) fill[i] = 1;
+// How to find the strap pixels of ONE art view of ONE item. art:{ straps } is
+//   true                      colour rule (dark, low-saturation grey-brown fill + its black outline): fits the green/brown/teddy packs
+//   { color:{...}, edge:{...}, byDir:{ artDir: {...}|false } }   either or both detectors, optionally different per art view (false = no split)
+//   absent/false              the art has no shoulder straps (tank, radio, sleeping bag...): the whole image stays behind the peanut
+// color:{ max, spread, gr }  = brightest channel, max-min spread and green-minus-red limits of strap fill.
+// edge:{ bodyMin }           = pixels lying beyond the pack body's last solid-colour pixel on the harness side of the image (the strap
+//                              loops that stick out of the pack: right side in the W / NW images, left side in the E / NE images).
+function accStrapRule(d, artDir) {
+  let s = d.art && d.art.straps; if (!s) return null;
+  if (s === true) s = { color: true };
+  if (s.byDir && Object.prototype.hasOwnProperty.call(s.byDir, artDir)) { s = s.byDir[artDir]; if (!s) return null; if (s === true) s = { color: true }; }
+  const color = s.color ? Object.assign({ max: 85, spread: 30, gr: 4 }, s.color === true ? {} : s.color) : null;
+  const edge = s.edge ? Object.assign({ bodyMin: 45 }, s.edge === true ? {} : s.edge) : null;
+  return color || edge ? { color, edge, side: artDir === 'west' || artDir === 'north-west' ? 'R' : artDir === 'east' || artDir === 'north-east' ? 'L' : null } : null;
+}
+function accStrapMask(w, h, data, rule) {
+  const mask = new Uint8Array(w * h), px = (x, y) => (y * w + x) * 4;
+  if (rule.color) {
+    const c = rule.color, fill = new Uint8Array(w * h);
+    for (let i = 0; i < w * h; i++) {
+      const r = data[i * 4], g = data[i * 4 + 1], b = data[i * 4 + 2], mx = Math.max(r, g, b), mn = Math.min(r, g, b);
+      if (data[i * 4 + 3] > 16 && mx > 22 && mx <= c.max && mx - mn <= c.spread && g - r <= c.gr) fill[i] = 1;
+    }
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      const i = y * w + x; if (fill[i]) { mask[i] = 1; continue; }
+      if (data[px(x, y) + 3] <= 16 || Math.max(data[px(x, y)], data[px(x, y) + 1], data[px(x, y) + 2]) > 22) continue;   // only the near-black outline
+      for (let dy = -1; dy <= 1 && !mask[i]; dy++) for (let dx = -1; dx <= 1; dx++) { const xx = x + dx, yy = y + dy; if (xx >= 0 && yy >= 0 && xx < w && yy < h && fill[yy * w + xx]) { mask[i] = 1; break; } }
+    }
   }
-  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
-    const i = y * w + x; if (fill[i]) { mask[i] = 1; continue; }
-    if (data[i * 4 + 3] <= 16 || Math.max(data[i * 4], data[i * 4 + 1], data[i * 4 + 2]) > 22) continue;   // only the near-black outline
-    for (let dy = -1; dy <= 1 && !mask[i]; dy++) for (let dx = -1; dx <= 1; dx++) { const xx = x + dx, yy = y + dy; if (xx >= 0 && yy >= 0 && xx < w && yy < h && fill[yy * w + xx]) { mask[i] = 1; break; } }
+  if (rule.edge && rule.side) {
+    for (let y = 0; y < h; y++) {
+      let lo = -1, hi = -1;
+      for (let x = 0; x < w; x++) { const p = px(x, y); if (data[p + 3] > 16 && Math.max(data[p], data[p + 1], data[p + 2]) >= rule.edge.bodyMin) { if (lo < 0) lo = x; hi = x; } }
+      if (lo < 0) continue;
+      for (let x = 0; x < w; x++) if ((rule.side === 'R' ? x > hi : x < lo) && data[px(x, y) + 3] > 16) mask[y * w + x] = 1;
+    }
   }
   return mask;
 }
 const ACC_SPLIT_CACHE = new WeakMap();
 // { body, straps }: two canvases made from one accessory image (the original pixels, untouched, just partitioned).
-function accSplit(img) {
+function accSplit(img, rule) {
   let S = ACC_SPLIT_CACHE.get(img); if (S) return S;
-  const { w, h, d } = accPixels(img), m = accStrapMask(w, h, d), mkc = (keep) => {
+  const { w, h, d } = accPixels(img), m = accStrapMask(w, h, d, rule), mkc = (keep) => {
     const c = document.createElement('canvas'); c.width = w; c.height = h;
     const g = c.getContext('2d'), id = g.createImageData(w, h);
     for (let i = 0; i < w * h; i++) if (!!m[i] === keep) { id.data[i * 4] = d[i * 4]; id.data[i * 4 + 1] = d[i * 4 + 1]; id.data[i * 4 + 2] = d[i * 4 + 2]; id.data[i * 4 + 3] = d[i * 4 + 3]; }
@@ -7651,12 +7733,17 @@ function accSplit(img) {
   S = { body: mkc(false), straps: mkc(true) }; ACC_SPLIT_CACHE.set(img, S); return S;
 }
 // What gets drawn, and when, for one worn item from a facing direction: [{ part: 'all'|'body'|'straps', layer }]. A strap-split pack puts its
-// body behind the peanut and its straps in front of the torso; seen from behind the whole pack is drawn in front, in one piece.
-function accParts(d, v) {
+// body behind the peanut and its straps in front of the torso; seen from behind (or when this art view has no usable straps) the whole
+// pack is drawn in one piece.
+function accParts(d, v, dir) {
   const layer = accLayer(d, v); if (!layer) return [];
-  if (!(d.art && d.art.straps) || v.y <= -0.3) return [{ part: 'all', layer }];
+  if (v.y <= -0.3 || !accStrapRule(d, accArtDir(d, dir))) return [{ part: 'all', layer }];
   return [{ part: 'body', layer }, { part: 'straps', layer: 'body' }];
 }
+// Draw priority between worn accessories that share a phase (lower = drawn first, so higher ones sit on top): plates, then neckwear over them, belt over both,
+// badge on top; a pack/cape is last (it only shares a phase with them when the peanut faces away and covers its back). art:{ z } overrides it per item.
+const ACC_Z = { torso: 10, neck: 20, waist: 30, badge: 40, back: 50, face: 60, head: 70 };
+function accZ(d) { return d.art && d.art.z !== undefined ? d.art.z : (ACC_Z[d.slot || d.cat] ?? 20); }
 // Frame: where the sprite is on screen (cx, cy = its centre, size = on-screen size) plus its measured landmarks.
 function accFrame(sprite, dir, cx, cy, size, vec) {
   const M = accMeasure(sprite), k = size / sprite.naturalWidth, x0 = cx - size / 2, y0 = cy - size / 2, v = vec[dir] || vec.south;
@@ -7665,12 +7752,15 @@ function accFrame(sprite, dir, cx, cy, size, vec) {
 // Where (and how big) an accessory image is drawn. Everything is computed in whole SOURCE pixels, so the accessory's pixels sit
 // exactly on the sprite's own pixel grid and never shimmer against it as the player moves.
 function accPlace(f, d, img, flip, part) {
-  const T = Object.assign({}, ACC_TUNE[d.cat], d.art), B = accBounds(img), piv = T.pivot, sc = T.scale || 1;
+  const T = Object.assign({}, ACC_TUNE[d.cat], d.art), B = accBounds(img), piv = (T.pivots && T.pivots[f.dir]) || T.pivot, sc = T.scale || 1;   // pivots:{ dir:[fx,fy] } = a different pivot per facing direction (e.g. where the cape's collar is in each image)
   const off = (T.off && T.off[f.dir]) || [0, 0], s = f.src(T.anchor);
-  const px = B.l + piv[0] * B.W, py = piv[1] === 'rim' ? B.rim : piv[1] >= 1 ? B.b + 1 : B.t + piv[1] * B.H;   // pivot on the art's visible pixels
+  const sideView = f.v.y > -0.3 && Math.abs(f.v.x) > 0.3;
+  let px = piv[0] === 'inner' ? (sideView ? (f.v.x > 0 ? B.r + 1 : B.l) : B.l + 0.5 * B.W) : B.l + piv[0] * B.W;
+  const tuck = piv[0] === 'inner' && sideView ? Math.sign(f.v.x) * Math.min((T.inset === undefined ? 0.68 : T.inset) * B.W * sc, Math.max(2, B.W * sc - 6)) : 0;   // always leaves >= 6px of the pack showing   // pack body tucked behind the torso, the rest sticks out behind it
+  const py = piv[1] === 'rim' ? B.rim : piv[1] >= 1 ? B.b + 1 : B.t + piv[1] * B.H;   // pivot on the art's visible pixels
   const so = part === 'straps' && T.strapOff && T.strapOff[f.dir] || [0, 0];            // straps can be nudged separately from the pack body
   const ox = (T.dx || 0) * f.v.x + (flip ? -off[0] : off[0]) + so[0], oy = (T.dy || 0) + off[1] + so[1];
-  const sx = Math.round(s.x + ox - px * sc), sy = Math.round(s.y + oy - py * sc);          // top-left of the art, whole source pixels
+  const sx = Math.round(s.x + tuck + ox - px * sc), sy = Math.round(s.y + oy - py * sc);          // top-left of the art, whole source pixels
   const kk = f.k * sc;
   return { img, flip: !!flip, sx, sy, off: [ox, oy], anchor: T.anchor, socket: s,
     x: f.x0 + sx * f.k, y: f.y0 + sy * f.k, w: img.naturalWidth * kk, h: img.naturalHeight * kk,
@@ -7680,6 +7770,14 @@ function accPlace(f, d, img, flip, part) {
 
 const ACC_CATS = [
   { id: 'head', name: 'Headwear' }, { id: 'face', name: 'Face' }, { id: 'back', name: 'Back' }, { id: 'body', name: 'Body' }, { id: 'fx', name: 'Special' },
+];
+// Equipment slots. A category is one slot, except Body, which has four independent slots so compatible items can be worn together: neckwear (chain, tags,
+// neckerchief, scarf), a torso piece (bandolier, chest plate, shoulder armour), a belt, and a badge. Within one slot a new item replaces the old one.
+const ACC_BODY_SLOTS = { gold_chain: 'neck', dog_tags: 'neck', red_neckerchief: 'neck', ninja_scarf: 'neck', bandolier: 'torso', chest_plate: 'torso', shoulder_armour: 'torso', utility_belt: 'waist', police_badge: 'badge' };
+const ACC_SLOTS = [
+  { id: 'head', cat: 'head', name: 'Headwear' }, { id: 'face', cat: 'face', name: 'Face' }, { id: 'back', cat: 'back', name: 'Back' },
+  { id: 'neck', cat: 'body', name: 'Neck' }, { id: 'torso', cat: 'body', name: 'Torso' }, { id: 'waist', cat: 'body', name: 'Waist' }, { id: 'badge', cat: 'body', name: 'Badge' },
+  { id: 'fx', cat: 'fx', name: 'Special' },
 ];
 const ACC_STATS = {   // the statistics requirements are measured with. ev = which game events can change the value
   kills:          { ev: ['kill'],     get: (S) => S.life.kills },
@@ -7730,33 +7828,33 @@ acc('deal_with_it',     'face', 'Deal-With-It Sunglasses', AS('kills', 500),    
 acc('night_vision',     'face', 'Night-Vision Goggles', AS('runTime', 900),     'Survive 15 minutes in a run.',             { art: {}, note: 'Dark goggles with two glowing green lenses.' });
 acc('tactical_goggles', 'face', 'Tactical Goggles',   AS('rifleKills', 50),     'Kill 50 zombies with the assault rifle.',  { art: {}, note: 'Black strap goggles with amber lenses.' });
 acc('gas_mask',         'face', 'Gas Mask',           AS('runTime', 1200),      'Survive 20 minutes in a run.',             { art: {}, note: 'Grey gas mask with round filter and dark lenses.' });
-acc('medical_mask',     'face', 'Medical Mask',       AS('healthUpgrades', 5),  'Purchase 5 max-health upgrades.',          { art: {}, note: 'Light-blue surgical mask over the lower face.' });
+acc('medical_mask',     'face', 'Medical Mask',       AS('healthUpgrades', 5),  'Purchase 5 max-health upgrades.',          { art: { dy:5 }, note: 'Light-blue surgical mask over the lower face.' });
 acc('eyepatch',         'face', 'Eyepatch',           AA('close_shave'),        'Survive a hit that leaves you with 10 health or less.', { art: {}, note: 'Black eyepatch with a thin strap.' });
 acc('nerd_glasses',     'face', 'Round Nerd Glasses', AS('shots', 500),         'Fire 500 shots.',                          { art: {}, note: 'Large round black-rimmed glasses.' });
 acc('red_glasses',      'face', 'Glowing Red Glasses', AS('kills', 1000),       'Kill 1,000 zombies.',                      { art: {}, note: 'Dark glasses with glowing red lenses.' });
 acc('zombie_eyes',      'face', 'Zombie Eyes',        AS('secretAch', 1),       'Unlock a secret achievement.',             { art: {}, note: 'Bloodshot yellow-green zombie eyes (replaces the eyes area).' });
 // ---- C. Back ----
-acc('tactical_backpack', 'back', 'Tactical Backpack',    AS('kills', 250),      'Kill 250 zombies.',                        { art: accPackArt(), note: 'Olive-green military backpack with straps and pouches.' });
-acc('hiking_backpack',   'back', 'Large Hiking Backpack', AS('distance', 5000), 'Travel 5 kilometres.',                     { art: accPackArt(), note: 'Tall orange hiking backpack with a rolled mat on top.' });
-acc('ammo_backpack',     'back', 'Ammunition Backpack',  AS('rangedKills', 100), 'Get 100 kills with guns, rockets or grenades.', { art: {}, note: 'Brown pack with ammo-box and bullet-belt details.' });
-acc('rocket_pack',       'back', 'Mini Rocket Launcher Pack', AS('rpgKills', 50), 'Kill 50 zombies with the RPG.',           { art: {}, note: 'Backpack with two small rocket tubes pointing up.' });
-acc('oxygen_tank',       'back', 'Oxygen Tank',          AS('runTime', 1800),   'Survive 30 minutes in a run.',             { art: {}, note: 'Blue-grey gas cylinder with a valve.' });
-acc('jetpack',           'back', 'Jetpack',              AS('hardTime', 1800),  'Survive 30 minutes on Nightmare difficulty.',   { art: {}, note: 'Twin silver thrusters with straps (optional small flame).' });
-acc('radio_antenna',     'back', 'Radio Antenna',        AS('cities', 5),       'Play in 5 different cities.',              { art: {}, note: 'Small radio box with a tall thin antenna.' });
-acc('sleeping_bag',      'back', 'Rolled Sleeping Bag',  AS('deaths', 5),       'Finish 5 runs.',                           { art: {}, note: 'Green rolled sleeping bag strapped across the back.' });
-acc('zombie_arm_pack',   'back', 'Zombie Arm Backpack',  AS('kills', 500),      'Kill 500 zombies.',                        { art: {}, note: 'Backpack made from a green zombie arm and hand.' });
-acc('teddy_pack',        'back', 'Teddy Bear Backpack',  AS('achievements', 10), 'Unlock 10 achievements.',                 { art: accPackArt(), note: 'Brown teddy-bear-shaped backpack with ears.' });
+acc('tactical_backpack', 'back', 'Tactical Backpack',    AS('kills', 250),      'Kill 250 zombies.',                        { art: accPackArt(true), note: 'Olive-green military backpack with straps and pouches.' });
+acc('hiking_backpack',   'back', 'Large Hiking Backpack', AS('distance', 5000), 'Travel 5 kilometres.',                     { art: accPackArt(true), note: 'Tall orange hiking backpack with a rolled mat on top.' });
+acc('ammo_backpack',     'back', 'Ammunition Backpack',  AS('rangedKills', 100), 'Get 100 kills with guns, rockets or grenades.', { art: accPackArt({ edge: { bodyMin: 45 }, byDir: { north: false } }, { inset: 0.5 }), note: 'Brown pack with ammo-box and bullet-belt details.' });
+acc('rocket_pack',       'back', 'Mini Rocket Launcher Pack', AS('rpgKills', 50), 'Kill 50 zombies with the RPG.',           { art: accPackArt({ edge: { bodyMin: 45 }, byDir: { north: false } }, { inset: 0.42 }, { 'south-east': [1, 0], 'south-west': [-1, 0] }), note: 'Backpack with two small rocket tubes pointing up.' });
+acc('oxygen_tank',       'back', 'Oxygen Tank',          AS('runTime', 1800),   'Survive 30 minutes in a run.',             { art: accPackArt(false), note: 'Blue-grey gas cylinder with a valve.' });
+acc('jetpack',           'back', 'Jetpack',              AS('hardTime', 1800),  'Survive 30 minutes on Nightmare difficulty.',   { art: accPackArt({ edge: { bodyMin: 70 }, byDir: { north: false } }), note: 'Twin silver thrusters with straps (optional small flame).' });
+acc('radio_antenna',     'back', 'Radio Antenna',        AS('cities', 5),       'Play in 5 different cities.',              { art: accPackArt(false, { pivot: ['inner', 0.6] }), note: 'Small radio box with a tall thin antenna.' });
+acc('sleeping_bag',      'back', 'Rolled Sleeping Bag',  AS('deaths', 5),       'Finish 5 runs.',                           { art: accPackArt(false), note: 'Green rolled sleeping bag strapped across the back.' });
+acc('zombie_arm_pack',   'back', 'Zombie Arm Backpack',  AS('kills', 500),      'Kill 500 zombies.',                        { art: accPackArt(false), note: 'Backpack made from a green zombie arm and hand.' });
+acc('teddy_pack',        'back', 'Teddy Bear Backpack',  AS('achievements', 10), 'Unlock 10 achievements.',                 { art: accPackArt(true), note: 'Brown teddy-bear-shaped backpack with ears.' });
+acc('tiny_cape',         'back', 'Tiny Cape',            AS('kills', 1000),     'Kill 1,000 zombies.',                      { art: accCapeArt(), note: 'Short red cape hanging from the shoulders.' });
 // ---- D. Body ----
-acc('gold_chain',        'body', 'Gold Chain',           AS('purchases', 25),   'Purchase 25 upgrades.',                    { art: { anchor:'collar' }, note: 'Thick gold chain with a pendant.' });
-acc('dog_tags',          'body', 'Military Dog Tags',    AS('runKills', 100),   'Kill 100 zombies in a single run (without dying).', { art: { anchor:'collar', front:true }, note: 'Two silver dog tags on a ball chain.' });
-acc('bandolier',         'body', 'Bullet Bandolier',     AS('shots', 2000),     'Fire 2,000 shots.',                        { art: {}, note: 'Diagonal brown strap with brass bullets.' });
-acc('shoulder_armour',   'body', 'Shoulder Armour',      AS('healthLevel', 3),  'Reach max-health upgrade level 3 in one run.', { art: { anchor:'chest' }, note: 'Steel pauldrons on both shoulders.' });
-acc('chest_plate',       'body', 'Chest Armour Plate',   AS('runTime', 1500),   'Survive 25 minutes in a run.',             { art: {}, note: 'Grey tactical chest plate.' });
-acc('utility_belt',      'body', 'Utility Belt',         AS('weaponsFound', 5), 'Find 5 weapons on the map.',               { art: { anchor:'waist' }, note: 'Brown belt with pouches and a buckle.' });
-acc('red_neckerchief',   'body', 'Red Neckerchief',      AS('meleeKills', 100), 'Kill 100 zombies with melee weapons.',     { art: { anchor:'collar' }, note: 'Red knotted neckerchief.' });
-acc('ninja_scarf',       'body', 'Ninja Scarf',          AS('noDmgKills', 50),  'Kill 50 zombies in one run without taking damage.', { art: { anchor:'collar' }, note: 'Long dark scarf with trailing ends.' });
-acc('police_badge',      'body', 'Police Badge',         AS('achievements', 15), 'Unlock 15 achievements.',                 { art: { anchor:'chest', front:true }, note: 'Small gold star badge on the chest.' });
-acc('tiny_cape',         'body', 'Tiny Cape',            AS('kills', 1000),     'Kill 1,000 zombies.',                      { art: { layer:'back', anchor:'collar' }, note: 'Short red cape hanging from the shoulders.' });
+acc('gold_chain',        'body', 'Gold Chain',           AS('purchases', 25),   'Purchase 25 upgrades.',                    { art: { anchor:'collar', pivot:[0.5,0], dy:-2, scale:0.7, off: accNeckOff() }, note: 'Thick gold chain with a pendant.' });
+acc('dog_tags',          'body', 'Military Dog Tags',    AS('runKills', 100),   'Kill 100 zombies in a single run (without dying).', { art: { anchor:'collar', pivot:[0.5,0], dy:-2, scale:0.85, front:true, off: accNeckOff() }, note: 'Two silver dog tags on a ball chain.' });
+acc('bandolier',         'body', 'Bullet Bandolier',     AS('shots', 2000),     'Fire 2,000 shots.',                        { art: { anchor:'chest', scale:0.85, dy:2.5 }, note: 'Diagonal brown strap with brass bullets.' });
+acc('shoulder_armour',   'body', 'Shoulder Armour',      AS('healthLevel', 3),  'Reach max-health upgrade level 3 in one run.', { art: { anchor:'chest', dy:2 }, note: 'Steel pauldrons on both shoulders.' });
+acc('chest_plate',       'body', 'Chest Armour Plate',   AS('runTime', 1500),   'Survive 25 minutes in a run.',             { art: { anchor:'chest', dy:2 }, note: 'Grey tactical chest plate.' });
+acc('utility_belt',      'body', 'Utility Belt',         AS('weaponsFound', 5), 'Find 5 weapons on the map.',               { art: { anchor:'waist', dy:-1 }, note: 'Brown belt with pouches and a buckle.' });
+acc('red_neckerchief',   'body', 'Red Neckerchief',      AS('meleeKills', 100), 'Kill 100 zombies with melee weapons.',     { art: { z:5, anchor:'collar', pivot:[0.5,0], dy:-2, off: accNeckOff() }, note: 'Red knotted neckerchief.' });
+acc('ninja_scarf',       'body', 'Ninja Scarf',          AS('noDmgKills', 50),  'Kill 50 zombies in one run without taking damage.', { art: { anchor:'collar', pivot:[0.5,0], dy:-1, off: accNeckOff() }, note: 'Long dark scarf with trailing ends.' });
+acc('police_badge',      'body', 'Police Badge',         AS('achievements', 15), 'Unlock 15 achievements.',                 { art: { anchor:'chest', scale:0.5, dy:-2, front:true }, note: 'Small gold star badge on the chest.' });
 // ---- E. Special effects and companions (drawn by code / from your existing sprites: no new art needed) ----
 acc('sparkle_aura',      'fx', 'Golden Sparkle Aura',    AS('achievements', 25), 'Unlock 25 achievements.',                 { fx: 'sparkle' });
 acc('radioactive_glow',  'fx', 'Green Radioactive Glow', AS('kills', 2500),     'Kill 2,500 zombies.',                      { fx: 'radioactive' });
@@ -7889,12 +7987,13 @@ class AccessorySystem {
     this._byEv = {};
     for (const d of this.defs) {
       if (this.byId.has(d.id)) { console.warn('Duplicate accessory id', d.id); continue; }
+      d.slot = ACC_BODY_SLOTS[d.id] || d.cat;                   // the equipment slot this accessory occupies
       this.byId.set(d.id, d);
       const evs = d.req.ach ? ['unlock'] : ACC_STATS[d.req.stat].ev;
       for (const e of evs) (this._byEv[e] = this._byEv[e] || []).push(d);
     }
     this.unlocked = {};
-    this.equipped = { head: null, face: null, back: null, body: null, fx: null };
+    this.equipped = {}; for (const sl of ACC_SLOTS) this.equipped[sl.id] = null;
     this.debug = false;                       // temporary visual debugging (not saved)
     this.settings = { markers: false };       // dev aid: draw small markers at the anchors of art-less wearables
     this.migrated = false;
@@ -7941,7 +8040,7 @@ class AccessorySystem {
     for (const d of this.defs) if (!this.unlocked[d.id] && this._met(d)) this._grant(d, false);
     const eq = legacyCos && legacyCos.equipped && legacyCos.equipped.player;       // an equipped skin becomes the matching accessory
     const mapped = ACC_SKIN_MIGRATION[eq] && this.byId.get(ACC_SKIN_MIGRATION[eq]);
-    if (mapped && this.isUnlocked(mapped.id) && !this.equipped[mapped.cat]) this.equipped[mapped.cat] = mapped.id;
+    if (mapped && this.isUnlocked(mapped.id) && !this.equipped[mapped.slot]) this.equipped[mapped.slot] = mapped.id;
     this.migrated = true; this.ach._dirty = true;
     const n = this.earnedCount() - before;
     if (n > 0) this.ach._enqueue({ tier: 'gold', icon: 'ACC', name: n + (n === 1 ? ' accessory' : ' accessories') + ' unlocked', desc: 'Earned from your existing progress - equip them in Accessories.', header: 'ACCESSORIES UNLOCKED' });
@@ -7952,11 +8051,11 @@ class AccessorySystem {
   equip(id) {
     const d = this.byId.get(id);
     if (!d || !this.isUnlocked(id)) return false;                      // locked accessories can never be equipped
-    this.equipped[d.cat] = id; this.ach.save(true); return true;     // one per category; the other categories are untouched
+    this.equipped[d.slot] = id; this.ach.save(true); return true;    // one per slot; every other slot is untouched, so a hat, glasses, a pack and body pieces can be worn together
   }
-  unequip(cat) { this.equipped[cat] = null; this.ach.save(true); }
-  unequipAll() { for (const c of ACC_CATS) this.equipped[c.id] = null; this.ach.save(true); }
-  isEquipped(d) { return this.equipped[d.cat] === d.id; }
+  unequip(key) { for (const sl of ACC_SLOTS) if (sl.id === key || sl.cat === key) this.equipped[sl.id] = null; this.ach.save(true); }   // a slot id, or a whole category
+  unequipAll() { for (const sl of ACC_SLOTS) this.equipped[sl.id] = null; this.ach.save(true); }
+  isEquipped(d) { return this.equipped[d.slot] === d.id; }
   setDebug(on) { this.debug = !!on; }
   setMarkers(on) { this.settings.markers = !!on; this.ach.save(true); }
 
@@ -7998,7 +8097,7 @@ class AccessorySystem {
     f.label = player.isMoving ? 'walk ' + (player.walkingBackward ? (8 - player.animFrame) % 8 : player.animFrame) : 'idle';
     return f;
   }
-  _anyEquipped() { const e = this.equipped; return e.head || e.face || e.back || e.body || e.fx; }
+  _anyEquipped() { const e = this.equipped; return ACC_SLOTS.some((sl) => e[sl.id]); }
   // phase: 'behind' (before the character), 'body' (right after it, before the weapon), 'top' (after the weapon). t = seconds, for animated effects.
   // Each wearable's phase depends on the facing direction (accLayer): packs and capes go behind the peanut unless its back is to the camera,
   // face items are hidden from behind, hats are always on top.
@@ -8007,9 +8106,11 @@ class AccessorySystem {
     if (phase === 'behind') this._dbg = [];
     if (!this._anyEquipped() && !this.debug) return;
     t = t === undefined ? performance.now() / 1000 : t;
-    const e = this.equipped, order = phase === 'behind' ? ['back', 'body'] : phase === 'body' ? ['body', 'back'] : ['face', 'head'];
+    const e = this.equipped;
     if (phase === 'behind') this._fx(ctx, f, e.fx, 'behind', t);
-    for (const cat of order) { const d = e[cat] && this.byId.get(e[cat]); if (!d) continue; for (const pt of accParts(d, f.v)) if (pt.layer === phase) this._wearable(ctx, f, d, pt.part); }
+    // every worn accessory, lowest draw priority first (accZ); each one decides from the facing direction which phase it belongs to (accParts)
+    const worn = ACC_SLOTS.filter((sl) => sl.id !== 'fx' && e[sl.id]).map((sl) => this.byId.get(e[sl.id])).filter(Boolean).sort((p, q) => accZ(p) - accZ(q));
+    for (const d of worn) for (const pt of accParts(d, f.v, f.dir)) if (pt.layer === phase) this._wearable(ctx, f, d, pt.part);
     if (phase === 'top') { this._fx(ctx, f, e.fx, 'top', t); if (this.debug) this._debugOverlay(ctx, f); }
   }
   _wearable(ctx, f, d, part) {
@@ -8023,7 +8124,7 @@ class AccessorySystem {
   _drawAnchored(ctx, f, d, img, flip, part) {
     const p = accPlace(f, d, img, flip, part);
     if (this.debug) (this._dbg = this._dbg || []).push({ d, p, part });
-    if (part === 'body' || part === 'straps') img = accSplit(img)[part];   // strap-split packs: body behind the peanut, straps in front of its torso
+    if (part === 'body' || part === 'straps') img = accSplit(img, accStrapRule(d, accArtDir(d, f.dir)))[part];   // strap-split packs: body behind the peanut, straps in front of its torso
     ctx.save(); ctx.imageSmoothingEnabled = false;                  // pixel art: never smoothed, never rotated
     if (flip) { const px = p.x + p.w / 2; ctx.translate(px, 0); ctx.scale(-1, 1); ctx.translate(-px, 0); }   // west sides that reuse east art are mirrored about the art's centre
     ctx.drawImage(img, p.x, p.y, p.w, p.h);
@@ -8114,12 +8215,13 @@ class AccessorySystem {
 
   // ---- previews (menu) ----
   // Draws the peanut wearing the equipped accessories, facing `dir`, with the same code path as the game.
-  drawPreview(ctx, W, H, dir, t, equipped) {
+  drawPreview(ctx, W, H, dir, t, equipped, walk) {   // walk: preview the walking frames instead of the idle pose
     ctx.clearRect(0, 0, W, H); ctx.imageSmoothingEnabled = false;
-    const sprite = PLAYER_SPRITES && PLAYER_SPRITES.idle[dir];
+    const wf = walk && PLAYER_SPRITES.walk && PLAYER_SPRITES.walk[dir], frame = wf ? Math.floor(t * 8) % wf.length : 0;
+    const sprite = wf ? wf[frame] : PLAYER_SPRITES && PLAYER_SPRITES.idle[dir];
     if (!isSpriteReady(sprite)) return;
     const saved = this.equipped; if (equipped) this.equipped = equipped;
-    const f = this.frameFromSprite(sprite, dir, W / 2, H * 0.54, W * 0.62);
+    const f = this.frameFromSprite(sprite, dir, W / 2, H * 0.54, W * 0.62); f.label = wf ? 'walk ' + frame : 'idle';
     this.drawPhase(ctx, f, 'behind', t);
     ctx.drawImage(sprite, f.x0, f.y0, f.size, f.size);
     this.drawPhase(ctx, f, 'body', t);
@@ -8135,7 +8237,13 @@ class AccessorySystem {
   _load(raw) {
     if (!raw || typeof raw !== 'object') return;
     if (raw.unlocked && typeof raw.unlocked === 'object') for (const id of Object.keys(raw.unlocked)) if (this.byId.has(id) && Number.isFinite(raw.unlocked[id]) && raw.unlocked[id] > 0) this.unlocked[id] = raw.unlocked[id];
-    if (raw.equipped && typeof raw.equipped === 'object') for (const c of ACC_CATS) { const d = this.byId.get(raw.equipped[c.id]); if (d && d.cat === c.id && this.isUnlocked(d.id)) this.equipped[c.id] = d.id; }
+    if (raw.equipped && typeof raw.equipped === 'object') {
+      for (const sl of ACC_SLOTS) { const d = this.byId.get(raw.equipped[sl.id]); if (d && d.slot === sl.id && this.isUnlocked(d.id)) this.equipped[sl.id] = d.id; }
+      for (const key of Object.keys(raw.equipped)) {   // an item saved under an OLD slot (Body -> neck/torso/waist/badge; Tiny Cape: body -> back) moves to its new slot when that slot is free
+        const d = this.byId.get(raw.equipped[key]);
+        if (d && d.slot !== key && this.isUnlocked(d.id) && !this.equipped[d.slot]) this.equipped[d.slot] = d.id;
+      }
+    }
     if (raw.settings && typeof raw.settings === 'object') this.settings.markers = !!raw.settings.markers;
     this.migrated = raw.migrated === true;
   }
@@ -8145,7 +8253,7 @@ class AccessorySystem {
 class AccessoriesMenu extends PanelMenu {
   constructor(sys) {
     super('accessoriesScreen');
-    this.sys = sys; this.cat = 'all'; this.dirIdx = 0; this._timer = null;
+    this.sys = sys; this.cat = 'all'; this.dirIdx = 0; this._timer = null; this.walk = false; this.spin = false; this._spinT = 0;   // preview-only options
     this.pv = document.getElementById('accPreview');
   }
   open() { if (this.isOpen) return; super.open(); this._timer = setInterval(() => this._tickPreview(), 90); }
@@ -8154,15 +8262,21 @@ class AccessoriesMenu extends PanelMenu {
     const s = this.sys;
     if (act === 'cat') { Sound.uiClick(); this.cat = t.dataset.cat; this.render(); }
     else if (act === 'equip') { if (s.equip(t.dataset.id)) Sound.uiClick(); else Sound.emptyClick(); this.render(); }
-    else if (act === 'unequip') { s.unequip(s.byId.get(t.dataset.id).cat); Sound.uiClick(); this.render(); }
-    else if (act === 'none') { s.unequip(t.dataset.cat); Sound.uiClick(); this.render(); }
+    else if (act === 'unequip') { s.unequip(s.byId.get(t.dataset.id).slot); Sound.uiClick(); this.render(); }
+    else if (act === 'none') { s.unequip(t.dataset.slot); Sound.uiClick(); this.render(); }
     else if (act === 'unequipAll') { s.unequipAll(); Sound.uiClick(); this.render(); }
     else if (act === 'rotate') { Sound.uiClick(); this.dirIdx = (this.dirIdx + 1) % SPRITE_DIRECTIONS.length; this._tickPreview(); }
+    else if (act === 'walk') { this.walk = !this.walk; Sound.uiClick(); this.render(); }
+    else if (act === 'spin') { this.spin = !this.spin; this._spinT = performance.now(); Sound.uiClick(); this.render(); }
     else if (act === 'debug') { s.setDebug(!s.debug); Sound.uiClick(); this.render(); }
     else if (act === 'markers') { s.setMarkers(!s.settings.markers); Sound.uiClick(); this.render(); }
     else super.onAct(act);
   }
-  _tickPreview() { if (this.isOpen) this.sys.drawPreview(this.pv.getContext('2d'), this.pv.width, this.pv.height, SPRITE_DIRECTIONS[this.dirIdx], performance.now() / 1000); }
+  _tickPreview() {
+    if (!this.isOpen) return;
+    if (this.spin && performance.now() - this._spinT > 1100) { this._spinT = performance.now(); this.dirIdx = (this.dirIdx + 1) % SPRITE_DIRECTIONS.length; }   // SPIN: turn through all 8 directions
+    this.sys.drawPreview(this.pv.getContext('2d'), this.pv.width, this.pv.height, SPRITE_DIRECTIONS[this.dirIdx], performance.now() / 1000, null, this.walk);
+  }
   render() {
     const s = this.sys, un = s.unlockedCount(), total = s.defs.length, pct = Math.round((un / total) * 100);
     document.getElementById('accSummary').innerHTML = `<b>${un}</b> / ${total} UNLOCKED <span class="achPct">${pct}%</span><div class="achBar"><i style="width:${pct}%"></i></div>`;
@@ -8171,22 +8285,25 @@ class AccessoriesMenu extends PanelMenu {
       const list = c.id === 'all' ? s.defs : s.defs.filter((d) => d.cat === c.id);
       return `<button class="shopTab achTab${this.cat === c.id ? ' active' : ''}" data-act="cat" data-cat="${c.id}">${c.name.toUpperCase()} <em>${list.filter((d) => s.isUnlocked(d.id)).length}/${list.length}</em></button>`;
     }).join('');
-    document.getElementById('accWorn').innerHTML = ACC_CATS.map((c) => { const d = s.equipped[c.id] && s.byId.get(s.equipped[c.id]); return `<div class="accWornRow"><span>${c.name.toUpperCase()}</span><b>${d ? d.name : '-'}</b></div>`; }).join('');
+    document.getElementById('accWorn').innerHTML = ACC_SLOTS.map((c) => { const d = s.equipped[c.id] && s.byId.get(s.equipped[c.id]); return `<div class="accWornRow"><span>${c.name.toUpperCase()}</span><b>${d ? d.name : '-'}</b></div>`; }).join('');
+    document.getElementById('accSpinBtn').textContent = 'SPIN: ' + (this.spin ? 'ON' : 'OFF');
+    document.getElementById('accWalkBtn').textContent = 'WALK: ' + (this.walk ? 'ON' : 'OFF');
     document.getElementById('accDebugBtn').textContent = 'DEBUG: ' + (s.debug ? 'ON' : 'OFF');
     document.getElementById('accMarkersBtn').textContent = 'MARKERS: ' + (s.settings.markers ? 'ON' : 'OFF');
-    const list = s.defs.filter((d) => this.cat === 'all' || d.cat === this.cat);
+    const slotIx = (d) => ACC_SLOTS.findIndex((x) => x.id === d.slot);
+    const list = s.defs.filter((d) => this.cat === 'all' || d.cat === this.cat).sort((a, b) => slotIx(a) - slotIx(b));   // grouped by slot (stable)
     let html = '', lastCat = null;
     for (const d of list) {
-      if (d.cat !== lastCat) {   // a None card starts every category: it takes off whatever is worn in that category
-        lastCat = d.cat; const none = !s.equipped[d.cat], cn = ACC_CATS.find((c) => c.id === d.cat).name;
-        html += `<div class="cosCard open${none ? ' equipped' : ''}" data-cat="${d.cat}"><div class="cosPrev accNone"><span>NONE</span></div><div class="cosName">None</div><div class="cosTag ${none ? 'eq' : 'un'}">${none ? 'EQUIPPED' : 'NOTHING WORN'} - ${cn.toUpperCase()}</div><div class="cosReq">Wear nothing in ${cn}.</div><div class="cosBtn">${none ? '<button class="shopBuyBtn cant" disabled>SELECTED</button>' : `<button class="shopBuyBtn" data-act="none" data-cat="${d.cat}">SELECT</button>`}</div></div>`;
+      if (d.slot !== lastCat) {   // a None card starts every slot: it takes off whatever is worn in that slot
+        lastCat = d.slot; const none = !s.equipped[d.slot], cn = ACC_SLOTS.find((c) => c.id === d.slot).name;
+        html += `<div class="cosCard open${none ? ' equipped' : ''}" data-cat="${d.cat}"><div class="cosPrev accNone"><span>NONE</span></div><div class="cosName">None</div><div class="cosTag ${none ? 'eq' : 'un'}">${none ? 'EQUIPPED' : 'NOTHING WORN'} - ${cn.toUpperCase()}</div><div class="cosReq">Wear nothing in ${cn}.</div><div class="cosBtn">${none ? '<button class="shopBuyBtn cant" disabled>SELECTED</button>' : `<button class="shopBuyBtn" data-act="none" data-slot="${d.slot}">SELECT</button>`}</div></div>`;
       }
       const open = s.isUnlocked(d.id), eq = s.isEquipped(d), p = s.progress(d), needsArt = !s.hasArt(d);
       const prog = open ? '' : `<div class="achProg"><div class="achBar"><i style="width:${Math.round(100 * p.val / Math.max(1, p.target))}%"></i></div><span>${d.req.ach ? 'Not yet' : this._fmt(d, p.val) + ' / ' + this._fmt(d, p.target)}</span></div>`;
       const btn = !open ? '<button class="shopBuyBtn cant" disabled>LOCKED</button>' : eq ? `<button class="shopBuyBtn cosUn" data-act="unequip" data-id="${d.id}">UNEQUIP</button>` : `<button class="shopBuyBtn" data-act="equip" data-id="${d.id}">EQUIP</button>`;
       html += `<div class="cosCard${open ? ' open' : ' locked'}${eq ? ' equipped' : ''}" data-cat="${d.cat}">` +
         `<canvas class="cosPrev accIcon" width="80" height="80" data-id="${d.id}" data-state="${open ? 'open' : 'locked'}"></canvas>` +
-        `<div class="cosName">${d.name}</div><div class="cosTag ${eq ? 'eq' : open ? 'un' : 'lk'}">${eq ? 'EQUIPPED' : open ? 'UNLOCKED' : 'LOCKED'} - ${ACC_CATS.find((c) => c.id === d.cat).name.toUpperCase()}</div>` +
+        `<div class="cosName">${d.name}</div><div class="cosTag ${eq ? 'eq' : open ? 'un' : 'lk'}">${eq ? 'EQUIPPED' : open ? 'UNLOCKED' : 'LOCKED'} - ${ACC_SLOTS.find((c) => c.id === d.slot).name.toUpperCase()}</div>` +
         `${needsArt ? '<div class="cosTag art">ART NEEDED</div>' : ''}<div class="cosReq">${s.unlocked[d.id] ? 'Earned: ' : open ? 'Open for testing. Normally: ' : 'To unlock: '}${d.reqText}</div>${prog}<div class="cosBtn">${btn}</div></div>`;
     }
     document.getElementById('accGrid').innerHTML = html;
@@ -8203,9 +8320,9 @@ class AccessoriesMenu extends PanelMenu {
   _icon(cv, d, state) {   // real art when the accessory has it, a live effect for effects, otherwise a plain labelled tile (never fake art)
     const g = cv.getContext('2d'), W = cv.width, H = cv.height; g.clearRect(0, 0, W, H); g.imageSmoothingEnabled = false;
     const s = this.sys;
-    if (d.fx) s.drawPreview(g, W, H, 'south', 1.3, { head: null, face: null, back: null, body: null, fx: d.id });
+    if (d.fx) s.drawPreview(g, W, H, 'south', 1.3, { fx: d.id });
     else {
-      const found = d.art ? s._artFor(d, d.cat === 'back' ? 'north' : 'south') || s._artFor(d, 'east') : null;
+      const found = d.art ? s._artFor(d, d.cat === 'back' ? (d.art.artView === 'away' ? 'south' : 'north') : 'south') || s._artFor(d, 'east') : null;   // packs: the pocketed front; cape: its back
       if (found && d.art.mode !== 'overlay') { const k = Math.min((W - 8) / found.img.naturalWidth, (H - 8) / found.img.naturalHeight); g.drawImage(found.img, (W - found.img.naturalWidth * k) / 2, (H - found.img.naturalHeight * k) / 2, found.img.naturalWidth * k, found.img.naturalHeight * k); }
       else { g.fillStyle = '#1b1f26'; g.fillRect(0, 0, W, H); g.strokeStyle = '#3a3f47'; g.setLineDash([4, 3]); g.strokeRect(4, 4, W - 8, H - 8); g.setLineDash([]); g.fillStyle = ACC_MARK[d.cat]; g.font = 'bold 11px monospace'; g.textAlign = 'center'; g.fillText(ACC_CATS.find((c) => c.id === d.cat).name.toUpperCase(), W / 2, H / 2 - 2); g.fillStyle = '#8a9099'; g.font = '9px monospace'; g.fillText('art needed', W / 2, H / 2 + 12); }
     }
@@ -8421,6 +8538,8 @@ class Game {
     this.cosMenu = new CosmeticsMenu(COSMETICS); // weapon skins
     this.accMenu = new AccessoriesMenu(ACCESSORIES); // player accessories
     this.statsMenu = new StatsMenu(ACH, () => this.state === 'playing' || this.state === 'paused' || this.state === 'shop'); // lifetime statistics
+    this.statsMenu.achMenu = this.achMenu;                          // Statistics -> Achievements
+    this.customizeMenu = new CustomizeMenu(this.accMenu, this.cosMenu); // Customize -> Accessories / Weapon Skins
 
     this.state = 'menu'; // 'menu' | 'playing' | 'paused' | 'shop' | 'gameover'
     this._lastTimestamp = null;
@@ -8530,12 +8649,8 @@ class Game {
     });
     document.getElementById('muteBtn').textContent = Sound.muted ? '🔇' : '🔊'; // reflect a persisted mute preference immediately
 
-    document.getElementById('achievementsBtn').addEventListener('click', () => { Sound.uiClick(); this.achMenu.open(); });
-    document.getElementById('pauseAchievementsBtn').addEventListener('click', () => { Sound.uiClick(); this.achMenu.open(); });
-    document.getElementById('accessoriesBtn').addEventListener('click', () => { Sound.uiClick(); this.accMenu.open(); });
-    document.getElementById('pauseAccessoriesBtn').addEventListener('click', () => { Sound.uiClick(); this.accMenu.open(); });
-    document.getElementById('cosmeticsBtn').addEventListener('click', () => { Sound.uiClick(); this.cosMenu.open(); });
-    document.getElementById('pauseCosmeticsBtn').addEventListener('click', () => { Sound.uiClick(); this.cosMenu.open(); });
+    document.getElementById('customizeBtn').addEventListener('click', () => { Sound.uiClick(); this.customizeMenu.open(); });
+    document.getElementById('pauseCustomizeBtn').addEventListener('click', () => { Sound.uiClick(); this.customizeMenu.open(); });
     document.getElementById('statsBtn').addEventListener('click', () => { Sound.uiClick(); this.statsMenu.open(); });
     document.getElementById('pauseStatsBtn').addEventListener('click', () => { Sound.uiClick(); this.statsMenu.open(); });
     document.getElementById('howToPlayBtn').addEventListener('click', () => {
