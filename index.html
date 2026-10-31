@@ -1000,15 +1000,59 @@ html, body, button, input, select, textarea {
 /* ---- Accessories ---- */
 #accessoriesScreen .accNone { display:flex; align-items:center; justify-content:center; width:80px; height:80px; background:#1b1f26; border:1px dashed #3a3f47; color:#8a9099; font:bold 12px monospace; box-sizing:border-box; margin:0 auto; }
 #accessoriesScreen { z-index: 25; padding: 12px; box-sizing: border-box; cursor: default; user-select: none; -webkit-user-select: none; }
-.accTop { display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-start; }
-#accPreview { width: 176px; height: 176px; image-rendering: pixelated; background: #14171b; border: 3px solid var(--px-ink); flex: 0 0 auto; }
-.accTopRight { flex: 1 1 260px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
-.accWorn { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 4px 12px; }
-.accWornRow { display: flex; justify-content: space-between; gap: 8px; font-size: 8px; padding: 3px 0; border-bottom: 1px solid #2b3037; } .accWornRow span { color: var(--px-dim); } .accWornRow b { color: #fff; text-align: right; }
-.accBtns { display: flex; flex-wrap: wrap; gap: 8px; }
 .cosTag.art { background: #4a3a10; color: #f5c542; }
-.accIcon { width: 80px; height: 80px; }
-@media (min-width: 1100px) and (min-height: 700px) { .accWornRow { font-size: 10px; } }
+/* Accessories screen: preview + equipment stay visible on the left while the card grid scrolls on the right */
+.accPanel { height: min(720px, 100%); }
+.accLayout { flex: 1 1 auto; min-height: 0; display: grid; grid-template-columns: 250px minmax(0, 1fr); gap: 14px; }
+.accSide { display: flex; flex-direction: column; gap: 10px; min-height: 0; min-width: 0; overflow-y: auto; padding-right: 4px; }
+.accPreviewBox { display: flex; flex-direction: column; gap: 6px; }
+#accPreview { display: block; width: 100%; max-width: 250px; aspect-ratio: 1 / 1; height: auto; image-rendering: pixelated; background: #14171b; border: 3px solid var(--px-ink); cursor: pointer; }
+.accDir { display: flex; align-items: center; gap: 8px; } .accDir span { flex: 1; text-align: center; font-size: 9px; color: #fff; } .accDir .shopWpn { padding: 6px 12px; }
+.accBtns { display: flex; flex-wrap: wrap; gap: 6px; }
+.accSideInfo { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.accSideHead { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 9px; color: #f5c542; }
+.accWorn { display: flex; flex-direction: column; }
+.accWornRow { display: grid; grid-template-columns: 52px minmax(0, 1fr) 22px; align-items: center; gap: 6px; font-size: 8px; padding: 3px 0; border-bottom: 1px solid #2b3037; }
+.accWornRow span { color: var(--px-dim); } .accWornRow b { color: #fff; font-weight: normal; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .accWornRow b.none { color: #5b616b; }
+.accX { font: inherit; font-size: 9px; line-height: 1; padding: 3px 0; color: #fff; background: #5a2a2a; border: 2px solid var(--px-ink); cursor: pointer; } .accX:hover { background: #7a3535; }
+.accDetail { flex: 0 0 auto; font-size: 8px; line-height: 1.7; padding: 6px 8px; background: #1b1f26; border: 3px solid var(--px-ink); min-height: 2.6em; }
+.accDetail b { color: #fff; font-size: 9px; } .accDetail .cosTag { display: inline-block; margin-left: 4px; } .accDetail .hint { color: var(--px-dim); }
+.accDev { font-size: 8px; color: var(--px-dim); } .accDev summary { cursor: pointer; padding: 2px 0; } .accDev .accBtns { margin: 6px 0; }
+.accMain { display: flex; flex-direction: column; gap: 10px; min-height: 0; min-width: 0; }
+.accTabs { flex: 0 0 auto; } .accTabs .shopTab { display: inline-flex; align-items: center; } .accTabs .accTabSpecial { margin-left: auto; opacity: 0.8; }
+.accDot { display: inline-block; width: 6px; height: 6px; margin-left: 6px; background: #f5c542; }
+#accGrid { grid-template-columns: repeat(auto-fill, minmax(128px, 1fr)); gap: 8px; align-content: start; }
+.accSlotHead { grid-column: 1 / -1; font-size: 8px; letter-spacing: 1px; color: #f5c542; border-bottom: 2px solid #3a3f47; padding: 4px 0 2px; }
+.accCard { position: relative; cursor: pointer; padding: 8px 6px; gap: 5px; }
+.accCard:hover { background: #262b32; } .accCard:focus-visible { outline: 3px solid #fff; outline-offset: 1px; }
+.accCard.sel { outline: 3px solid #5ec8ff; outline-offset: 1px; }
+.accCard.equipped { background: #2b2610; }
+.accCard.locked { opacity: 0.6; cursor: help; }
+.accCard .cosName { font-size: 9px; } .accCard .cosTag { font-size: 7px; }
+.accCard .shopBuyBtn { width: 100%; padding: 6px 4px; font-size: 8px; }
+.accIcon { width: 64px; height: 64px; }
+#accessoriesScreen .accNone { display: flex; align-items: center; justify-content: center; width: 64px; height: 64px; background: #1b1f26; border: 1px dashed #3a3f47; color: #8a9099; font: bold 9px monospace; box-sizing: border-box; margin: 0 auto; }
+@media (max-width: 820px) {   /* narrow screens: preview + equipment stay pinned on top, only the card grid scrolls */
+  .accPanel { height: 100%; }
+  .accLayout { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); gap: 8px; }
+  .accSide { flex-direction: row; flex-wrap: nowrap; align-items: stretch; overflow: visible; padding-right: 0; gap: 10px; }
+  .accPreviewBox { flex: 0 0 124px; gap: 4px; } #accPreview { max-width: 124px; }
+  .accDir .shopWpn, .accBtns .shopWpn { padding: 5px 6px; font-size: 7px; } .accBtns { gap: 4px; }
+  .accSideInfo { flex: 1 1 0; min-width: 0; gap: 4px; } .accDev { display: none; }
+  .accWornRow { padding: 2px 0; font-size: 7px; grid-template-columns: 44px minmax(0, 1fr) 20px; }
+  .shopFooter .shopHint { display: none; }
+  #accGrid { grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); }
+}
+@media (max-width: 820px) and (max-height: 560px) {   /* landscape phones: two columns again */
+  .accLayout { grid-template-columns: 190px minmax(0, 1fr); grid-template-rows: none; }
+  .accSide { flex-direction: column; flex-wrap: nowrap; overflow-y: auto; padding-right: 4px; }
+  .accPreviewBox { flex: none; } #accPreview { max-width: 110px; }
+  .accSideInfo { flex: none; }
+  .accPanel { gap: 6px; padding: 8px 10px; } .accPanel .shopHeader { gap: 4px 12px; } .accPanel .achSummary .achBar { display: none; }
+  .shopPanel h1 { font-size: 10px; } .accDetail { display: none; }
+  .accTabs .shopTab { padding: 5px 8px; } .accPanel .shopFooter .bigButton { padding: 6px 16px; font-size: 9px; }
+}
+@media (min-width: 1100px) and (min-height: 700px) { .accWornRow { font-size: 10px; } .accDetail { font-size: 10px; } .accDetail b { font-size: 11px; } .accCard .cosName { font-size: 10px; } }
 /* ---- Difficulty selection screen ---- */
 .diffChoices { display: flex; flex-direction: column; gap: 10px; width: min(460px, 92vw); margin: 4px 0 14px; }
 .diffChoice { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; text-align: left; padding: 10px 14px; }
@@ -1946,7 +1990,7 @@ const EMBEDDED_ASSETS = {
     <!-- ===================== Start overlay (home page) ===================== -->
     <div id="startScreen" class="overlay homePage">
       <!-- Version: major.minor.patch. The patch digit goes 0-9 and rolls into the minor number (v3.88.9 -> v3.89.0); the minor number is two digits and rolls into the major number (v3.99.9 -> v4.00.0). Bumped by 1 on every change. -->
-      <div id="versionTag" class="versionTag">v3.92.5</div>
+      <div id="versionTag" class="versionTag">v3.92.6</div>
       <div id="homeSidebar" class="homeSidebar">
         <div class="homeSidebarTitle">Your Stats</div>
         <div class="homeSidebarStat">
@@ -2086,26 +2130,42 @@ const EMBEDDED_ASSETS = {
 
     <!-- ===================== Accessories ===================== -->
     <div id="accessoriesScreen" class="overlay hidden">
-      <div class="shopPanel achPanel" role="dialog" aria-modal="true" aria-labelledby="accTitle">
+      <div class="shopPanel achPanel accPanel" role="dialog" aria-modal="true" aria-labelledby="accTitle">
         <div class="shopHeader"><h1 id="accTitle">ACCESSORIES</h1><div id="accSummary" class="achSummary"></div></div>
-        <div class="accTop">
-          <canvas id="accPreview" width="176" height="176"></canvas>
-          <div class="accTopRight">
-            <div id="accWorn" class="accWorn"></div>
-            <div class="accBtns">
-              <button class="shopWpn" data-act="rotate">ROTATE</button>
-              <button id="accSpinBtn" class="shopWpn" data-act="spin">SPIN: OFF</button>
-              <button id="accWalkBtn" class="shopWpn" data-act="walk">WALK: OFF</button>
-              <button class="shopWpn" data-act="unequipAll">UNEQUIP ALL</button>
-              <button id="accMarkersBtn" class="shopWpn" data-act="markers">MARKERS: OFF</button>
-              <button id="accDebugBtn" class="shopWpn" data-act="debug">DEBUG: OFF</button>
+        <div class="accLayout">
+          <aside class="accSide">
+            <div class="accPreviewBox">
+              <canvas id="accPreview" width="240" height="240" data-act="rotate" title="Click to turn the peanut"></canvas>
+              <div class="accDir">
+                <button class="shopWpn" data-act="prev" aria-label="Turn left">&lt;</button>
+                <span id="accDirName">SOUTH</span>
+                <button class="shopWpn" data-act="next" aria-label="Turn right">&gt;</button>
+              </div>
+              <div class="accBtns">
+                <button id="accSpinBtn" class="shopWpn" data-act="spin">SPIN: OFF</button>
+                <button id="accWalkBtn" class="shopWpn" data-act="walk">WALK: OFF</button>
+              </div>
             </div>
-            <div class="stNote">Wearables need PixelLab art to be visible. "Markers" shows where an art-less wearable would attach (a testing aid, not art).</div>
-          </div>
+            <div class="accSideInfo">
+              <div class="accSideHead"><span>EQUIPPED</span><button class="shopWpn" data-act="unequipAll">REMOVE ALL</button></div>
+              <div id="accWorn" class="accWorn"></div>
+              <details class="accDev">
+                <summary>DEV TOOLS</summary>
+                <div class="accBtns">
+                  <button id="accMarkersBtn" class="shopWpn" data-act="markers">MARKERS: OFF</button>
+                  <button id="accDebugBtn" class="shopWpn" data-act="debug">DEBUG: OFF</button>
+                </div>
+                <div class="stNote">Debug (also F8) draws the attachment points and bounds. Markers shows where an art-less wearable would attach.</div>
+              </details>
+            </div>
+          </aside>
+          <section class="accMain">
+            <div id="accTabs" class="shopTabs accTabs" role="tablist"></div>
+            <div id="accDetail" class="accDetail" aria-live="polite"></div>
+            <div id="accGrid" class="shopList cosGrid"></div>
+          </section>
         </div>
-        <div id="accTabs" class="shopTabs"></div>
-        <div id="accGrid" class="shopList cosGrid"></div>
-        <div class="shopFooter"><button class="bigButton" data-act="close">CLOSE</button><span class="shopHint">ESC = CLOSE</span></div>
+        <div class="shopFooter"><button class="bigButton" data-act="close">CLOSE</button><span class="shopHint">CLICK AN ITEM TO EQUIP OR REMOVE IT - ESC = CLOSE</span></div>
       </div>
     </div>
 
@@ -7769,13 +7829,13 @@ function accPlace(f, d, img, flip, part) {
 // ==ACC-CORE-END==
 
 const ACC_CATS = [
-  { id: 'head', name: 'Headwear' }, { id: 'face', name: 'Face' }, { id: 'back', name: 'Back' }, { id: 'body', name: 'Body' }, { id: 'fx', name: 'Special' },
+  { id: 'head', name: 'Head' }, { id: 'face', name: 'Face' }, { id: 'back', name: 'Back' }, { id: 'body', name: 'Body' }, { id: 'fx', name: 'Special' },
 ];
 // Equipment slots. A category is one slot, except Body, which has four independent slots so compatible items can be worn together: neckwear (chain, tags,
 // neckerchief, scarf), a torso piece (bandolier, chest plate, shoulder armour), a belt, and a badge. Within one slot a new item replaces the old one.
 const ACC_BODY_SLOTS = { gold_chain: 'neck', dog_tags: 'neck', red_neckerchief: 'neck', ninja_scarf: 'neck', bandolier: 'torso', chest_plate: 'torso', shoulder_armour: 'torso', utility_belt: 'waist', police_badge: 'badge' };
 const ACC_SLOTS = [
-  { id: 'head', cat: 'head', name: 'Headwear' }, { id: 'face', cat: 'face', name: 'Face' }, { id: 'back', cat: 'back', name: 'Back' },
+  { id: 'head', cat: 'head', name: 'Head' }, { id: 'face', cat: 'face', name: 'Face' }, { id: 'back', cat: 'back', name: 'Back' },
   { id: 'neck', cat: 'body', name: 'Neck' }, { id: 'torso', cat: 'body', name: 'Torso' }, { id: 'waist', cat: 'body', name: 'Waist' }, { id: 'badge', cat: 'body', name: 'Badge' },
   { id: 'fx', cat: 'fx', name: 'Special' },
 ];
@@ -8215,13 +8275,13 @@ class AccessorySystem {
 
   // ---- previews (menu) ----
   // Draws the peanut wearing the equipped accessories, facing `dir`, with the same code path as the game.
-  drawPreview(ctx, W, H, dir, t, equipped, walk) {   // walk: preview the walking frames instead of the idle pose
+  drawPreview(ctx, W, H, dir, t, equipped, walk, zoom) {   // walk: preview the walking frames instead of the idle pose; zoom: scale of the whole figure
     ctx.clearRect(0, 0, W, H); ctx.imageSmoothingEnabled = false;
     const wf = walk && PLAYER_SPRITES.walk && PLAYER_SPRITES.walk[dir], frame = wf ? Math.floor(t * 8) % wf.length : 0;
     const sprite = wf ? wf[frame] : PLAYER_SPRITES && PLAYER_SPRITES.idle[dir];
     if (!isSpriteReady(sprite)) return;
     const saved = this.equipped; if (equipped) this.equipped = equipped;
-    const f = this.frameFromSprite(sprite, dir, W / 2, H * 0.54, W * 0.62); f.label = wf ? 'walk ' + frame : 'idle';
+    const f = this.frameFromSprite(sprite, dir, W / 2, H * 0.54, W * 0.62 * (zoom || 1)); f.label = wf ? 'walk ' + frame : 'idle';
     this.drawPhase(ctx, f, 'behind', t);
     ctx.drawImage(sprite, f.x0, f.y0, f.size, f.size);
     this.drawPhase(ctx, f, 'body', t);
@@ -8253,58 +8313,93 @@ class AccessorySystem {
 class AccessoriesMenu extends PanelMenu {
   constructor(sys) {
     super('accessoriesScreen');
-    this.sys = sys; this.cat = 'all'; this.dirIdx = 0; this._timer = null; this.walk = false; this.spin = false; this._spinT = 0;   // preview-only options
+    this.sys = sys; this.cat = 'head'; this.sel = null; this.dirIdx = 0; this._timer = null; this.walk = false; this.spin = false; this._spinT = 0; this._shownDir = -1;   // cat / sel / walk / spin are view state only; what is WORN lives in ACCESSORIES.equipped (saved by the game's save system)
     this.pv = document.getElementById('accPreview');
   }
   open() { if (this.isOpen) return; super.open(); this._timer = setInterval(() => this._tickPreview(), 90); }
   close() { if (!this.isOpen) return; super.close(); clearInterval(this._timer); this._timer = null; }
   onAct(act, t) {
     const s = this.sys;
-    if (act === 'cat') { Sound.uiClick(); this.cat = t.dataset.cat; this.render(); }
-    else if (act === 'equip') { if (s.equip(t.dataset.id)) Sound.uiClick(); else Sound.emptyClick(); this.render(); }
-    else if (act === 'unequip') { s.unequip(s.byId.get(t.dataset.id).slot); Sound.uiClick(); this.render(); }
+    if (act === 'cat') { Sound.uiClick(); this.cat = t.dataset.cat; this.render(); const g = document.getElementById('accGrid'); if (g) g.scrollTop = 0; }
+    else if (act === 'toggle') {   // clicking an accessory card: select it, then equip it (or remove it when it is already worn)
+      const d = s.byId.get(t.dataset.id); if (!d) return;
+      this.sel = d.id;
+      if (!s.isUnlocked(d.id)) Sound.emptyClick();
+      else if (s.isEquipped(d)) { s.unequip(d.slot); Sound.uiClick(); }
+      else if (s.equip(d.id)) { Sound.uiClick(); this._showItem(d); } else Sound.emptyClick();
+      this.render();
+    }
+    else if (act === 'equip') { this.sel = t.dataset.id; if (s.equip(t.dataset.id)) { Sound.uiClick(); this._showItem(s.byId.get(t.dataset.id)); } else Sound.emptyClick(); this.render(); }
+    else if (act === 'unequip') { this.sel = t.dataset.id; s.unequip(s.byId.get(t.dataset.id).slot); Sound.uiClick(); this.render(); }
     else if (act === 'none') { s.unequip(t.dataset.slot); Sound.uiClick(); this.render(); }
     else if (act === 'unequipAll') { s.unequipAll(); Sound.uiClick(); this.render(); }
-    else if (act === 'rotate') { Sound.uiClick(); this.dirIdx = (this.dirIdx + 1) % SPRITE_DIRECTIONS.length; this._tickPreview(); }
+    else if (act === 'rotate' || act === 'next') { Sound.uiClick(); this.dirIdx = (this.dirIdx + 1) % SPRITE_DIRECTIONS.length; this._tickPreview(); }
+    else if (act === 'prev') { Sound.uiClick(); this.dirIdx = (this.dirIdx + SPRITE_DIRECTIONS.length - 1) % SPRITE_DIRECTIONS.length; this._tickPreview(); }
     else if (act === 'walk') { this.walk = !this.walk; Sound.uiClick(); this.render(); }
     else if (act === 'spin') { this.spin = !this.spin; this._spinT = performance.now(); Sound.uiClick(); this.render(); }
     else if (act === 'debug') { s.setDebug(!s.debug); Sound.uiClick(); this.render(); }
     else if (act === 'markers') { s.setMarkers(!s.settings.markers); Sound.uiClick(); this.render(); }
     else super.onAct(act);
   }
-  _tickPreview() {
+  // After equipping, turn the preview to a direction where the new item can actually be seen: packs without front straps are hidden behind the peanut when it
+  // faces the camera, face items / badge / dog tags are hidden from behind. (Not while SPIN is turning it.)
+  _showItem(d) {
+    if (this.spin || !d || d.fx) return;
+    const dir = SPRITE_DIRECTIONS[this.dirIdx], v = DIRECTION_VECTORS[dir];
+    let want = null;
+    if (d.cat === 'back' && dir === 'south' && !(d.art && d.art.straps && accStrapRule(d, accArtDir(d, 'south')))) want = 'north-east';
+    else if ((d.cat === 'face' || (d.art && d.art.front)) && v.y <= -0.3) want = 'south';
+    if (want) this.dirIdx = SPRITE_DIRECTIONS.indexOf(want);
+  }
+  _tickPreview() {   // the preview is the real character + the real accessory renderer (the same drawPhase the game uses), redrawn every tick
     if (!this.isOpen) return;
     if (this.spin && performance.now() - this._spinT > 1100) { this._spinT = performance.now(); this.dirIdx = (this.dirIdx + 1) % SPRITE_DIRECTIONS.length; }   // SPIN: turn through all 8 directions
-    this.sys.drawPreview(this.pv.getContext('2d'), this.pv.width, this.pv.height, SPRITE_DIRECTIONS[this.dirIdx], performance.now() / 1000, null, this.walk);
+    if (this._shownDir !== this.dirIdx) { this._shownDir = this.dirIdx; const n = document.getElementById('accDirName'); if (n) n.textContent = SPRITE_DIRECTIONS[this.dirIdx].toUpperCase().replace('-', ' '); }
+    this.sys.drawPreview(this.pv.getContext('2d'), this.pv.width, this.pv.height, SPRITE_DIRECTIONS[this.dirIdx], performance.now() / 1000, null, this.walk, 1.3);
   }
   render() {
     const s = this.sys, un = s.unlockedCount(), total = s.defs.length, pct = Math.round((un / total) * 100);
     document.getElementById('accSummary').innerHTML = `<b>${un}</b> / ${total} UNLOCKED <span class="achPct">${pct}%</span><div class="achBar"><i style="width:${pct}%"></i></div>`;
-    const cats = [{ id: 'all', name: 'All' }, ...ACC_CATS];
-    document.getElementById('accTabs').innerHTML = cats.map((c) => {
-      const list = c.id === 'all' ? s.defs : s.defs.filter((d) => d.cat === c.id);
-      return `<button class="shopTab achTab${this.cat === c.id ? ' active' : ''}" data-act="cat" data-cat="${c.id}">${c.name.toUpperCase()} <em>${list.filter((d) => s.isUnlocked(d.id)).length}/${list.length}</em></button>`;
+    // tabs: Head / Face / Back / Body (the wearables) + the older Special effects tab; a gold dot marks a category that has something equipped
+    document.getElementById('accTabs').innerHTML = ACC_CATS.map((c) => {
+      const list = s.defs.filter((d) => d.cat === c.id), worn = ACC_SLOTS.some((sl) => sl.cat === c.id && s.equipped[sl.id]);
+      return `<button class="shopTab achTab${this.cat === c.id ? ' active' : ''}${c.id === 'fx' ? ' accTabSpecial' : ''}" role="tab" aria-selected="${this.cat === c.id}" data-act="cat" data-cat="${c.id}">${c.name.toUpperCase()} <em>${list.filter((d) => s.isUnlocked(d.id)).length}/${list.length}</em>${worn ? '<i class="accDot" title="Something is equipped"></i>' : ''}</button>`;
     }).join('');
-    document.getElementById('accWorn').innerHTML = ACC_SLOTS.map((c) => { const d = s.equipped[c.id] && s.byId.get(s.equipped[c.id]); return `<div class="accWornRow"><span>${c.name.toUpperCase()}</span><b>${d ? d.name : '-'}</b></div>`; }).join('');
+    // equipped list: one row per slot, with a remove button
+    document.getElementById('accWorn').innerHTML = ACC_SLOTS.map((c) => {
+      const d = s.equipped[c.id] && s.byId.get(s.equipped[c.id]);
+      return `<div class="accWornRow"><span>${c.name.toUpperCase()}</span><b class="${d ? '' : 'none'}">${d ? d.name : '-'}</b>${d ? `<button class="accX" data-act="none" data-slot="${c.id}" aria-label="Remove ${d.name}" title="Remove">x</button>` : '<i></i>'}</div>`;
+    }).join('');
     document.getElementById('accSpinBtn').textContent = 'SPIN: ' + (this.spin ? 'ON' : 'OFF');
     document.getElementById('accWalkBtn').textContent = 'WALK: ' + (this.walk ? 'ON' : 'OFF');
     document.getElementById('accDebugBtn').textContent = 'DEBUG: ' + (s.debug ? 'ON' : 'OFF');
     document.getElementById('accMarkersBtn').textContent = 'MARKERS: ' + (s.settings.markers ? 'ON' : 'OFF');
+    // detail box for the selected accessory
+    const sd = this.sel && s.byId.get(this.sel), dEl = document.getElementById('accDetail');
+    if (!sd) dEl.innerHTML = '<span class="hint">Click an accessory to equip it. Click it again to remove it.</span>';
+    else {
+      const open = s.isUnlocked(sd.id), eq = s.isEquipped(sd), p = s.progress(sd), slotName = ACC_SLOTS.find((c) => c.id === sd.slot).name.toUpperCase();
+      const req = s.unlocked[sd.id] ? 'Earned: ' + sd.reqText : open ? (sd.note || 'Unlocked.') : 'To unlock: ' + sd.reqText;
+      const prog = open ? '' : `<div class="achProg"><div class="achBar"><i style="width:${Math.round(100 * p.val / Math.max(1, p.target))}%"></i></div><span>${sd.req.ach ? 'Not yet' : this._fmt(sd, p.val) + ' / ' + this._fmt(sd, p.target)}</span></div>`;
+      dEl.innerHTML = `<b>${sd.name}</b><span class="cosTag ${eq ? 'eq' : open ? 'un' : 'lk'}">${eq ? 'EQUIPPED' : open ? 'UNLOCKED' : 'LOCKED'}</span> <span class="hint">${slotName}</span><br><span class="hint">${req}</span>${prog}`;
+    }
     const slotIx = (d) => ACC_SLOTS.findIndex((x) => x.id === d.slot);
-    const list = s.defs.filter((d) => this.cat === 'all' || d.cat === this.cat).sort((a, b) => slotIx(a) - slotIx(b));   // grouped by slot (stable)
-    let html = '', lastCat = null;
+    const list = s.defs.filter((d) => d.cat === this.cat).sort((a, b) => slotIx(a) - slotIx(b));   // grouped by slot (stable)
+    const multi = ACC_SLOTS.filter((sl) => sl.cat === this.cat).length > 1;                           // Body has four slots: label each group
+    let html = '', lastSlot = null;
+    if (!list.length) html = '<div class="cosNote">There are no accessories in this category yet.</div>';
     for (const d of list) {
-      if (d.slot !== lastCat) {   // a None card starts every slot: it takes off whatever is worn in that slot
-        lastCat = d.slot; const none = !s.equipped[d.slot], cn = ACC_SLOTS.find((c) => c.id === d.slot).name;
-        html += `<div class="cosCard open${none ? ' equipped' : ''}" data-cat="${d.cat}"><div class="cosPrev accNone"><span>NONE</span></div><div class="cosName">None</div><div class="cosTag ${none ? 'eq' : 'un'}">${none ? 'EQUIPPED' : 'NOTHING WORN'} - ${cn.toUpperCase()}</div><div class="cosReq">Wear nothing in ${cn}.</div><div class="cosBtn">${none ? '<button class="shopBuyBtn cant" disabled>SELECTED</button>' : `<button class="shopBuyBtn" data-act="none" data-slot="${d.slot}">SELECT</button>`}</div></div>`;
+      if (d.slot !== lastSlot) {   // a None card starts every slot: it removes whatever is worn in that slot
+        lastSlot = d.slot; const worn = s.equipped[d.slot] && s.byId.get(s.equipped[d.slot]), sn = ACC_SLOTS.find((c) => c.id === d.slot).name;
+        if (multi) html += `<div class="accSlotHead">${sn.toUpperCase()}</div>`;
+        html += `<div class="cosCard accCard open${worn ? '' : ' equipped'}" ${worn ? `data-act="none" data-slot="${d.slot}" role="button" tabindex="0"` : ''} data-cat="${d.cat}"><div class="cosPrev accNone"><span>NONE</span></div><div class="cosName">None</div><div class="cosTag ${worn ? 'un' : 'eq'}">${worn ? 'AVAILABLE' : 'EQUIPPED'}</div><div class="cosBtn">${worn ? `<button class="shopBuyBtn cosUn" data-act="none" data-slot="${d.slot}">REMOVE</button>` : ''}</div></div>`;
       }
-      const open = s.isUnlocked(d.id), eq = s.isEquipped(d), p = s.progress(d), needsArt = !s.hasArt(d);
-      const prog = open ? '' : `<div class="achProg"><div class="achBar"><i style="width:${Math.round(100 * p.val / Math.max(1, p.target))}%"></i></div><span>${d.req.ach ? 'Not yet' : this._fmt(d, p.val) + ' / ' + this._fmt(d, p.target)}</span></div>`;
-      const btn = !open ? '<button class="shopBuyBtn cant" disabled>LOCKED</button>' : eq ? `<button class="shopBuyBtn cosUn" data-act="unequip" data-id="${d.id}">UNEQUIP</button>` : `<button class="shopBuyBtn" data-act="equip" data-id="${d.id}">EQUIP</button>`;
-      html += `<div class="cosCard${open ? ' open' : ' locked'}${eq ? ' equipped' : ''}" data-cat="${d.cat}">` +
-        `<canvas class="cosPrev accIcon" width="80" height="80" data-id="${d.id}" data-state="${open ? 'open' : 'locked'}"></canvas>` +
-        `<div class="cosName">${d.name}</div><div class="cosTag ${eq ? 'eq' : open ? 'un' : 'lk'}">${eq ? 'EQUIPPED' : open ? 'UNLOCKED' : 'LOCKED'} - ${ACC_SLOTS.find((c) => c.id === d.slot).name.toUpperCase()}</div>` +
-        `${needsArt ? '<div class="cosTag art">ART NEEDED</div>' : ''}<div class="cosReq">${s.unlocked[d.id] ? 'Earned: ' : open ? 'Open for testing. Normally: ' : 'To unlock: '}${d.reqText}</div>${prog}<div class="cosBtn">${btn}</div></div>`;
+      const open = s.isUnlocked(d.id), eq = s.isEquipped(d), needsArt = !s.hasArt(d), sel = this.sel === d.id;
+      const btn = !open ? '<button class="shopBuyBtn cant" disabled>LOCKED</button>' : eq ? `<button class="shopBuyBtn cosUn" data-act="unequip" data-id="${d.id}">REMOVE</button>` : `<button class="shopBuyBtn" data-act="equip" data-id="${d.id}">EQUIP</button>`;
+      html += `<div class="cosCard accCard${open ? ' open' : ' locked'}${eq ? ' equipped' : ''}${sel ? ' sel' : ''}" data-act="toggle" data-id="${d.id}" data-cat="${d.cat}" role="button" tabindex="0" aria-pressed="${eq}" aria-label="${d.name}, ${eq ? 'equipped' : open ? 'unlocked' : 'locked'}">` +
+        `<canvas class="cosPrev accIcon" width="64" height="64" data-id="${d.id}" data-state="${open ? 'open' : 'locked'}"></canvas>` +
+        `<div class="cosName">${d.name}</div><div class="cosTag ${eq ? 'eq' : open ? 'un' : 'lk'}">${eq ? 'EQUIPPED' : open ? 'UNLOCKED' : 'LOCKED'}</div>` +
+        `${needsArt ? '<div class="cosTag art">ART NEEDED</div>' : ''}<div class="cosBtn">${btn}</div></div>`;
     }
     document.getElementById('accGrid').innerHTML = html;
     for (const cv of document.querySelectorAll('#accGrid canvas.accIcon')) this._icon(cv, s.byId.get(cv.dataset.id), cv.dataset.state);
@@ -8323,8 +8418,10 @@ class AccessoriesMenu extends PanelMenu {
     if (d.fx) s.drawPreview(g, W, H, 'south', 1.3, { fx: d.id });
     else {
       const found = d.art ? s._artFor(d, d.cat === 'back' ? (d.art.artView === 'away' ? 'south' : 'north') : 'south') || s._artFor(d, 'east') : null;   // packs: the pocketed front; cape: its back
-      if (found && d.art.mode !== 'overlay') { const k = Math.min((W - 8) / found.img.naturalWidth, (H - 8) / found.img.naturalHeight); g.drawImage(found.img, (W - found.img.naturalWidth * k) / 2, (H - found.img.naturalHeight * k) / 2, found.img.naturalWidth * k, found.img.naturalHeight * k); }
-      else { g.fillStyle = '#1b1f26'; g.fillRect(0, 0, W, H); g.strokeStyle = '#3a3f47'; g.setLineDash([4, 3]); g.strokeRect(4, 4, W - 8, H - 8); g.setLineDash([]); g.fillStyle = ACC_MARK[d.cat]; g.font = 'bold 11px monospace'; g.textAlign = 'center'; g.fillText(ACC_CATS.find((c) => c.id === d.cat).name.toUpperCase(), W / 2, H / 2 - 2); g.fillStyle = '#8a9099'; g.font = '9px monospace'; g.fillText('art needed', W / 2, H / 2 + 12); }
+      if (found && d.art.mode !== 'overlay') {
+        const B = accBounds(found.img), k = Math.max(1, Math.floor(Math.min((W - 10) / B.W, (H - 10) / B.H)));   // a whole-number scale keeps every art pixel the same size; centred on the VISIBLE pixels
+        g.drawImage(found.img, B.l, B.t, B.W, B.H, Math.round((W - B.W * k) / 2), Math.round((H - B.H * k) / 2), B.W * k, B.H * k);
+      } else { g.fillStyle = '#1b1f26'; g.fillRect(0, 0, W, H); g.strokeStyle = '#3a3f47'; g.setLineDash([4, 3]); g.strokeRect(4, 4, W - 8, H - 8); g.setLineDash([]); g.fillStyle = ACC_MARK[d.cat]; g.font = 'bold 11px monospace'; g.textAlign = 'center'; g.fillText(ACC_CATS.find((c) => c.id === d.cat).name.toUpperCase(), W / 2, H / 2 - 2); g.fillStyle = '#8a9099'; g.font = '9px monospace'; g.fillText('art needed', W / 2, H / 2 + 12); }
     }
     if (state === 'locked') { g.globalCompositeOperation = 'source-atop'; g.fillStyle = 'rgba(8,10,14,0.78)'; g.fillRect(0, 0, W, H); }
   }
