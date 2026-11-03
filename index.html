@@ -1040,6 +1040,43 @@ html, body, button, input, select, textarea {
 .accNewChip { display: inline-block; min-width: 12px; margin-left: 6px; padding: 1px 3px; font-style: normal; font-size: 7px; text-align: center; background: #8a6a10; color: #ffe27a; border: 2px solid var(--px-ink); }
 .newBadge { display: inline-block; margin-left: 8px; padding: 2px 5px; font-size: 8px; background: #8a6a10; color: #ffe27a; border: 2px solid var(--px-ink); vertical-align: middle; animation: accNewPulse 1.4s ease-in-out infinite; }
 #accessoriesScreen .accNone { display: flex; align-items: center; justify-content: center; width: 64px; height: 64px; background: #1b1f26; border: 1px dashed #3a3f47; color: #8a9099; font: bold 9px monospace; box-sizing: border-box; margin: 0 auto; }
+/* ---- Accessory rarity (COSMETIC ONLY) + collection showcase ---- */
+.accHide { display: none !important; }
+.accViews { flex: 0 0 auto; display: flex; flex-wrap: wrap; gap: 8px; }
+.accFilters { flex: 0 0 auto; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 16px; }
+.accFGroup { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.accFGroup > label { font-size: 7px; color: var(--px-dim); margin-right: 3px; letter-spacing: 1px; }
+.accFBtn { font: inherit; font-size: 7px; line-height: 1.2; padding: 5px 7px; color: var(--px-text); cursor: pointer; background: #26292e; border: 2px solid var(--px-ink); }
+.accFBtn:hover { background: #343941; } .accFBtn:focus-visible { outline: 3px solid #fff; outline-offset: 1px; }
+.accFBtn.active { background: #6b5410; color: #f5c542; }
+.accFBtn.rar { border-bottom: 3px solid var(--rar); } .accFBtn.rar.active { background: #2b2f36; color: #fff; }
+.accCount { font-size: 7px; color: var(--px-dim); margin-left: auto; }
+.accNoMatch { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.accCard::before { content: ''; position: absolute; left: 0; right: 0; top: 0; height: 3px; background: var(--rar, transparent); }   /* the rarity stripe: the only decoration a card gets */
+.accCard.rarGlow { box-shadow: inset 0 0 14px rgba(255, 138, 46, 0.16); } .accCard.rarGlow.equipped { box-shadow: 0 0 10px rgba(245, 197, 66, 0.35), inset 0 0 14px rgba(255, 138, 46, 0.16); }
+.accRar { font-size: 7px; letter-spacing: 1px; color: var(--rar, #a9adb3); }
+.accTags { display: flex; flex-wrap: wrap; justify-content: center; gap: 3px; }
+.accSlotTag { font-size: 6px; color: var(--px-dim); letter-spacing: 1px; }
+.accDetail .accRar { display: inline-block; margin-left: 6px; } .accDetBtns { margin-top: 6px; }
+.accShowcase { flex: 1 1 auto; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; padding-right: 4px; }
+.scBox { background: #1b1f26; border: 3px solid var(--px-ink); padding: 10px 12px; font-size: 8px; line-height: 1.7; min-width: 0; }
+.scBox h2 { margin: 0 0 8px; font-size: 8px; font-weight: normal; letter-spacing: 1px; color: #f5c542; }
+.scGrid2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; }
+.scTotal { font-size: 9px; color: #fff; } .scTotal b { font-size: 16px; color: #f5c542; font-weight: normal; } .scSub { color: var(--px-dim); margin-top: 4px; }
+.scRow { display: grid; grid-template-columns: 84px minmax(0, 1fr) 46px; gap: 8px; align-items: center; padding: 3px 0; }
+.scRow .achBar { margin-top: 0; } .scRow .achBar i { background: var(--rar, #f1c40f); } .scRow span { color: var(--rar, #fff); } .scRow b { text-align: right; color: #fff; font-weight: normal; }
+.scNote { margin-top: 6px; font-size: 7px; color: var(--px-dim); }
+.featured { display: flex; align-items: center; gap: 14px; }
+.featArt { flex: 0 0 auto; width: 96px; height: 96px; image-rendering: pixelated; background: #14171b; border: 3px solid var(--rar, var(--px-ink)); }
+.featInfo { min-width: 0; display: flex; flex-direction: column; gap: 5px; } .featInfo b { font-size: 10px; color: #fff; font-weight: normal; line-height: 1.5; }
+.featInfo .hint { color: var(--px-dim); }
+.scPick { display: grid; grid-template-columns: repeat(auto-fill, minmax(46px, 1fr)); gap: 5px; }
+.scPickBtn { padding: 2px; cursor: pointer; background: #14171b; border: 2px solid var(--px-ink); border-bottom: 3px solid var(--rar, var(--px-ink)); }
+.scPickBtn:hover { background: #262b32; } .scPickBtn:focus-visible { outline: 3px solid #fff; outline-offset: 1px; }
+.scPickBtn.sel { outline: 3px solid #5ec8ff; outline-offset: 1px; } .scPickBtn.locked canvas { opacity: 0.8; }
+.scPickBtn canvas { display: block; width: 100%; aspect-ratio: 1 / 1; image-rendering: pixelated; }
+@media (max-width: 820px) { .scGrid2 { grid-template-columns: minmax(0, 1fr); } .featured { gap: 10px; } .featArt { width: 80px; height: 80px; } .accFGroup > label { display: none; } }
+@media (max-width: 820px) and (max-height: 560px) { .accFilters { gap: 3px 8px; } .accFBtn { padding: 4px 5px; } .accViews .shopWpn { padding: 5px 8px; } .scRow { grid-template-columns: 70px minmax(0, 1fr) 40px; } }
 @media (max-width: 820px) {   /* narrow screens: preview + equipment stay pinned on top, only the card grid scrolls */
   .accPanel { height: 100%; }
   .accLayout { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); gap: 8px; }
@@ -1998,7 +2035,7 @@ const EMBEDDED_ASSETS = {
     <!-- ===================== Start overlay (home page) ===================== -->
     <div id="startScreen" class="overlay homePage">
       <!-- Version: major.minor.patch. The patch digit goes 0-9 and rolls into the minor number (v3.88.9 -> v3.89.0); the minor number is two digits and rolls into the major number (v3.99.9 -> v4.00.0). Bumped by 1 on every change. -->
-      <div id="versionTag" class="versionTag">v3.92.7</div>
+      <div id="versionTag" class="versionTag">v3.92.8</div>
       <div id="homeSidebar" class="homeSidebar">
         <div class="homeSidebarTitle">Your Stats</div>
         <div class="homeSidebarStat">
@@ -2171,9 +2208,12 @@ const EMBEDDED_ASSETS = {
             </div>
           </aside>
           <section class="accMain">
+            <div id="accViews" class="accViews" role="tablist" aria-label="Accessory views"></div>
             <div id="accTabs" class="shopTabs accTabs" role="tablist"></div>
+            <div id="accFilters" class="accFilters" aria-label="Filter and sort accessories"></div>
             <div id="accDetail" class="accDetail" aria-live="polite"></div>
             <div id="accGrid" class="shopList cosGrid"></div>
+            <div id="accShowcase" class="accShowcase accHide"></div>
           </section>
         </div>
         <div class="shopFooter"><button class="bigButton" data-act="close">CLOSE</button><span class="shopHint">CLICK AN ITEM TO EQUIP OR REMOVE IT - ESC = CLOSE</span></div>
@@ -7592,7 +7632,8 @@ class StatsMenu extends PanelMenu {
 //    `art` entry to turn one on (see ACCESSORY_ART_GUIDE). Special effects / companions are drawn by code (particles, glows) or from
 //    your existing sprites, so they work without any new art.
 //
-// ADDING AN ACCESSORY LATER: add one acc(...) line to ACCESSORY_DEFS. Nothing else changes.
+// ADDING AN ACCESSORY LATER: add one acc(...) line to ACCESSORY_DEFS and give it a rarity (rarity: 'rare' in its options, or one line in ACC_RARITY). The inventory,
+//   rarity filter / sorting, collection showcase and featured display are all computed from the data, so nothing else changes.
 // ADDING ART FOR ONE: put the PNGs in assets/accessories/<id>/ (see the guide) and add  art: {}  to its acc(...) line:
 //     art: {}                          8 directions: <id>/south|south-east|east|north-east|north|north-west|west|south-west .png
 //     art: {}            only 5 files needed (south, south-east, east, north-east, north); west sides are mirrored
@@ -7991,6 +8032,52 @@ acc('halo',              'fx', 'Glowing Halo',           AS('perfectTime', 900),
 acc('dollar_signs',      'fx', 'Floating Dollar Signs',  AS('spent', 5000),     'Spend $5,000 in the shop in total.',       { fx: 'dollars' });
 acc('ghost',             'fx', 'Tiny Ghost Companion',   AS('secretAch', 3),    'Unlock 3 secret achievements.',            { fx: 'ghost', companion: true });
 
+// ---- Rarity (COSMETIC ONLY) ----
+// A rarity is a label and a colour for the collection screens (inventory cards, filters, sorting, collection showcase, featured display). Nothing in the game
+// reads it for gameplay: it never changes health, damage, stamina, weapon performance or any other statistic, and it does not change how an accessory is
+// unlocked, drawn or positioned. The tiers below are ordered from the most common to the rarest.
+//   - To rarity-tag a NEW accessory: add  rarity: 'epic'  to its acc(...) options (or one line to ACC_RARITY). One without a valid rarity is Common (a warning is logged).
+//   - To add a new TIER: add one line to ACC_RARITIES (id, name, colour). The filter, sort order and statistics pick it up by themselves.
+const ACC_RARITIES = [
+  { id: 'common',    name: 'Common',    color: '#a9adb3' },
+  { id: 'uncommon',  name: 'Uncommon',  color: '#4fcf70' },
+  { id: 'rare',      name: 'Rare',      color: '#4aa8ff' },
+  { id: 'epic',      name: 'Epic',      color: '#b66bff' },
+  { id: 'legendary', name: 'Legendary', color: '#ff8a2e', glow: true },
+];
+const ACC_RARITY_DEFAULT = 'common';
+const ACC_RARITY_BY_ID = new Map(ACC_RARITIES.map((r, i) => [r.id, Object.assign({ order: i }, r)]));
+// Chosen by how much visual detail / how distinctive the art is (not by how hard it is to unlock - the unlock rules are unchanged).
+const ACC_RARITY = {
+  // Head: plain caps are Common; period hats Uncommon; helmets and bold silhouettes Rare / Epic; the Crown is the one Legendary hat
+  blue_cap: 'common', cat_ears: 'common', hard_hat: 'common',
+  police_cap: 'uncommon', cowboy_hat: 'uncommon', santa_hat: 'uncommon',
+  military_helmet: 'rare', pirate_hat: 'rare', top_hat: 'rare',
+  wizard_hat: 'epic', viking_helmet: 'epic',
+  crown: 'legendary',
+  // Face: simple eyewear / masks Common; styled shades Uncommon; gear with lenses and filters Rare; zombie eyes Epic
+  black_sunglasses: 'common', medical_mask: 'common', eyepatch: 'common',
+  nerd_glasses: 'uncommon', deal_with_it: 'uncommon', tactical_goggles: 'uncommon',
+  gas_mask: 'rare', night_vision: 'rare', red_glasses: 'rare',
+  zombie_eyes: 'epic',
+  // Back: everyday packs Common / Uncommon; kit with extra parts Rare; jetpack and the zombie arm Epic; the cape Legendary
+  teddy_pack: 'common', sleeping_bag: 'common',
+  hiking_backpack: 'uncommon', tactical_backpack: 'uncommon', oxygen_tank: 'uncommon',
+  ammo_backpack: 'rare', radio_antenna: 'rare', rocket_pack: 'rare',
+  jetpack: 'epic', zombie_arm_pack: 'epic',
+  tiny_cape: 'legendary',
+  // Body: small badges and neckwear Common / Uncommon; straps and plates Rare; shoulder armour Epic
+  red_neckerchief: 'common', police_badge: 'common',
+  utility_belt: 'uncommon', gold_chain: 'uncommon', dog_tags: 'uncommon',
+  bandolier: 'rare', ninja_scarf: 'rare', chest_plate: 'rare',
+  shoulder_armour: 'epic',
+  // Special effects / companions (animated, drawn by code): the tab keeps its own counts, but they carry a rarity too
+  small_flames: 'uncommon', electric_sparks: 'uncommon', dollar_signs: 'uncommon',
+  sparkle_aura: 'rare', radioactive_glow: 'rare',
+  shadow_aura: 'epic', mini_peanut: 'epic', ghost: 'epic',
+  mini_zombies: 'legendary', halo: 'legendary',
+};
+
 // Old player skins -> the accessory that matches what earned them (players keep what they earned).
 const ACC_SKIN_MIGRATION = {
   golden_peanut: 'santa_hat', zombie_peanut: 'police_cap', military_peanut: 'utility_belt',
@@ -8112,8 +8199,12 @@ class AccessorySystem {
     for (const d of this.defs) {
       if (this.byId.has(d.id)) { console.warn('Duplicate accessory id', d.id); continue; }
       d.slot = ACC_BODY_SLOTS[d.id] || d.cat;                   // the equipment slot this accessory occupies
+      const rid = d.rarity || ACC_RARITY[d.id];                 // cosmetic rarity: the acc(...) option wins, then the ACC_RARITY table, otherwise Common
+      if (!ACC_RARITY_BY_ID.has(rid)) console.warn('[accessories] ' + d.id + ' has no valid rarity (' + rid + '): using ' + ACC_RARITY_DEFAULT);
+      d.rarity = ACC_RARITY_BY_ID.has(rid) ? rid : ACC_RARITY_DEFAULT;
       this.byId.set(d.id, d);
     }
+    for (const rid of Object.keys(ACC_RARITY)) if (!this.byId.has(rid)) console.warn('[accessories] ACC_RARITY names an unknown accessory', rid);
     for (const aid of Object.keys(ACC_ACH_REWARDS)) {           // achievement rewards (data table) - validated, never overwriting an accessory's own rule
       const d = this.byId.get(ACC_ACH_REWARDS[aid]);
       if (!d) { console.warn('Reward for unknown accessory', ACC_ACH_REWARDS[aid]); continue; }
@@ -8134,6 +8225,7 @@ class AccessorySystem {
     this.debug = false;                       // temporary visual debugging (not saved)
     this.settings = { markers: false, unlockAll: ACC_UNLOCK_ALL_DEFAULT };   // markers: dev aid; unlockAll: dev/testing override (off by default)
     this.migrated = false;
+    this.featured = null;                      // the accessory the player chose for the showcase (saved); null = automatic (the rarest one owned)
     this.art = {};                             // id -> { dir: Image } (or { single: Image })
     this._f = null; this._lt = 0; this._ghost = {};
     this._load(ach._accRaw);
@@ -8166,19 +8258,46 @@ class AccessorySystem {
   earnedCount() { return this.defs.filter((d) => this.unlocked[d.id]).length; }
   // Collection progress, computed from the accessory data (the four wearable categories; the Special effects are counted separately).
   collection() {
-    const out = { total: 0, unlocked: 0, pct: 0, byCat: {}, special: { total: 0, unlocked: 0 } };
+    const out = { total: 0, unlocked: 0, pct: 0, byCat: {}, byRarity: {}, special: { total: 0, unlocked: 0 } };
+    for (const r of ACC_RARITIES) out.byRarity[r.id] = { total: 0, unlocked: 0 };   // wearables only, like total / unlocked (the Special effects are counted on their own)
     for (const c of ACC_CATS) if (c.id !== 'fx') out.byCat[c.id] = { total: 0, unlocked: 0 };
     for (const d of this.defs) {
       const un = this.isUnlocked(d.id);
       if (d.fx) { out.special.total++; if (un) out.special.unlocked++; continue; }
       const c = out.byCat[d.cat]; if (!c) continue;
       c.total++; out.total++; if (un) { c.unlocked++; out.unlocked++; }
+      const rr = out.byRarity[d.rarity]; if (rr) { rr.total++; if (un) rr.unlocked++; }
     }
     out.pct = out.total ? Math.round((out.unlocked / out.total) * 100) : 0;
     return out;
   }
   unseenCount(cat) { return Object.keys(this.unseen).filter((id) => { const d = this.byId.get(id); return d && this.unlocked[id] && (!cat || d.cat === cat); }).length; }
   markSeen(id) { if (!this.unseen[id]) return; delete this.unseen[id]; this.ach._dirty = true; this.ach.save(true); if (this.onChange) this.onChange(); }
+  // ---- rarity helpers (cosmetic: used by the inventory, the filters and the showcase only) ----
+  rarityInfo(d) { return ACC_RARITY_BY_ID.get(d && d.rarity) || ACC_RARITY_BY_ID.get(ACC_RARITY_DEFAULT); }
+  // One category's accessories, filtered and sorted. f = { rarity: 'all' | tier id, show: 'all' | 'unlocked' | 'locked', sort: 'default' | 'rarity' | 'name', dir: 1 | -1 }.
+  //   default = the original order (grouped by slot, then the order they are defined in); rarity: dir 1 = rarest first; name: dir 1 = A-Z (ties fall back to name / definition order).
+  listFor(cat, f) {
+    f = f || {};
+    let list = this.defs.filter((d) => d.cat === cat);
+    if (f.rarity && f.rarity !== 'all') list = list.filter((d) => d.rarity === f.rarity);
+    if (f.show === 'unlocked') list = list.filter((d) => this.isUnlocked(d.id));
+    else if (f.show === 'locked') list = list.filter((d) => !this.isUnlocked(d.id));
+    const defIx = new Map(this.defs.map((d, i) => [d.id, i])), dir = f.dir === -1 ? -1 : 1;
+    const slotIx = (d) => ACC_SLOTS.findIndex((x) => x.id === d.slot);
+    const byName = (a, b) => a.name.localeCompare(b.name, 'en', { sensitivity: 'base' }) || defIx.get(a.id) - defIx.get(b.id);
+    if (f.sort === 'rarity') list.sort((a, b) => (this.rarityInfo(b).order - this.rarityInfo(a).order) * dir || byName(a, b));
+    else if (f.sort === 'name') list.sort((a, b) => byName(a, b) * dir);
+    else list.sort((a, b) => slotIx(a) - slotIx(b) || defIx.get(a.id) - defIx.get(b.id));
+    return list;
+  }
+  // The showcase accessory: the player's pick, otherwise the rarest one they own (the first defined wins a tie).
+  featuredDef() {
+    const pick = this.featured && this.byId.get(this.featured); if (pick) return pick;
+    let best = null; for (const d of this.defs) if (this.isUnlocked(d.id) && (!best || this.rarityInfo(d).order > this.rarityInfo(best).order)) best = d;
+    return best || this.defs[0] || null;
+  }
+  setFeatured(id) { if (!this.byId.has(id)) return false; this.featured = id; this.ach._dirty = true; this.ach.save(true); return true; }
   // Re-checks only the accessories whose statistic (or reward achievement) can change on this event (called by the achievement system).
   check(ev) {
     const list = ev ? this._byEv[ev] : this.defs;
@@ -8445,7 +8564,7 @@ class AccessorySystem {
     }
     this.equipped = saved;
   }
-  serialize() { return { v: ACC_SAVE_VERSION, unlocked: this.unlocked, by: this.by, unseen: Object.keys(this.unseen), equipped: this.equipped, settings: this.settings, migrated: this.migrated }; }
+  serialize() { return { v: ACC_SAVE_VERSION, unlocked: this.unlocked, by: this.by, unseen: Object.keys(this.unseen), equipped: this.equipped, settings: this.settings, migrated: this.migrated, featured: this.featured }; }
   _load(raw) {
     if (!raw || typeof raw !== 'object') return;
     if (raw.unlocked && typeof raw.unlocked === 'object') for (const id of Object.keys(raw.unlocked)) if (this.byId.has(id) && Number.isFinite(raw.unlocked[id]) && raw.unlocked[id] > 0) this.unlocked[id] = raw.unlocked[id];
@@ -8459,6 +8578,7 @@ class AccessorySystem {
     }
     if (raw.by && typeof raw.by === 'object') for (const id of Object.keys(raw.by)) if (this.unlocked[id] && typeof raw.by[id] === 'string') this.by[id] = raw.by[id];
     const us = Array.isArray(raw.unseen) ? raw.unseen : []; for (const id of us) if (typeof id === 'string' && this.unlocked[id]) this.unseen[id] = true;
+    if (typeof raw.featured === 'string' && this.byId.has(raw.featured)) this.featured = raw.featured;   // optional: older saves simply have none
     this.migrated = raw.migrated === true;
   }
 }
@@ -8467,6 +8587,7 @@ class AccessorySystem {
 class AccessoriesMenu extends PanelMenu {
   constructor(sys) {
     super('accessoriesScreen');
+    this.view = 'inv'; this.fRar = 'all'; this.fShow = 'all'; this.sort = 'default'; this.sortDir = 1;   // inventory / collection view + filter and sort state (view state only, never saved)
     this.sys = sys; this.cat = 'head'; this.sel = null; this.dirIdx = 0; this._timer = null; this.walk = false; this.spin = false; this._spinT = 0; this._shownDir = -1;   // cat / sel / walk / spin are view state only; what is WORN lives in ACCESSORIES.equipped (saved by the game's save system)
     this.pv = document.getElementById('accPreview');
   }
@@ -8487,6 +8608,12 @@ class AccessoriesMenu extends PanelMenu {
     else if (act === 'unequip') { this.sel = t.dataset.id; s.unequip(s.byId.get(t.dataset.id).slot); Sound.uiClick(); this.render(); }
     else if (act === 'none') { s.unequip(t.dataset.slot); Sound.uiClick(); this.render(); }
     else if (act === 'unequipAll') { s.unequipAll(); Sound.uiClick(); this.render(); }
+    else if (act === 'view') { Sound.uiClick(); this.view = t.dataset.view === 'showcase' ? 'showcase' : 'inv'; this.render(); const m = document.getElementById(this.view === 'showcase' ? 'accShowcase' : 'accGrid'); if (m) m.scrollTop = 0; }
+    else if (act === 'frar') { Sound.uiClick(); this.fRar = t.dataset.rar; this.render(); this._gridTop(); }
+    else if (act === 'fshow') { Sound.uiClick(); this.fShow = t.dataset.show; this.render(); this._gridTop(); }
+    else if (act === 'fsort') { Sound.uiClick(); const m = t.dataset.sort; if (m === this.sort && m !== 'default') this.sortDir = -this.sortDir; else { this.sort = m; this.sortDir = 1; } this.render(); this._gridTop(); }
+    else if (act === 'fclear') { Sound.uiClick(); this.fRar = 'all'; this.fShow = 'all'; this.render(); }
+    else if (act === 'feature') { if (s.setFeatured(t.dataset.id)) Sound.uiClick(); else Sound.emptyClick(); this.render(); }
     else if (act === 'rotate' || act === 'next') { Sound.uiClick(); this.dirIdx = (this.dirIdx + 1) % SPRITE_DIRECTIONS.length; this._tickPreview(); }
     else if (act === 'prev') { Sound.uiClick(); this.dirIdx = (this.dirIdx + SPRITE_DIRECTIONS.length - 1) % SPRITE_DIRECTIONS.length; this._tickPreview(); }
     else if (act === 'walk') { this.walk = !this.walk; Sound.uiClick(); this.render(); }
@@ -8532,6 +8659,11 @@ class AccessoriesMenu extends PanelMenu {
     document.getElementById('accUnlockAllBtn').textContent = 'UNLOCK ALL: ' + (s.settings.unlockAll ? 'ON' : 'OFF');
     document.getElementById('accDebugBtn').textContent = 'DEBUG: ' + (s.debug ? 'ON' : 'OFF');
     document.getElementById('accMarkersBtn').textContent = 'MARKERS: ' + (s.settings.markers ? 'ON' : 'OFF');
+    const showc = this.view === 'showcase';   // the collection showcase replaces tabs / filters / detail / grid; the preview + equipment on the left stay
+    this._renderViews();
+    for (const id of ['accTabs', 'accFilters', 'accDetail', 'accGrid']) document.getElementById(id).classList.toggle('accHide', showc);
+    document.getElementById('accShowcase').classList.toggle('accHide', !showc);
+    if (showc) { this._renderShowcase(); this._tickPreview(); return; }
     // detail box for the selected accessory
     const sd = this.sel && s.byId.get(this.sel), dEl = document.getElementById('accDetail');
     if (!sd) dEl.innerHTML = '<span class="hint">Click an accessory to equip it. Click it again to remove it.</span>';
@@ -8548,30 +8680,90 @@ class AccessoriesMenu extends PanelMenu {
         if (rp) how += `Achievement <b>${rp.name}</b>: ${rp.secret && !rp.done ? 'secret' : rp.desc}${bar(rp.val, rp.target, rp.val + ' / ' + rp.target)}`;
         if (mp) how += `${rp ? 'or ' : ''}Milestone: ${sd.reqText}${bar(mp.val, mp.target, this._fmt(sd, mp.val) + ' / ' + this._fmt(sd, mp.target))}`;
       }
-      dEl.innerHTML = `<b>${sd.name}</b><span class="cosTag ${eq ? 'eq' : open ? 'un' : 'lk'}">${eq ? 'EQUIPPED' : open ? 'UNLOCKED' : 'LOCKED'}</span> <span class="hint">${slotName}</span><br><span class="hint">${sd.note ? sd.note + '<br>' : ''}${how}</span>`;
+      const dri = s.rarityInfo(sd), isFeat = s.featuredDef() === sd;
+      dEl.innerHTML = `<b>${sd.name}</b><span class="accRar" style="--rar:${dri.color}">${dri.name.toUpperCase()}</span><span class="cosTag ${open ? 'un' : 'lk'}">${open ? 'UNLOCKED' : 'LOCKED'}</span>${eq ? '<span class="cosTag eq">EQUIPPED</span>' : ''} <span class="hint">${slotName}</span><br><span class="hint">${sd.note ? sd.note + '<br>' : ''}${how}</span>` +
+        `<div class="accDetBtns">${isFeat && s.featured === sd.id ? '<span class="cosTag eq">FEATURED</span>' : `<button class="shopWpn" data-act="feature" data-id="${sd.id}">FEATURE IN COLLECTION</button>`}</div>`;
     }
-    const slotIx = (d) => ACC_SLOTS.findIndex((x) => x.id === d.slot);
-    const list = s.defs.filter((d) => d.cat === this.cat).sort((a, b) => slotIx(a) - slotIx(b));   // grouped by slot (stable)
+    // ---- the card grid: filtered / sorted by the controls above it (the Head / Face / Back / Body / Special tabs work as before) ----
+    const all = s.defs.filter((d) => d.cat === this.cat);
+    const list = s.listFor(this.cat, { rarity: this.fRar, show: this.fShow, sort: this.sort, dir: this.sortDir });
+    const dflt = this.sort === 'default';                                                             // the default order keeps the slot groups and their None cards
     const multi = ACC_SLOTS.filter((sl) => sl.cat === this.cat).length > 1;                           // Body has four slots: label each group
+    this._renderFilters(list.length, all.length);
     let html = '', lastSlot = null;
-    if (!list.length) html = '<div class="cosNote">There are no accessories in this category yet.</div>';
+    if (!all.length) html = '<div class="cosNote">There are no accessories in this category yet.</div>';
+    else if (!list.length) html = '<div class="cosNote accNoMatch">No accessories match these filters. <button class="shopWpn" data-act="fclear">CLEAR FILTERS</button></div>';
     for (const d of list) {
-      if (d.slot !== lastSlot) {   // a None card starts every slot: it removes whatever is worn in that slot
+      if (dflt && d.slot !== lastSlot) {   // a None card starts every slot: it removes whatever is worn in that slot
         lastSlot = d.slot; const worn = s.equipped[d.slot] && s.byId.get(s.equipped[d.slot]), sn = ACC_SLOTS.find((c) => c.id === d.slot).name;
         if (multi) html += `<div class="accSlotHead">${sn.toUpperCase()}</div>`;
         html += `<div class="cosCard accCard open${worn ? '' : ' equipped'}" ${worn ? `data-act="none" data-slot="${d.slot}" role="button" tabindex="0"` : ''} data-cat="${d.cat}"><div class="cosPrev accNone"><span>NONE</span></div><div class="cosName">None</div><div class="cosTag ${worn ? 'un' : 'eq'}">${worn ? 'AVAILABLE' : 'EQUIPPED'}</div><div class="cosBtn">${worn ? `<button class="shopBuyBtn cosUn" data-act="none" data-slot="${d.slot}">REMOVE</button>` : ''}</div></div>`;
       }
       const open = s.isUnlocked(d.id), eq = s.isEquipped(d), needsArt = !s.hasArt(d), sel = this.sel === d.id, isNew = !!(s.unseen[d.id] && s.unlocked[d.id]);
-      const rwd = open ? null : s.rewardProgress(d), reqLine = open ? '' : (rwd ? 'Reward: ' + rwd.name : d.reqText);   // locked cards say how to earn them
+      const ri = s.rarityInfo(d), rwd = open ? null : s.rewardProgress(d), reqLine = open ? '' : (rwd ? 'Reward: ' + rwd.name : d.reqText);   // locked cards say how to earn them
       const btn = !open ? '<button class="shopBuyBtn cant" disabled>LOCKED</button>' : eq ? `<button class="shopBuyBtn cosUn" data-act="unequip" data-id="${d.id}">REMOVE</button>` : `<button class="shopBuyBtn" data-act="equip" data-id="${d.id}">EQUIP</button>`;
-      html += `<div class="cosCard accCard${open ? ' open' : ' locked'}${eq ? ' equipped' : ''}${sel ? ' sel' : ''}" data-act="toggle" data-id="${d.id}" data-cat="${d.cat}" role="button" tabindex="0" aria-pressed="${eq}" aria-label="${d.name}, ${eq ? 'equipped' : open ? 'unlocked' : 'locked'}">` +
+      const slotTag = multi && !dflt ? `<div class="accSlotTag">${ACC_SLOTS.find((c) => c.id === d.slot).name.toUpperCase()}</div>` : '';   // sorted lists lose the slot groups, so Body cards name their slot
+      html += `<div class="cosCard accCard${open ? ' open' : ' locked'}${eq ? ' equipped' : ''}${sel ? ' sel' : ''}${ri.glow ? ' rarGlow' : ''}" style="--rar:${ri.color}" data-act="toggle" data-id="${d.id}" data-cat="${d.cat}" data-rarity="${d.rarity}" role="button" tabindex="0" aria-pressed="${eq}" aria-label="${d.name}, ${ri.name}, ${open ? 'unlocked' : 'locked'}${eq ? ', equipped' : ''}">` +
         `<canvas class="cosPrev accIcon" width="64" height="64" data-id="${d.id}" data-state="${open ? 'open' : 'locked'}"></canvas>` +
-        `<div class="cosName">${d.name}</div><div class="cosTag ${eq ? 'eq' : open ? 'un' : 'lk'}">${eq ? 'EQUIPPED' : open ? 'UNLOCKED' : 'LOCKED'}</div>${isNew ? '<div class="cosTag new">NEW</div>' : ''}${reqLine ? `<div class="accReq">${reqLine}</div>` : ''}` +
+        `<div class="cosName">${d.name}</div><div class="accRar">${ri.name.toUpperCase()}</div>` +
+        `<div class="accTags"><span class="cosTag ${open ? 'un' : 'lk'}">${open ? 'UNLOCKED' : 'LOCKED'}</span>${eq ? '<span class="cosTag eq">EQUIPPED</span>' : ''}${isNew ? '<span class="cosTag new">NEW</span>' : ''}</div>${slotTag}${reqLine ? `<div class="accReq">${reqLine}</div>` : ''}` +
         `${needsArt ? '<div class="cosTag art">ART NEEDED</div>' : ''}<div class="cosBtn">${btn}</div></div>`;
     }
     document.getElementById('accGrid').innerHTML = html;
     for (const cv of document.querySelectorAll('#accGrid canvas.accIcon')) this._icon(cv, s.byId.get(cv.dataset.id), cv.dataset.state);
     this._tickPreview();
+  }
+  _gridTop() { const g = document.getElementById('accGrid'); if (g) g.scrollTop = 0; }
+  _renderViews() {
+    document.getElementById('accViews').innerHTML = [['inv', 'INVENTORY'], ['showcase', 'COLLECTION']].map(([v, l]) =>
+      `<button class="shopWpn${this.view === v ? ' active' : ''}" role="tab" aria-selected="${this.view === v}" data-act="view" data-view="${v}">${l}</button>`).join('');
+  }
+  // Rarity filter, sort order and unlocked / locked filter for the card grid. Nothing here is saved: it is only how the list is looked at.
+  _renderFilters(shown, total) {
+    const el = document.getElementById('accFilters'), ae = document.activeElement, keep = ae && el.contains(ae) ? [ae.dataset.act, ae.dataset.rar, ae.dataset.show, ae.dataset.sort].join('|') : null;
+    const seg = (act, key, cur, items) => items.map(([v, label, color]) => `<button class="accFBtn${color ? ' rar' : ''}${cur === v ? ' active' : ''}" data-act="${act}" data-${key}="${v}" aria-pressed="${cur === v}"${color ? ` style="--rar:${color}"` : ''}>${label}</button>`).join('');
+    const dir = this.sortDir, on = (m) => this.sort === m;
+    const sorts = [['default', 'DEFAULT'], ['rarity', on('rarity') ? (dir === 1 ? 'RARITY HI-LO' : 'RARITY LO-HI') : 'RARITY'], ['name', on('name') ? (dir === 1 ? 'A-Z' : 'Z-A') : 'A-Z']];
+    el.innerHTML =
+      `<div class="accFGroup" role="group" aria-label="Rarity"><label>RARITY</label>${seg('frar', 'rar', this.fRar, [['all', 'ALL'], ...ACC_RARITIES.map((r) => [r.id, r.name.toUpperCase(), r.color])])}</div>` +
+      `<div class="accFGroup" role="group" aria-label="Sort"><label>SORT</label>${seg('fsort', 'sort', this.sort, sorts)}</div>` +
+      `<div class="accFGroup" role="group" aria-label="Show"><label>SHOW</label>${seg('fshow', 'show', this.fShow, [['all', 'ALL'], ['unlocked', 'UNLOCKED'], ['locked', 'LOCKED']])}</div>` +
+      `<span class="accCount" aria-live="polite">${shown} / ${total}</span>`;
+    if (keep) { for (const b of el.querySelectorAll('button')) if ([b.dataset.act, b.dataset.rar, b.dataset.show, b.dataset.sort].join('|') === keep) { b.focus(); break; } }   // a click redraws the bar: keep the keyboard focus where it was
+  }
+  _reqText(d) {   // the unlock requirement of an accessory, for the featured display
+    const s = this.sys;
+    if (d.starter) return 'Starter accessory - yours from the start.';
+    const rp = s.rewardProgress(d), parts = [];
+    if (rp) parts.push(`Achievement: ${rp.name}${rp.secret && !rp.done ? ' (secret)' : rp.desc ? ' - ' + rp.desc : ''}`);
+    if (!d.req.ach) parts.push('Milestone: ' + d.reqText);
+    return parts.join('<br>') || d.reqText;
+  }
+  // Collection overview + featured accessory. Every number is computed from the accessory data (ACCESSORIES.collection()), never typed in.
+  _renderShowcase() {
+    const s = this.sys, col = s.collection(), f = s.featuredDef(), el = document.getElementById('accShowcase');
+    const row = (name, u, t, color) => `<div class="scRow"${color ? ` style="--rar:${color}"` : ''}><span>${name}</span><div class="achBar"><i style="width:${t ? Math.round(100 * u / t) : 0}%"></i></div><b>${u}/${t}</b></div>`;
+    let feat = '<span class="hint">No accessories yet.</span>';
+    if (f) {
+      const ri = s.rarityInfo(f), open = s.isUnlocked(f.id), eq = s.isEquipped(f), cn = ACC_CATS.find((c) => c.id === f.cat).name, sn = ACC_SLOTS.find((c) => c.id === f.slot).name;
+      feat = `<div class="featured"><canvas class="featArt" width="96" height="96" data-id="${f.id}" data-state="${open ? 'open' : 'locked'}" style="--rar:${ri.color}"></canvas>` +
+        `<div class="featInfo"><b>${f.name}</b><span class="accRar" style="--rar:${ri.color}">${ri.name.toUpperCase()}</span>` +
+        `<span class="hint">Category: ${cn}${f.cat === 'body' ? ' (' + sn + ')' : ''}</span>` +
+        `<div class="accTags" style="justify-content:flex-start"><span class="cosTag ${open ? 'un' : 'lk'}">${open ? 'UNLOCKED' : 'LOCKED'}</span>${eq ? '<span class="cosTag eq">EQUIPPED</span>' : ''}${s.featured === f.id ? '' : '<span class="cosTag art">AUTO PICK</span>'}</div>` +
+        `<span class="hint">${open ? 'Unlocked. ' : 'To unlock: '}${this._reqText(f)}</span></div></div>`;
+    }
+    const picks = s.defs.slice().sort((a, b) => ACC_CATS.findIndex((c) => c.id === a.cat) - ACC_CATS.findIndex((c) => c.id === b.cat) || s.defs.indexOf(a) - s.defs.indexOf(b)).map((d) => {
+      const ri = s.rarityInfo(d), open = s.isUnlocked(d.id), isF = f && f.id === d.id;
+      return `<button class="scPickBtn${isF ? ' sel' : ''}${open ? '' : ' locked'}" style="--rar:${ri.color}" data-act="feature" data-id="${d.id}" title="${d.name} (${ri.name})" aria-label="Feature ${d.name}, ${ri.name}, ${open ? 'unlocked' : 'locked'}" aria-pressed="${!!isF}"><canvas width="64" height="64" data-id="${d.id}" data-state="${open ? 'open' : 'locked'}"></canvas></button>`;
+    }).join('');
+    el.innerHTML =
+      `<div class="scGrid2"><div class="scBox"><h2>FEATURED ACCESSORY</h2>${feat}<div class="scNote">Choose any accessory below to feature it (it is remembered with your save).</div></div>` +
+      `<div class="scBox"><h2>COLLECTION</h2><div class="scTotal"><b>${col.unlocked}</b> / ${col.total} ACCESSORIES COLLECTED <span class="achPct">${col.pct}%</span></div><div class="achBar"><i style="width:${col.pct}%"></i></div>` +
+      `<div class="scSub">${col.total - col.unlocked} still to unlock. Special effects are counted separately.</div></div></div>` +
+      `<div class="scGrid2"><div class="scBox"><h2>BY RARITY</h2>${ACC_RARITIES.map((r) => row(r.name.toUpperCase(), col.byRarity[r.id].unlocked, col.byRarity[r.id].total, r.color)).join('')}</div>` +
+      `<div class="scBox"><h2>BY CATEGORY</h2>${ACC_CATS.filter((c) => c.id !== 'fx').map((c) => row(c.name.toUpperCase(), col.byCat[c.id].unlocked, col.byCat[c.id].total)).join('')}${row('SPECIAL', col.special.unlocked, col.special.total)}</div></div>` +
+      `<div class="scBox"><h2>CHOOSE THE FEATURED ACCESSORY</h2><div class="scPick">${picks}</div></div>`;
+    for (const cv of el.querySelectorAll('canvas[data-id]')) this._icon(cv, s.byId.get(cv.dataset.id), cv.dataset.state);
   }
   _fmt(d, v) {
     const st = d.req.stat;
@@ -9448,7 +9640,7 @@ class Game {
   openAccessories(id) {
     if (this.state === 'playing') this._togglePause();
     const acc = this.accMenu, d = id && ACCESSORIES.byId.get(id);
-    if (d) { acc.cat = d.cat; acc.sel = d.id; }
+    if (d) { acc.cat = d.cat; acc.sel = d.id; acc.view = 'inv'; acc.fRar = 'all'; acc.fShow = 'all'; }   // (the filters are cleared so the accessory is visible in the grid)
     if (acc.isOpen) { acc.render(); return; }
     if (!this.customizeMenu.isOpen) this.customizeMenu.open();
     openChildMenu(this.customizeMenu, acc);
