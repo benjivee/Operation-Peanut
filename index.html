@@ -973,8 +973,7 @@ html, body, button, input, select, textarea {
 @media (max-width: 720px) { .achSummary { text-align: left; } .achDesc { font-size: 8px; } .achProg .achBar { max-width: none; } }
 @media (min-width: 1100px) and (min-height: 700px) { .achDesc, .achProg span { font-size: 10px; } .achName { font-size: 12px; } .achTab { font-size: 9px; } }
 /* ---- Cosmetics + Statistics screens ---- */
-#customizeScreen { z-index: 25; user-select: none; -webkit-user-select: none; }
-#cosmeticsScreen, #statsScreen { z-index: 25; padding: 12px; box-sizing: border-box; cursor: default; user-select: none; -webkit-user-select: none; }
+#statsScreen { z-index: 25; padding: 12px; box-sizing: border-box; cursor: default; user-select: none; -webkit-user-select: none; }
 .cosGrid { display: grid !important; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; align-content: start; }
 .cosNote { grid-column: 1 / -1; font-size: 8px; line-height: 1.7; color: var(--px-dim); }
 .cosCard { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 10px; text-align: center; background: #20242a; border: 3px solid var(--px-ink); }
@@ -1040,6 +1039,47 @@ html, body, button, input, select, textarea {
 .accNewChip { display: inline-block; min-width: 12px; margin-left: 6px; padding: 1px 3px; font-style: normal; font-size: 7px; text-align: center; background: #8a6a10; color: #ffe27a; border: 2px solid var(--px-ink); }
 .newBadge { display: inline-block; margin-left: 8px; padding: 2px 5px; font-size: 8px; background: #8a6a10; color: #ffe27a; border: 2px solid var(--px-ink); vertical-align: middle; animation: accNewPulse 1.4s ease-in-out infinite; }
 #accessoriesScreen .accNone { display: flex; align-items: center; justify-content: center; width: 64px; height: 64px; background: #1b1f26; border: 1px dashed #3a3f47; color: #8a9099; font: bold 9px monospace; box-sizing: border-box; margin: 0 auto; }
+/* ---- Unified CUSTOMIZATION screen: CHARACTER (accessories) + WEAPONS (weapon skins) ---- */
+.custTabs { display: flex; flex: 0 0 auto; gap: 8px; }
+.custTab { font: inherit; font-size: 11px; letter-spacing: 1px; padding: 9px 20px; color: var(--px-text); cursor: pointer; background: #26292e; border: 3px solid var(--px-ink); }
+.custTab:hover { background: #343941; } .custTab:focus-visible { outline: 3px solid #fff; outline-offset: 1px; } .custTab.active { background: var(--px-red); color: #fff; }
+.custSum { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px 18px; font-size: 8px; line-height: 1.5; text-align: left; }
+.custSumItem { min-width: 128px; } .custSumItem span { display: block; font-size: 7px; letter-spacing: 1px; color: var(--px-dim); } .custSumItem b { font-size: 13px; font-weight: normal; color: #f5c542; } .custSumItem em { font-style: normal; color: #2ecc71; }
+.custSumItem .achBar { margin-top: 3px; }
+.wpnCaption { display: flex; flex-direction: column; gap: 3px; padding: 6px 8px; font-size: 8px; line-height: 1.6; background: #1b1f26; border: 3px solid var(--px-ink); } .wpnCaption b { color: #fff; font-size: 9px; font-weight: normal; } .wpnCaption .hint { color: var(--px-dim); }
+#wpnGrid { grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px; align-content: start; }
+.wpnCard { gap: 5px; padding: 8px 8px 10px; } .wpnCard .cosName { font-size: 10px; } .wpnCard .cosBtn { margin-top: auto; width: 100%; } .wpnCard .shopBuyBtn { width: 100%; padding: 7px 4px; font-size: 8px; }
+.wpnCard .achDesc { font-size: 8px; line-height: 1.5; min-height: 3em; display: flex; align-items: center; justify-content: center; } .wpnCard .accReq { font-size: 7px; line-height: 1.5; min-height: 4.5em; display: flex; align-items: center; justify-content: center; } .wpnCard .achProg { width: 100%; } .wpnType { font-size: 7px; letter-spacing: 1px; color: #cfd3d8; }
+.wpnArt { display: block; width: 100%; max-width: 144px; height: auto; aspect-ratio: 144 / 96; image-rendering: pixelated; background: #14171b; border: 3px solid var(--px-ink); }
+.wpnCard.equipped .wpnArt { border-color: #f5c542; }
+#wpnTabs .shopTab { padding: 7px 10px; font-size: 8px; }
+.lblShort { display: none; } .custSumItem i { font-style: normal; }
+@media (max-height: 700px) { #wpnDetail { display: none; } }
+.wpnDot { display: inline-block; width: 6px; height: 6px; margin-left: 4px; background: #f5c542; }
+@media (max-width: 820px), (max-height: 560px) {   /* small windows: compact header, and the whole right column scrolls (tabs, filters, cards), so the cards always have room */
+  .custTab { padding: 7px 12px; font-size: 9px; } .accPanel .shopHeader { gap: 6px 12px; } .accPanel h1 { font-size: 11px; }
+  .lblLong { display: none; } .lblShort { display: inline; } .custSum { flex: 1 1 auto; justify-content: flex-start; gap: 2px 14px; } .custSumItem { min-width: 0; } .custSumItem span { display: inline; margin-right: 4px; } .custSumItem .achBar { display: none; } .custSumItem b { font-size: 11px; }
+  #wpnDetail, #accDetail { display: none; }
+  .accMain { overflow-y: auto; overflow-x: hidden; padding-right: 2px; }
+  .accMain > #accGrid, .accMain > #wpnGrid, .accMain > #accShowcase { flex: 0 0 auto; overflow: visible; min-height: 0; }
+}
+@media (max-width: 820px) {
+  #wpnGrid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); } #accSideWpn .accSideHead, #accSideWpn .accWorn { display: none; }
+  #wpnTabs, #accTabs { flex-wrap: nowrap; overflow-x: auto; flex: 0 0 auto; } #wpnTabs .shopTab, #accTabs .shopTab { flex: 0 0 auto; white-space: nowrap; }
+}
+@media (max-width: 820px) and (max-height: 700px) {   /* small phones: preview and collection scroll together, so the collection gets the whole height */
+  .accLayout { overflow-y: auto; grid-template-rows: auto auto; } .accMain { overflow: visible; }
+}
+@media (max-height: 560px) { .wpnArt { max-width: 96px; } .wpnCard { gap: 3px; padding: 6px; } .wpnCard .achDesc { display: none; } .wpnCard .accReq { min-height: 3.2em; } }
+@media (max-width: 820px) and (max-height: 560px) { .custTab { padding: 5px 10px; font-size: 8px; } .wpnCaption { display: none; } #wpnGrid { grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); } }
+/* ---- Bring Cash screen ---- */
+.bringBox { display: flex; flex-direction: column; gap: 10px; width: min(460px, 86vw); margin: 4px auto 14px; padding: 14px; background: #1b1f26; border: 3px solid var(--px-ink); }
+.bringRow { display: flex; justify-content: space-between; align-items: baseline; font-size: 10px; color: var(--px-dim); } .bringRow b { font-size: 14px; font-weight: normal; color: #fff; }
+.bringTake b { font-size: 20px; color: #f5c542; }
+.bringRange { width: 100%; accent-color: #f5c542; cursor: pointer; margin: 4px 0; }
+.bringBtns { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; } .bringBtns .shopWpn { min-width: 64px; }
+.bringLeft { text-align: center; font-size: 8px; color: var(--px-dim); }
+@media (max-height: 520px) { #bringCashScreen .subtitle { display: none; } .bringBox { gap: 4px; padding: 8px 12px; margin: 0 auto 6px; } .bringTake b { font-size: 14px; } .bringBtns .shopWpn { padding: 4px 8px; } .bringRange { margin: 0; } }
 /* ---- Daily Challenges + Missions ---- */
 #challengesScreen { z-index: 25; padding: 12px; box-sizing: border-box; cursor: default; user-select: none; -webkit-user-select: none; }
 .chalHead { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 18px; margin-top: 8px; font-size: 8px; line-height: 1.6; }
@@ -2057,7 +2097,7 @@ const EMBEDDED_ASSETS = {
     <!-- ===================== Start overlay (home page) ===================== -->
     <div id="startScreen" class="overlay homePage">
       <!-- Version: major.minor.patch. The patch digit goes 0-9 and rolls into the minor number (v3.88.9 -> v3.89.0); the minor number is two digits and rolls into the major number (v3.99.9 -> v4.00.0). Bumped by 1 on every change. -->
-      <div id="versionTag" class="versionTag">v3.92.9</div>
+      <div id="versionTag" class="versionTag">v3.93.1</div>
       <div id="homeSidebar" class="homeSidebar">
         <div class="homeSidebarTitle">Your Stats</div>
         <div class="homeSidebarStat">
@@ -2178,30 +2218,10 @@ const EMBEDDED_ASSETS = {
       </div>
     </div>
 
-    <!-- ===================== Cosmetics ===================== -->
-    <div id="cosmeticsScreen" class="overlay hidden">
-      <div class="shopPanel achPanel" role="dialog" aria-modal="true" aria-labelledby="cosTitle">
-        <div class="shopHeader"><h1 id="cosTitle">WEAPON SKINS</h1><div id="cosSummary" class="achSummary"></div></div>
-        <div id="cosGrid" class="shopList cosGrid"></div>
-        <div class="shopFooter"><button class="bigButton" data-act="close">CLOSE</button><span class="shopHint">ESC = CLOSE</span></div>
-      </div>
-    </div>
-
-    <!-- ===================== Customize (hub for Accessories + Weapon Skins) ===================== -->
-    <div id="customizeScreen" class="overlay hidden">
-      <div class="overlayBox" role="dialog" aria-modal="true" aria-labelledby="custTitle">
-        <h1 id="custTitle">CUSTOMIZE</h1>
-        <p class="subtitle">Choose what to customize</p>
-        <button class="bigButton" data-act="accessories">Accessories</button>
-        <button class="bigButton" data-act="skins">Weapon Skins</button>
-        <button class="smallLinkButton" data-act="close">Back</button>
-      </div>
-    </div>
-
     <!-- ===================== Accessories ===================== -->
     <div id="accessoriesScreen" class="overlay hidden">
       <div class="shopPanel achPanel accPanel" role="dialog" aria-modal="true" aria-labelledby="accTitle">
-        <div class="shopHeader"><h1 id="accTitle">ACCESSORIES</h1><div id="accSummary" class="achSummary"></div></div>
+        <div class="shopHeader"><h1 id="accTitle">CUSTOMIZATION</h1><div id="custTabs" class="custTabs" role="tablist" aria-label="Customization"></div><div id="accSummary" class="achSummary custSum"></div></div>
         <div class="accLayout">
           <aside class="accSide">
             <div class="accPreviewBox">
@@ -2216,7 +2236,12 @@ const EMBEDDED_ASSETS = {
                 <button id="accWalkBtn" class="shopWpn" data-act="walk">WALK: OFF</button>
               </div>
             </div>
-            <div class="accSideInfo">
+            <div id="accSideWpn" class="accSideInfo accHide">
+              <div id="wpnCaption" class="wpnCaption"></div>
+              <div class="accSideHead"><span>EQUIPPED SKINS</span><button class="shopWpn" data-act="wunequipAll">REMOVE ALL</button></div>
+              <div id="wpnWorn" class="accWorn"></div>
+            </div>
+            <div id="accSideChar" class="accSideInfo">
               <div class="accSideHead"><span>EQUIPPED</span><button class="shopWpn" data-act="unequipAll">REMOVE ALL</button></div>
               <div id="accWorn" class="accWorn"></div>
               <details class="accDev">
@@ -2239,9 +2264,12 @@ const EMBEDDED_ASSETS = {
             <div id="accDetail" class="accDetail" aria-live="polite"></div>
             <div id="accGrid" class="shopList cosGrid"></div>
             <div id="accShowcase" class="accShowcase accHide"></div>
+            <div id="wpnTabs" class="shopTabs accTabs accHide" role="tablist" aria-label="Weapon types"></div>
+            <div id="wpnDetail" class="accDetail accHide" aria-live="polite"></div>
+            <div id="wpnGrid" class="shopList cosGrid accHide"></div>
           </section>
         </div>
-        <div class="shopFooter"><button class="bigButton" data-act="close">CLOSE</button><span class="shopHint">CLICK AN ITEM TO EQUIP OR REMOVE IT - ESC = CLOSE</span></div>
+        <div class="shopFooter"><button class="bigButton" data-act="close">CLOSE</button><span id="custHint" class="shopHint">CLICK AN ITEM TO EQUIP OR REMOVE IT - ESC = CLOSE</span></div>
       </div>
     </div>
 
@@ -2371,12 +2399,32 @@ const EMBEDDED_ASSETS = {
       </div>
     </div>
 
+    <div id="bringCashScreen" class="overlay homePage hidden">
+      <div class="homePageContent">
+        <h1>BRING CASH</h1>
+        <p class="subtitle">Choose how much of your banked challenge cash to take into this run.</p>
+        <div class="bringBox">
+          <div class="bringRow"><span>BANKED</span><b id="bringBank">$0</b></div>
+          <div class="bringRow bringTake"><span>TAKE INTO RUN</span><b id="bringAmt">$0</b></div>
+          <input id="bringRange" class="bringRange" type="range" min="0" max="0" step="1" value="0" aria-label="Cash to bring into the run">
+          <div class="bringBtns">
+            <button class="shopWpn" data-bring="none">NONE</button><button class="shopWpn" data-bring="q">25%</button><button class="shopWpn" data-bring="h">50%</button><button class="shopWpn" data-bring="all">ALL</button>
+          </div>
+          <div class="bringBtns"><button id="bringMinus" class="shopWpn">- $25</button><button id="bringPlus" class="shopWpn">+ $25</button></div>
+          <div id="bringLeft" class="bringLeft">STAYS IN YOUR BANK: $0</div>
+        </div>
+        <button id="bringContinueBtn" class="bigButton">Continue</button>
+        <button id="bringBackBtn" class="smallLinkButton">Back</button>
+      </div>
+    </div>
+
     <div id="confirmSpawnScreen" class="overlay homePage hidden">
       <div class="homePageContent">
         <h1>CONFIRM SPAWN</h1>
         <p id="confirmCityText" class="subtitle">City: Toronto</p>
         <p id="confirmAreaText" class="subtitle">Area: Downtown</p>
         <p id="confirmDiffText" class="subtitle">Difficulty: Normal</p>
+        <p id="confirmCashText" class="subtitle hidden"></p>
         <button id="confirmSpawnBtn" class="bigButton">Generate Game</button>
         <button id="confirmSpawnBackBtn" class="smallLinkButton">Back</button>
       </div>
@@ -7458,10 +7506,18 @@ function cosRecolor(src, recipe) {
   return c;
 }
 
+// Weapon skins reuse the accessory rarity tiers (ACC_RARITIES): cosmetic only, never read by gameplay. A new skin: add `rarity: 'epic'` to its def, or a line here (default Common).
+const COS_RARITY = { golden_pistol: 'rare', tactical_shotgun: 'uncommon', military_rifle: 'uncommon', toxic_smg: 'rare', chrome_machinegun: 'epic', flaming_chainsaw: 'epic',
+  golden_hammer: 'rare', frost_flamethrower: 'epic', obsidian_rpg: 'legendary', golden_grenade: 'rare' };
+// Weapon-type tabs of the WEAPONS screen. Only types that have at least one skin are shown; a new type without an entry here gets "<weapon name>s".
+const COS_TYPE_ORDER = ['pistol', 'shotgun', 'rifle', 'smg', 'machinegun', 'flamethrower', 'chainsaw', 'hammer', 'rpg', 'grenade'];
+const COS_TYPE_LABELS = { pistol: 'Pistols', shotgun: 'Shotguns', rifle: 'Rifles', smg: 'SMGs', machinegun: 'Machine Guns', flamethrower: 'Flamethrowers', chainsaw: 'Chainsaws', hammer: 'Hammers', rpg: 'Rocket Launchers', grenade: 'Grenades' };
+
 class CosmeticsSystem {   // weapon skins only
   constructor(ach) {
     this.ach = ach;
     this.defs = COSMETIC_DEFS;
+    for (const d of this.defs) { const r = d.rarity || COS_RARITY[d.id]; d.rarity = ACC_RARITY_BY_ID.has(r) ? r : ACC_RARITY_DEFAULT; }   // cosmetic rarity
     this.byId = new Map(this.defs.map((d) => [d.id, d]));
     this.unlocked = {};                       // id -> unlock timestamp
     this.equipped = { weapons: {} };
@@ -7484,7 +7540,7 @@ class CosmeticsSystem {   // weapon skins only
       if (this._req(d).done) {
         this.unlocked[d.id] = Date.now();
         this.ach._dirty = true;
-        this.ach._enqueue({ tier: 'gold', icon: 'GUN', name: d.name, desc: 'New weapon skin unlocked - equip it in Weapon Skins.', header: 'REWARD UNLOCKED' });
+        this.ach._enqueue({ tier: 'gold', icon: 'GUN', name: d.name, desc: 'New weapon skin unlocked - equip it in Customization > Weapons.', header: 'REWARD UNLOCKED', onClick: () => { if (this.onOpenRequest) this.onOpenRequest(d.id); }, hint: 'CLICK TO OPEN CUSTOMIZATION' });
         this.ach.save(true);
       }
     }
@@ -7501,16 +7557,29 @@ class CosmeticsSystem {   // weapon skins only
   // Called by Player.draw every frame: cached lookups only.
   weaponSprite(weaponId, dir) {
     const id = this.equipped.weapons[weaponId];
-    if (!id) return null;
+    return id ? this.skinSprite(id, dir) : null;
+  }
+  // The recoloured sprite of ANY skin for a direction (the same cache the game uses for the equipped one): the WEAPONS screen previews skins with it.
+  skinSprite(id, dir) {
+    const d = this.byId.get(id); if (!d) return null;
     const key = id + '|' + dir;
     let c = this._wc[key];
     if (!c) {
-      const base = WEAPON_SPRITES[weaponId] && WEAPON_SPRITES[weaponId][dir];
+      const base = WEAPON_SPRITES[d.weapon] && WEAPON_SPRITES[d.weapon][dir];
       if (!isSpriteReady(base)) return null;
-      c = this._wc[key] = cosRecolor(base, this.byId.get(id).recipe);
+      c = this._wc[key] = cosRecolor(base, d.recipe);
     }
     return c;
   }
+  rarityInfo(d) { return ACC_RARITY_BY_ID.get(d && d.rarity) || ACC_RARITY_BY_ID.get(ACC_RARITY_DEFAULT); }
+  typeLabel(weaponId) { return COS_TYPE_LABELS[weaponId] || ((CONFIG.WEAPONS[weaponId] && CONFIG.WEAPONS[weaponId].name || weaponId) + 's'); }
+  // Weapon types that have skins, in display order (computed from the skin data).
+  types() {
+    const ids = [...new Set(this.defs.map((d) => d.weapon))];
+    const ix = (id) => { const i = COS_TYPE_ORDER.indexOf(id); return i < 0 ? 999 : i; };
+    return ids.sort((a, b) => ix(a) - ix(b));
+  }
+  collection() { const total = this.defs.length, unlocked = this.defs.filter((d) => this.isUnlocked(d.id)).length; return { total, unlocked, pct: total ? Math.round(100 * unlocked / total) : 0 }; }
   preview(d) {
     const base = WEAPON_SPRITES[d.weapon] && WEAPON_SPRITES[d.weapon].east;
     if (!isSpriteReady(base)) return null;
@@ -7559,56 +7628,6 @@ function openChildMenu(parent, child) {
   }
   child._returnTo = parent; parent.close(); child.open();
 }
-// ===== Customize hub: Accessories + Weapon Skins =====
-class CustomizeMenu extends PanelMenu {
-  constructor(acc, cos) { super('customizeScreen'); this.acc = acc; this.cos = cos; }
-  render() {}
-  onAct(act) {
-    if (act === 'accessories') { Sound.uiClick(); openChildMenu(this, this.acc); }
-    else if (act === 'skins') { Sound.uiClick(); openChildMenu(this, this.cos); }
-    else super.onAct(act);
-  }
-}
-
-// ===== Weapon skins menu =====
-class CosmeticsMenu extends PanelMenu {
-  constructor(cos) { super('cosmeticsScreen'); this.cos = cos; }
-  onAct(act, t) {
-    if (act === 'equip') { if (this.cos.equip(t.dataset.id)) Sound.uiClick(); else Sound.emptyClick(); this.render(); }
-    else if (act === 'unequip') { const d = this.cos.byId.get(t.dataset.id); this.cos.unequip(d.weapon); Sound.uiClick(); this.render(); }
-    else super.onAct(act);
-  }
-  render() {
-    const cos = this.cos;
-    const un = cos.defs.filter((d) => cos.isUnlocked(d.id)).length;
-    document.getElementById('cosSummary').innerHTML = `<b>${un}</b> / ${cos.defs.length} WEAPON SKINS UNLOCKED`;
-    let html = `<div class="cosNote">A weapon skin only changes how the weapon looks while you hold it. Equip one per weapon. (Player appearance is changed with Accessories.)</div>`;
-    for (const d of cos.defs) {
-      const open = cos.isUnlocked(d.id), eq = cos.isEquipped(d), r = cos._req(d);
-      let prog = '';
-      if (!open) prog = `<div class="achProg"><div class="achBar"><i style="width:${Math.round(100 * Math.min(1, r.val / Math.max(1, r.target)))}%"></i></div><span>${this._pv(d, r)}</span></div>`;
-      const wname = CONFIG.WEAPONS[d.weapon] ? CONFIG.WEAPONS[d.weapon].name.toUpperCase() : '';
-      const btn = !open ? `<button class="shopBuyBtn cant" disabled>LOCKED</button>`
-        : eq ? `<button class="shopBuyBtn cosUn" data-act="unequip" data-id="${d.id}">UNEQUIP</button>` : `<button class="shopBuyBtn" data-act="equip" data-id="${d.id}">EQUIP</button>`;
-      html += `<div class="cosCard${open ? ' open' : ' locked'}${eq ? ' equipped' : ''}">` +
-        `<canvas class="cosPrev" width="96" height="96" data-id="${d.id}" data-state="${open ? 'open' : 'locked'}"></canvas>` +
-        `<div class="cosName">${d.name}</div><div class="cosTag ${eq ? 'eq' : open ? 'un' : 'lk'}">${eq ? 'EQUIPPED' : open ? 'UNLOCKED' : 'LOCKED'} - ${wname}</div>` +
-        `<div class="achDesc">${d.desc}</div><div class="cosReq">${open ? 'Earned: ' : 'To unlock: '}${d.reqText}</div>${prog}<div class="cosBtn">${btn}</div></div>`;
-    }
-    document.getElementById('cosGrid').innerHTML = html;
-    for (const cv of document.querySelectorAll('#cosGrid canvas.cosPrev')) this._drawPreview(cv, cos.byId.get(cv.dataset.id), cv.dataset.state);
-  }
-  _pv(d, r) { const a = r.ach; return !a ? '' : `${Math.floor(r.val)} / ${Math.floor(r.target)}`; }
-  _drawPreview(cv, d, state) {
-    const g = cv.getContext('2d'); g.clearRect(0, 0, 96, 96); g.imageSmoothingEnabled = false;
-    const img = this.cos.preview(d);
-    if (!img) return;
-    const w = img.naturalWidth || img.width, h = img.naturalHeight || img.height, k = Math.min(96 / w, 96 / h);
-    g.drawImage(img, (96 - w * k) / 2, (96 - h * k) / 2, w * k, h * k);
-    if (state === 'locked') { g.globalCompositeOperation = 'source-atop'; g.fillStyle = 'rgba(8,10,14,0.82)'; g.fillRect(0, 0, 96, 96); }
-  }
-}
-
 // ===== Statistics screen =====
 class StatsMenu extends PanelMenu {
   constructor(sys, isRunActive) { super('statsScreen'); this.sys = sys; this.isRunActive = isRunActive; this.achMenu = null; }
@@ -8585,7 +8604,7 @@ class AccessorySystem {
 
   // ---- previews (menu) ----
   // Draws the peanut wearing the equipped accessories, facing `dir`, with the same code path as the game.
-  drawPreview(ctx, W, H, dir, t, equipped, walk, zoom) {   // walk: preview the walking frames instead of the idle pose; zoom: scale of the whole figure
+  drawPreview(ctx, W, H, dir, t, equipped, walk, zoom, held) {   // walk: preview the walking frames instead of the idle pose; zoom: scale of the whole figure; held: { weapon, sprite(dir) } = a weapon in the peanut's hands
     ctx.clearRect(0, 0, W, H); ctx.imageSmoothingEnabled = false;
     const wf = walk && PLAYER_SPRITES.walk && PLAYER_SPRITES.walk[dir], frame = wf ? Math.floor(t * 8) % wf.length : 0;
     const sprite = wf ? wf[frame] : PLAYER_SPRITES && PLAYER_SPRITES.idle[dir];
@@ -8593,8 +8612,11 @@ class AccessorySystem {
     const saved = this.equipped; if (equipped) this.equipped = equipped;
     const f = this.frameFromSprite(sprite, dir, W / 2, H * 0.54, W * 0.62 * (zoom || 1)); f.label = wf ? 'walk ' + frame : 'idle';
     this.drawPhase(ctx, f, 'behind', t);
+    const att = held && WEAPON_ATTACHMENTS[dir];   // the weapon goes in front of or behind the body exactly like Player.draw does it
+    if (att && att.layer === 'behind') this._drawHeld(ctx, W / 2, H * 0.54, f.size, dir, held);
     ctx.drawImage(sprite, f.x0, f.y0, f.size, f.size);
     this.drawPhase(ctx, f, 'body', t);
+    if (att && att.layer !== 'behind') this._drawHeld(ctx, W / 2, H * 0.54, f.size, dir, held);
     this.drawPhase(ctx, f, 'top', t);
     const d = this.equipped.fx && this.byId.get(this.equipped.fx);
     if (d && d.companion) {   // companions in the preview sit at fixed spots beside the peanut
@@ -8602,6 +8624,19 @@ class AccessorySystem {
       for (const [ox, oy] of spots) { const s = this._companionSprite(d.fx, 'south'); if (s && isSpriteReady(s.img)) { const sz = spriteScaledSize(s.sheet, s.img, s.size * (W * 0.62) / (CONFIG.PLAYER.spriteDisplaySize * PLAYER_SCALE)); ctx.save(); ctx.globalAlpha = s.alpha; ctx.drawImage(s.img, W / 2 + ox * W - sz / 2, H * 0.5 + oy * H + Math.sin(t * 3) * 2 - sz / 2, sz, sz); ctx.restore(); } }
     }
     this.equipped = saved;
+  }
+  // The same placement as Player._drawWeaponSprite (attachment offset, sprite size, direction shift), scaled from the in-game character size to the preview's.
+  _drawHeld(ctx, cx, cy, figureSize, dir, held) {
+    const cfg = CONFIG.WEAPONS[held.weapon], att = WEAPON_ATTACHMENTS[dir]; if (!cfg || !att) return;
+    const shift = cfg.spriteDirShift || 0, skinDir = shift ? SPRITE_DIRECTIONS[(SPRITE_DIRECTIONS.indexOf(dir) + shift + 8) % 8] : dir;
+    const img = held.sprite(skinDir); if (!isSpriteReady(img)) return;
+    const r = figureSize / (CONFIG.PLAYER.spriteDisplaySize * PLAYER_SCALE), v = DIRECTION_VECTORS[dir], aim = Math.atan2(v.y, v.x), wSize = cfg.spriteDisplaySize * PLAYER_SCALE * r;
+    ctx.save(); ctx.imageSmoothingEnabled = false;
+    ctx.translate(cx + att.offsetX * PLAYER_SCALE * r, cy + att.offsetY * PLAYER_SCALE * r);
+    if (WEAPON_ROTATE_360) ctx.rotate(weaponAimResidual(aim, dir));
+    if (att.rotation) ctx.rotate(att.rotation);
+    ctx.drawImage(img, -wSize / 2, -wSize / 2, wSize, wSize);
+    ctx.restore();
   }
   serialize() { return { v: ACC_SAVE_VERSION, unlocked: this.unlocked, by: this.by, unseen: Object.keys(this.unseen), equipped: this.equipped, settings: this.settings, migrated: this.migrated, featured: this.featured }; }
   _load(raw) {
@@ -8624,8 +8659,9 @@ class AccessorySystem {
 
 // ===== Accessories menu =====
 class AccessoriesMenu extends PanelMenu {
-  constructor(sys) {
+  constructor(sys, cos) {
     super('accessoriesScreen');
+    this.cos = cos; this.mode = 'char'; this.wCat = 'all'; this.wSel = null; this._dirChar = 0; this._dirWpn = SPRITE_DIRECTIONS.indexOf('south-east');   // CHARACTER / WEAPONS tab + weapon filter + selected skin: view state only (what is equipped lives in ACCESSORIES / COSMETICS)
     this.view = 'inv'; this.fRar = 'all'; this.fShow = 'all'; this.sort = 'default'; this.sortDir = 1;   // inventory / collection view + filter and sort state (view state only, never saved)
     this.sys = sys; this.cat = 'head'; this.sel = null; this.dirIdx = 0; this._timer = null; this.walk = false; this.spin = false; this._spinT = 0; this._shownDir = -1;   // cat / sel / walk / spin are view state only; what is WORN lives in ACCESSORIES.equipped (saved by the game's save system)
     this.pv = document.getElementById('accPreview');
@@ -8634,6 +8670,13 @@ class AccessoriesMenu extends PanelMenu {
   close() { if (!this.isOpen) return; super.close(); clearInterval(this._timer); this._timer = null; }
   onAct(act, t) {
     const s = this.sys;
+    if (act === 'mode') { const m = t.dataset.mode === 'wpn' ? 'wpn' : 'char'; if (m !== this.mode) { Sound.uiClick(); if (this.mode === 'char') this._dirChar = this.dirIdx; else this._dirWpn = this.dirIdx; this.mode = m; this.dirIdx = m === 'wpn' ? this._dirWpn : this._dirChar; this.render(); } return; }
+    if (act === 'wcat') { Sound.uiClick(); this.wCat = t.dataset.cat; this.render(); const g = document.getElementById('wpnGrid'); if (g) g.scrollTop = 0; return; }
+    if (act === 'wselect') { if (this.cos.byId.has(t.dataset.id)) { this.wSel = t.dataset.id; Sound.uiClick(); this.render(); } return; }
+    if (act === 'wequip') { this.wSel = t.dataset.id; if (this.cos.equip(t.dataset.id)) Sound.uiClick(); else Sound.emptyClick(); this.render(); return; }   // equip() refuses locked skins and files a skin under ITS weapon only
+    if (act === 'wunequip') { const d = this.cos.byId.get(t.dataset.id); if (d) { this.wSel = d.id; this.cos.unequip(d.weapon); Sound.uiClick(); this.render(); } return; }
+    if (act === 'wnone') { this.cos.unequip(t.dataset.weapon); Sound.uiClick(); this.render(); return; }
+    if (act === 'wunequipAll') { for (const w of Object.keys(this.cos.equipped.weapons)) this.cos.unequip(w); Sound.uiClick(); this.render(); return; }
     if (act === 'cat') { Sound.uiClick(); this.cat = t.dataset.cat; this.render(); const g = document.getElementById('accGrid'); if (g) g.scrollTop = 0; }
     else if (act === 'toggle') {   // clicking an accessory card: select it, then equip it (or remove it when it is already worn)
       const d = s.byId.get(t.dataset.id); if (!d) return;
@@ -8678,11 +8721,14 @@ class AccessoriesMenu extends PanelMenu {
     if (!this.isOpen) return;
     if (this.spin && performance.now() - this._spinT > 1100) { this._spinT = performance.now(); this.dirIdx = (this.dirIdx + 1) % SPRITE_DIRECTIONS.length; }   // SPIN: turn through all 8 directions
     if (this._shownDir !== this.dirIdx) { this._shownDir = this.dirIdx; const n = document.getElementById('accDirName'); if (n) n.textContent = SPRITE_DIRECTIONS[this.dirIdx].toUpperCase().replace('-', ' '); }
-    this.sys.drawPreview(this.pv.getContext('2d'), this.pv.width, this.pv.height, SPRITE_DIRECTIONS[this.dirIdx], performance.now() / 1000, null, this.walk, 1.3);
+    const sk = this.mode === 'wpn' && this.wSel ? this.cos.byId.get(this.wSel) : null;   // WEAPONS: the peanut holds the selected skin on its real weapon
+    const held = sk ? { weapon: sk.weapon, sprite: (dir) => this.cos.skinSprite(sk.id, dir) } : null;
+    this.sys.drawPreview(this.pv.getContext('2d'), this.pv.width, this.pv.height, SPRITE_DIRECTIONS[this.dirIdx], performance.now() / 1000, null, this.walk, 1.3, held);
   }
   render() {
     const s = this.sys, col = s.collection();   // collection progress, computed from the accessory data: wearables only (Special effects are counted on their own tab)
-    document.getElementById('accSummary').innerHTML = `<b>${col.unlocked}</b> / ${col.total} ACCESSORIES UNLOCKED <span class="achPct">${col.pct}%</span><div class="achBar"><i style="width:${col.pct}%"></i></div>`;
+    this._renderShell();                         // title tabs + the shared collection summary + which side of the screen is visible
+    if (this.mode === 'wpn') { this._renderWeapons(); this._tickPreview(); return; }
     // tabs: Head / Face / Back / Body (the wearables) + the older Special effects tab; a gold dot marks a category that has something equipped
     document.getElementById('accTabs').innerHTML = ACC_CATS.map((c) => {
       const cc = c.id === 'fx' ? col.special : col.byCat[c.id], worn = ACC_SLOTS.some((sl) => sl.cat === c.id && s.equipped[sl.id]), nw = s.unseenCount(c.id);
@@ -8751,6 +8797,85 @@ class AccessoriesMenu extends PanelMenu {
     document.getElementById('accGrid').innerHTML = html;
     for (const cv of document.querySelectorAll('#accGrid canvas.accIcon')) this._icon(cv, s.byId.get(cv.dataset.id), cv.dataset.state);
     this._tickPreview();
+  }
+  // ===== CUSTOMIZATION: CHARACTER (accessories) and WEAPONS (weapon skins) are two tabs of this one screen (shared preview, summary and footer) =====
+  _renderShell() {
+    const s = this.sys, c = this.cos, col = s.collection(), sc = c.collection(), w = this.mode === 'wpn';
+    const all = col.total + sc.total ? Math.round(100 * (col.unlocked + sc.unlocked) / (col.total + sc.total)) : 0;   // everything below is computed from the real data
+    const item = (label, u, t, short) => `<div class="custSumItem"><span><i class="lblLong">${label}</i><i class="lblShort">${short || label}</i></span><b>${u}</b> / ${t}<div class="achBar"><i style="width:${t ? Math.round(100 * u / t) : 0}%"></i></div></div>`;
+    document.getElementById('accSummary').innerHTML = item('CHARACTER ACCESSORIES', col.unlocked, col.total, 'ACCESSORIES') + item('WEAPON SKINS', sc.unlocked, sc.total, 'SKINS') +
+      `<div class="custSumItem"><span><i class="lblLong">ALL COSMETICS</i><i class="lblShort">ALL</i></span><b>${all}%</b> <em>COMPLETE</em><div class="achBar"><i style="width:${all}%"></i></div></div>`;
+    const nw = s.unseenCount();
+    document.getElementById('custTabs').innerHTML = [['char', 'CHARACTER', nw ? ` <span class="newBadge">${nw} NEW</span>` : ''], ['wpn', 'WEAPONS', '']].map(([v, l, x]) =>
+      `<button class="custTab${this.mode === v ? ' active' : ''}" role="tab" aria-selected="${this.mode === v}" data-act="mode" data-mode="${v}">${l}${x}</button>`).join('');
+    document.getElementById('accViews').classList.toggle('accHide', w);
+    if (w) for (const id of ['accTabs', 'accFilters', 'accDetail', 'accGrid', 'accShowcase']) document.getElementById(id).classList.add('accHide');
+    for (const id of ['wpnTabs', 'wpnDetail', 'wpnGrid', 'accSideWpn']) document.getElementById(id).classList.toggle('accHide', !w);
+    document.getElementById('accSideChar').classList.toggle('accHide', w);
+    document.getElementById('accSpinBtn').textContent = 'SPIN: ' + (this.spin ? 'ON' : 'OFF');
+    document.getElementById('accWalkBtn').textContent = 'WALK: ' + (this.walk ? 'ON' : 'OFF');
+    document.getElementById('custHint').textContent = (w ? 'CLICK A SKIN TO PREVIEW IT, USE EQUIP TO WEAR IT' : 'CLICK AN ITEM TO EQUIP OR REMOVE IT') + ' - ESC = CLOSE';
+  }
+  _wList() {
+    const c = this.cos, types = c.types(), ix = new Map(c.defs.map((d, i) => [d.id, i]));
+    return c.defs.filter((d) => this.wCat === 'all' || d.weapon === this.wCat).sort((a, b) => types.indexOf(a.weapon) - types.indexOf(b.weapon) || ix.get(a.id) - ix.get(b.id));
+  }
+  _renderWeapons() {
+    const c = this.cos, types = c.types();
+    if (this.wCat !== 'all' && !types.includes(this.wCat)) this.wCat = 'all';
+    const tab = (id, label, defs) => { const un = defs.filter((d) => c.isUnlocked(d.id)).length, worn = defs.some((d) => c.isEquipped(d)); return `<button class="shopTab achTab${this.wCat === id ? ' active' : ''}" role="tab" aria-selected="${this.wCat === id}" data-act="wcat" data-cat="${id}">${label.toUpperCase()} <em>${un}/${defs.length}</em>${worn ? '<i class="wpnDot" title="a skin is equipped"></i>' : ''}</button>`; };
+    document.getElementById('wpnTabs').innerHTML = tab('all', 'ALL', c.defs) + types.map((w) => tab(w, c.typeLabel(w), c.defs.filter((d) => d.weapon === w))).join('');
+    const list = this._wList();
+    if (!list.some((d) => d.id === this.wSel)) this.wSel = list.length ? list[0].id : null;   // the preview always shows a skin that is in the list
+    const sel = this.wSel && c.byId.get(this.wSel), wname = (id) => (CONFIG.WEAPONS[id] ? CONFIG.WEAPONS[id].name : id);
+    // detail box + the caption under the preview
+    const dEl = document.getElementById('wpnDetail'), cap = document.getElementById('wpnCaption');
+    if (!sel) { dEl.innerHTML = '<span class="hint">There are no weapon skins.</span>'; cap.innerHTML = ''; }
+    else {
+      const ri = c.rarityInfo(sel), open = c.isUnlocked(sel.id), eq = c.isEquipped(sel), r = c._req(sel);
+      const tags = `<span class="cosTag ${open ? 'un' : 'lk'}">${open ? 'UNLOCKED' : 'LOCKED'}</span>${eq ? '<span class="cosTag eq">EQUIPPED</span>' : ''}`;
+      const need = open ? 'Earned: ' + sel.reqText : 'To unlock: ' + sel.reqText + ` (${Math.floor(r.val)} / ${Math.floor(r.target)})`;
+      const btn = !open ? '<span class="hint">LOCKED - preview only</span>' : eq ? `<button class="shopWpn" data-act="wunequip" data-id="${sel.id}">UNEQUIP</button>` : `<button class="shopWpn" data-act="wequip" data-id="${sel.id}">EQUIP ON ${wname(sel.weapon).toUpperCase()}</button>`;
+      dEl.innerHTML = `<b>${sel.name}</b><span class="accRar" style="--rar:${ri.color}">${ri.name.toUpperCase()}</span>${tags} <span class="hint">${wname(sel.weapon).toUpperCase()} SKIN</span><br><span class="hint">${sel.desc} ${need}</span><div class="accDetBtns">${btn}</div>`;
+      cap.innerHTML = `<b>${sel.name}</b><span class="accRar" style="--rar:${ri.color}">${ri.name.toUpperCase()}</span><span class="hint">${wname(sel.weapon).toUpperCase()}</span><div class="accTags" style="justify-content:flex-start">${tags}</div>`;
+    }
+    // equipped skins, one row per weapon type
+    document.getElementById('wpnWorn').innerHTML = types.map((w) => {
+      const id = c.equipped.weapons[w], d = id && c.byId.get(id);
+      return `<div class="accWornRow"><span>${c.typeLabel(w).toUpperCase().slice(0, 9)}</span><b class="${d ? '' : 'none'}">${d ? d.name : '-'}</b>${d ? `<button class="accX" data-act="wnone" data-weapon="${w}" aria-label="Remove ${d.name}" title="Remove">x</button>` : '<i></i>'}</div>`;
+    }).join('');
+    // the skin cards
+    let html = '';
+    if (!list.length) html = '<div class="cosNote accNoMatch">No weapon skins in this category.</div>';
+    for (const d of list) {
+      const open = c.isUnlocked(d.id), eq = c.isEquipped(d), ri = c.rarityInfo(d), r = c._req(d), on = this.wSel === d.id;
+      const prog = `<div class="achProg"><div class="achBar${open ? ' done' : ''}"><i style="width:${open ? 100 : Math.round(100 * Math.min(1, r.val / Math.max(1, r.target)))}%"></i></div><span>${open ? 'DONE' : Math.floor(r.val) + ' / ' + Math.floor(r.target)}</span></div>`;   // every card has the same rows, so every card is the same size
+      const btn = !open ? '<button class="shopBuyBtn cant" disabled>LOCKED</button>' : eq ? `<button class="shopBuyBtn cosUn" data-act="wunequip" data-id="${d.id}">UNEQUIP</button>` : `<button class="shopBuyBtn" data-act="wequip" data-id="${d.id}">EQUIP</button>`;
+      html += `<div class="cosCard accCard wpnCard${open ? ' open' : ' locked'}${eq ? ' equipped' : ''}${on ? ' sel' : ''}${ri.glow ? ' rarGlow' : ''}" style="--rar:${ri.color}" data-act="wselect" data-id="${d.id}" data-weapon="${d.weapon}" data-rarity="${d.rarity}" role="button" tabindex="0" aria-pressed="${on}" aria-label="${d.name}, ${ri.name}, ${wname(d.weapon)}, ${open ? 'unlocked' : 'locked'}${eq ? ', equipped' : ''}">` +
+        `<canvas class="wpnArt" width="144" height="96" data-id="${d.id}" data-state="${open ? 'open' : 'locked'}"></canvas>` +
+        `<div class="cosName">${d.name}</div><div class="accRar">${ri.name.toUpperCase()}</div><div class="wpnType">${wname(d.weapon).toUpperCase()}</div>` +
+        `<div class="achDesc">${d.desc}</div><div class="accTags"><span class="cosTag ${open ? 'un' : 'lk'}">${open ? 'UNLOCKED' : 'LOCKED'}</span>${eq ? '<span class="cosTag eq">EQUIPPED</span>' : ''}</div>` +
+        `<div class="accReq">${open ? 'Earned: ' : 'To unlock: '}${d.reqText}</div>${prog}<div class="cosBtn">${btn}</div></div>`;
+    }
+    document.getElementById('wpnGrid').innerHTML = html;
+    for (const cv of document.querySelectorAll('#wpnGrid canvas.wpnArt')) this._drawWeaponArt(cv, c.byId.get(cv.dataset.id), cv.dataset.state);
+  }
+  // The skin's real artwork (the same recoloured sprite the game draws), cropped to its pixels and scaled by a whole number so it is big and sharp.
+  _drawWeaponArt(cv, d, state) {
+    const g = cv.getContext('2d'), W = cv.width, H = cv.height; g.clearRect(0, 0, W, H); g.imageSmoothingEnabled = false;
+    const img = this.cos.skinSprite(d.id, 'east'); if (!img) return;
+    const bb = this._bbox(d.id, img), k = Math.max(1, Math.floor(Math.min((W - 8) / bb.w, (H - 8) / bb.h)));
+    const dw = bb.w * k, dh = bb.h * k, dx = Math.round((W - dw) / 2), dy = Math.round((H - dh) / 2);
+    g.drawImage(img, bb.x, bb.y, bb.w, bb.h, dx, dy, dw, dh);
+    if (state === 'locked') { g.globalCompositeOperation = 'source-atop'; g.fillStyle = 'rgba(8,10,14,0.45)'; g.fillRect(0, 0, W, H); g.globalCompositeOperation = 'source-over'; }
+  }
+  _bbox(id, img) {   // the opaque area of a sprite (cached)
+    this._bb = this._bb || {}; if (this._bb[id]) return this._bb[id];
+    const w = img.naturalWidth || img.width, h = img.naturalHeight || img.height, c = document.createElement('canvas'); c.width = w; c.height = h;
+    const g = c.getContext('2d', { willReadFrequently: true }); g.drawImage(img, 0, 0);
+    const d = g.getImageData(0, 0, w, h).data; let x0 = w, y0 = h, x1 = -1, y1 = -1;
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (d[(y * w + x) * 4 + 3] > 8) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+    return (this._bb[id] = x1 < 0 ? { x: 0, y: 0, w, h } : { x: x0, y: y0, w: x1 - x0 + 1, h: y1 - y0 + 1 });
   }
   _gridTop() { const g = document.getElementById('accGrid'); if (g) g.scrollTop = 0; }
   _renderViews() {
@@ -9019,8 +9144,7 @@ class Game {
     this.weaponUnlocks = new WeaponUnlockSystem();
     this.shop = new ShopSystem(this); // upgrade shop every 2 minutes (see shop.js)
     this.achMenu = new AchievementMenu(ACH); // achievements menu (see achievements.js)
-    this.cosMenu = new CosmeticsMenu(COSMETICS); // weapon skins
-    this.accMenu = new AccessoriesMenu(ACCESSORIES); // player accessories
+    this.accMenu = new AccessoriesMenu(ACCESSORIES, COSMETICS); // CUSTOMIZATION: player accessories (CHARACTER tab) + weapon skins (WEAPONS tab)
     this.statsMenu = new StatsMenu(ACH, () => this.state === 'playing' || this.state === 'paused' || this.state === 'shop'); // lifetime statistics
     this.statsMenu.achMenu = this.achMenu;                          // Statistics -> Achievements
     this.chalMenu = new ChallengesMenu(CHAL);                        // Daily Challenges + Missions
@@ -9028,7 +9152,8 @@ class Game {
     const chalBadge = () => { const n = CHAL.claimable(); for (const id of ['challengesBtn', 'pauseChallengesBtn']) { const b = document.getElementById(id); if (b) b.textContent = 'Challenges' + (n ? ' (' + n + ' to claim)' : ''); } };
     CHAL.onChange = chalBadge; chalBadge();
     setInterval(() => { if (!this.chalMenu.isOpen) CHAL.refresh(); }, 30000);   // the daily reset also happens while the game sits on the menu
-    this.customizeMenu = new CustomizeMenu(this.accMenu, this.cosMenu); // Customize -> Accessories / Weapon Skins
+    this.customizeMenu = this.accMenu;                                  // the Customize buttons open the one Customization screen
+    COSMETICS.onOpenRequest = (id) => this.openCustomization('wpn', id);  // clicking a weapon-skin unlock notification
     ACCESSORIES.onChange = () => this._refreshNewBadges();             // NEW markers on the Customize buttons
     ACCESSORIES.onOpenRequest = (id) => this.openAccessories(id);       // clicking an accessory-unlock notification
     this._refreshNewBadges();
@@ -9273,8 +9398,8 @@ class Game {
     ACH.startRun({ difficulty: CONFIG.activeDifficulty, city: this._achCityKey() }); // fresh run stats (lifetime stats / unlocks are kept)
     CHAL.refresh(); CHAL.runStarted();   // a new day's challenges start between runs, never during one
     if (!ACH._resuming) {                // challenge rewards you claimed are paid into the cash of a NEW run (Continue keeps its own cash)
-      const bonus = CHAL.takeBonus();
-      if (bonus > 0) { this.player.money += bonus; ACH._enqueue({ tier: 'gold', icon: '$', header: 'CHALLENGE REWARDS', name: '+$' + bonus + ' starting cash', desc: 'From the challenge rewards you claimed.' }); }
+      const bonus = CHAL.takeBonus(CHAL.bring); CHAL.bring = 0;   // only the amount chosen on the Bring Cash screen (Restart / no choice = none; the rest stays banked)
+      if (bonus > 0) { this.player.money += bonus; ACH._enqueue({ tier: 'gold', icon: '$', header: 'CHALLENGE REWARDS', name: '+$' + bonus + ' starting cash', desc: 'The banked cash you chose to bring.' }); }
     }
 
     this.state = 'playing';
@@ -9688,13 +9813,16 @@ class Game {
     for (const [el, base] of [[document.getElementById('customizeBtn'), 'Customize'], [document.getElementById('pauseCustomizeBtn'), 'Customize'], [document.querySelector('#customizeScreen [data-act=accessories]'), 'Accessories']]) if (el) el.innerHTML = base + badge;
   }
   // From an unlock notification: open the inventory on that accessory. Only ever happens because the player clicked; a running game is paused first.
-  openAccessories(id) {
+  openAccessories(id) { this.openCustomization('char', id); }
+  // From an unlock notification: open the Customization screen on that accessory / weapon skin. Only ever happens because the player clicked; a running game is paused first.
+  openCustomization(mode, id) {
     if (this.state === 'playing') this._togglePause();
-    const acc = this.accMenu, d = id && ACCESSORIES.byId.get(id);
-    if (d) { acc.cat = d.cat; acc.sel = d.id; acc.view = 'inv'; acc.fRar = 'all'; acc.fShow = 'all'; }   // (the filters are cleared so the accessory is visible in the grid)
+    const acc = this.accMenu;
+    if (mode === 'wpn') { const s = COSMETICS.byId.get(id); acc.mode = 'wpn'; acc.wCat = 'all'; if (s) acc.wSel = s.id; }
+    else { const d = id && ACCESSORIES.byId.get(id); acc.mode = 'char'; if (d) { acc.cat = d.cat; acc.sel = d.id; acc.view = 'inv'; acc.fRar = 'all'; acc.fShow = 'all'; } }   // (the filters are cleared so the item is visible in the grid)
     if (acc.isOpen) { acc.render(); return; }
-    if (!this.customizeMenu.isOpen) this.customizeMenu.open();
-    openChildMenu(this.customizeMenu, acc);
+    acc.dirIdx = acc.mode === 'wpn' ? acc._dirWpn : acc._dirChar;
+    acc.open();
   }
   _togglePause() {
     if (this.state === 'playing') {
@@ -12859,6 +12987,7 @@ class CitySelectFlow {
       cityFound: document.getElementById('cityFoundScreen'),
       spawnArea: document.getElementById('spawnAreaScreen'),
       difficulty: document.getElementById('difficultyScreen'),
+      bringCash: document.getElementById('bringCashScreen'),
       confirmSpawn: document.getElementById('confirmSpawnScreen'),
       generating: document.getElementById('generatingScreen'),
       mapGenFailed: document.getElementById('mapGenFailedScreen'),
@@ -12939,8 +13068,9 @@ class CitySelectFlow {
     document.getElementById('spawnAreaBackBtn').addEventListener('click', () => this._showCityFound());
     this.spawnAreaContinueBtn.addEventListener('click', () => this._showDifficulty());   // spawn area -> difficulty -> confirm
 
-    document.getElementById('confirmSpawnBackBtn').addEventListener('click', () => this._showDifficulty());
-    document.getElementById('difficultyContinueBtn').addEventListener('click', () => this._showConfirmSpawn());
+    document.getElementById('confirmSpawnBackBtn').addEventListener('click', () => (this._cashStep ? this._showBringCash(true) : this._showDifficulty()));   // confirm -> bring cash -> difficulty
+    document.getElementById('difficultyContinueBtn').addEventListener('click', () => this._showBringCash(false));   // difficulty -> BRING CASH -> confirm
+    this._wireBringCash();
     document.getElementById('difficultyBackBtn').addEventListener('click', () => this._showSpawnArea(false));
     document.getElementById('confirmSpawnBtn').addEventListener('click', () => this._showGenerating());
 
@@ -13206,10 +13336,45 @@ class CitySelectFlow {
     DifficultyChoice.render();
   }
 
+  // BRING CASH: after the difficulty, choose how much of the banked challenge cash goes into this run. Nothing is taken from the bank here: the chosen amount is
+  // only paid (and deducted) when the run really starts (Game.start), so backing out or a failed map load never costs anything. No bank / Test Mode = the screen is skipped.
+  _showBringCash(keep) {
+    if (!this.selectedArea) return;
+    const bank = CHAL.state.bank, max = CHAL.maxBring();
+    if (!CHAL.active || max <= 0) { this._cashStep = false; CHAL.bring = 0; this._showConfirmSpawn(); return; }
+    this._cashStep = true;
+    CHAL.bring = keep ? Math.max(0, Math.min(CHAL.bring | 0, max)) : max;   // coming from Difficulty: all of it is pre-selected; coming back from Confirm: your choice is kept
+    this._hideAllScreens();
+    this.screens.bringCash.classList.remove('hidden');
+    document.getElementById('bringBank').textContent = '$' + bank;
+    const r = document.getElementById('bringRange'); r.max = max; r.value = CHAL.bring;
+    this._bringRender();
+  }
+  _bringRender() {
+    const bank = CHAL.state.bank, v = CHAL.bring | 0;
+    document.getElementById('bringAmt').textContent = '$' + v;
+    document.getElementById('bringRange').value = v;
+    document.getElementById('bringLeft').textContent = 'STAYS IN YOUR BANK: $' + (bank - v);
+    document.getElementById('bringMinus').disabled = v <= 0; document.getElementById('bringPlus').disabled = v >= CHAL.maxBring();
+  }
+  _wireBringCash() {
+    const set = (v) => { CHAL.bring = Math.max(0, Math.min(Math.round(v), CHAL.maxBring())); this._bringRender(); };
+    document.getElementById('bringRange').addEventListener('input', (e) => set(Number(e.target.value)));
+    document.getElementById('bringMinus').addEventListener('click', () => { Sound.uiClick(); set(CHAL.bring - 25); });
+    document.getElementById('bringPlus').addEventListener('click', () => { Sound.uiClick(); set(CHAL.bring + 25); });
+    for (const b of document.querySelectorAll('#bringCashScreen [data-bring]')) b.addEventListener('click', () => {
+      Sound.uiClick(); const m = CHAL.maxBring(), k = b.dataset.bring; set(k === 'none' ? 0 : k === 'q' ? Math.floor(m / 4) : k === 'h' ? Math.floor(m / 2) : m);
+    });
+    document.getElementById('bringContinueBtn').addEventListener('click', () => { Sound.uiClick(); this._showConfirmSpawn(); });
+    document.getElementById('bringBackBtn').addEventListener('click', () => this._showDifficulty());
+  }
+
   _showConfirmSpawn() {
     if (!this.selectedArea) return; // guards a disabled-button edge case, not expected to trigger
     this._hideAllScreens();
     this.screens.confirmSpawn.classList.remove('hidden');
+    const cashEl = document.getElementById('confirmCashText');
+    cashEl.classList.toggle('hidden', !this._cashStep); cashEl.textContent = this._cashStep ? (CHAL.bring > 0 ? `Bringing: $${CHAL.bring} banked cash` : 'Bringing: no banked cash') : '';
     document.getElementById('confirmDiffText').textContent = `Difficulty: ${DifficultyChoice.label(CONFIG.activeDifficulty)}`;
     this.confirmCityText.textContent = `City: ${this.cityName}`;
     this.confirmAreaText.textContent = this.selectedLatLng
@@ -13442,7 +13607,7 @@ class CitySelectFlow {
  *  - TRACKING: the game reports real events (kills with zombie type + weapon, medkit healing, per-frame tick). Everything else (distance, survival time,
  *    areas, damage, purchases) is read from the run statistics the achievement system already keeps (ACH.run / ACH.life), so nothing is counted twice.
  *  - CURRENCY: the game's only currency is the per-run CASH, so rewards are cash. A claimed reward is BANKED and paid into your cash at the start of your
- *    next new run (at most CHAL_CONFIG.maxBonusPerRun per run, the rest stays banked). Missions can also unlock an existing accessory.
+ *    next new run: you pick the amount on the Bring Cash screen after Difficulty (optional cap CHAL_CONFIG.maxBonusPerRun); the rest stays banked. Missions can also unlock an existing accessory.
  *  - DAILY RESET: one fixed reset time for everybody (00:00 UTC by default, CHAL_CONFIG.resetUtcHour). The day number is floor((now - reset) / 24h) in UTC, so
  *    time zones never matter. The 5 challenges of a day are generated from that day number with a seeded random generator: same day = same set, so closing and
  *    reopening the game never rerolls, and a lost save would regenerate the same set. The set and its progress are saved. A new day only starts while you are
@@ -13463,7 +13628,7 @@ const CHAL_CONFIG = {
     medium: { label: 'MEDIUM', color: '#f5c542', toast: 'silver', reward: 90 },
     hard:   { label: 'HARD',   color: '#ff5a4f', toast: 'gold',   reward: 180 },
   },
-  maxBonusPerRun: 400,             // banked cash paid into a new run (the rest waits for the next run)
+  maxBonusPerRun: null,            // most banked cash that can be brought into one run (null = any amount; you choose on the Bring Cash screen)
   ownedAccessoryCash: 150,         // a mission accessory the player already owns pays this much cash instead
   noteFrac: 0.5,                   // small in-game progress note when a daily challenge passes this fraction
 };
@@ -13522,7 +13687,7 @@ const chalMissionById = new Map(CHAL_MISSIONS.map((m) => [m.id, m]));
 
 class ChallengeSystem {
   constructor() {
-    this.state = null; this.devOffset = 0; this._clock = null;
+    this.state = null; this.devOffset = 0; this._clock = null; this.bring = 0;   // bring = banked cash chosen for the next new run
     this.isRunActive = () => false;      // set by the Game: true while a run is in progress (playing / paused / shop)
     this.onChange = null;                // menu badges
     this._acc = 0; this._dirty = false; this._lastSave = 0; this._runRef = null; this._note = null; this._noteT = 0;
@@ -13674,9 +13839,10 @@ class ChallengeSystem {
   }
   claimAll() { let cash = 0, n = 0; this.state.daily.forEach((c, i) => { const r = this.claim('daily', i); if (r) { cash += r.cash; n++; } }); for (const m of CHAL_MISSIONS) { const r = this.claim('mission', m.id); if (r) { cash += r.cash; n++; } } return { cash, n }; }
   // Paid into a NEW run's cash (never while Test Mode cheats are on).
-  takeBonus() {
+  maxBring() { const cap = CHAL_CONFIG.maxBonusPerRun == null ? Infinity : CHAL_CONFIG.maxBonusPerRun; return Math.max(0, Math.min(this.state.bank, cap)); }
+  takeBonus(want) {   // want = the amount chosen on the Bring Cash screen
     if (!this.active) return 0;
-    const n = Math.min(this.state.bank, CHAL_CONFIG.maxBonusPerRun); if (n <= 0) return 0;
+    const n = Math.min(this.maxBring(), Math.max(0, Math.floor(Number(want) || 0))); if (n <= 0) return 0;
     this.state.bank -= n; this.save(true); if (this.onChange) this.onChange();
     return n;
   }
@@ -13750,7 +13916,7 @@ class ChallengesMenu extends PanelMenu {
     const dDone = st.daily.filter((c) => c.done).length, mDone = S.missionsDone();
     document.getElementById('chalTabs').innerHTML = [['daily', `DAILY CHALLENGES ${dDone}/${st.daily.length}`], ['missions', `LONG-TERM MISSIONS ${mDone}/${CHAL_MISSIONS.length}`]].map(([v, l]) => `<button class="shopTab${this.tab === v ? ' active' : ''}" role="tab" aria-selected="${this.tab === v}" data-act="tab" data-tab="${v}">${l}</button>`).join('');
     const n = S.claimable();
-    document.getElementById('chalHead').innerHTML = `<span>BANKED CASH <b>$${st.bank}</b></span><span class="chalSub">Paid into your cash when a new run starts (up to $${CHAL_CONFIG.maxBonusPerRun} per run).</span>` +
+    document.getElementById('chalHead').innerHTML = `<span>BANKED CASH <b>$${st.bank}</b></span><span class="chalSub">Choose how much to bring on the Bring Cash screen after Difficulty${CHAL_CONFIG.maxBonusPerRun == null ? '' : ' (up to $' + CHAL_CONFIG.maxBonusPerRun + ' per run)'}.</span>` +
       (this.tab === 'daily' ? `<span id="chalReset" class="chalReset"></span>` : '') + (this._msg ? `<span class="chalMsg">${this._msg}</span>` : '');
     const ca = document.getElementById('chalClaimAll'); ca.disabled = n === 0; ca.textContent = n ? `CLAIM ALL (${n})` : 'CLAIM ALL';
     let html = '';
