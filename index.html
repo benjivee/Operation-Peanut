@@ -1040,6 +1040,28 @@ html, body, button, input, select, textarea {
 .accNewChip { display: inline-block; min-width: 12px; margin-left: 6px; padding: 1px 3px; font-style: normal; font-size: 7px; text-align: center; background: #8a6a10; color: #ffe27a; border: 2px solid var(--px-ink); }
 .newBadge { display: inline-block; margin-left: 8px; padding: 2px 5px; font-size: 8px; background: #8a6a10; color: #ffe27a; border: 2px solid var(--px-ink); vertical-align: middle; animation: accNewPulse 1.4s ease-in-out infinite; }
 #accessoriesScreen .accNone { display: flex; align-items: center; justify-content: center; width: 64px; height: 64px; background: #1b1f26; border: 1px dashed #3a3f47; color: #8a9099; font: bold 9px monospace; box-sizing: border-box; margin: 0 auto; }
+/* ---- Daily Challenges + Missions ---- */
+#challengesScreen { z-index: 25; padding: 12px; box-sizing: border-box; cursor: default; user-select: none; -webkit-user-select: none; }
+.chalHead { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 18px; margin-top: 8px; font-size: 8px; line-height: 1.6; }
+.chalHead b { color: #f5c542; font-size: 12px; font-weight: normal; margin-left: 4px; } .chalSub { color: var(--px-dim); font-size: 7px; } .chalReset { color: #5ec8ff; } .chalMsg { color: #4fcf70; }
+.chalTabs { margin: 0 0 8px; }
+.chalBody { display: flex; flex-direction: column; gap: 8px; }
+.chalCard { display: flex; flex-direction: column; gap: 6px; padding: 8px 12px; font-size: 8px; line-height: 1.6; background: #1b1f26; border: 3px solid var(--px-ink); border-left: 6px solid var(--c, #888); }
+.chalCard.done { background: #1c2b21; } .chalCard.claimed { opacity: 0.62; }
+.chalTop { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
+.chalDiff { padding: 3px 6px; font-size: 7px; letter-spacing: 1px; color: #14171b; background: var(--c, #888); text-shadow: none; }
+.chalName { font-size: 10px; color: #fff; } .chalCat { margin-left: auto; font-size: 7px; color: var(--px-dim); letter-spacing: 1px; } .chalCheck { color: #4fcf70; font-size: 12px; }
+.chalDesc { color: var(--px-dim); }
+.chalBarRow { display: grid; grid-template-columns: minmax(0, 1fr) 150px; align-items: center; gap: 10px; }
+.chalBarRow .achBar { margin-top: 0; } .chalBarRow .achBar i { background: var(--c, #f1c40f); } .chalBarRow b { text-align: right; color: #fff; font-weight: normal; }
+.chalFoot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+.chalReward { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; } .chalRwdLabel { font-size: 7px; color: var(--px-dim); letter-spacing: 1px; } .chalReward b { color: #f5c542; font-size: 10px; font-weight: normal; }
+.chalAcc { width: 34px; height: 34px; image-rendering: pixelated; background: #14171b; border: 2px solid var(--px-ink); } .chalAccName { color: #cfd3d8; }
+.chalNote2 { padding: 2px; font-size: 8px; line-height: 1.7; color: var(--px-dim); }
+.chalDev { margin-top: 6px; }
+#chalNote { position: absolute; left: 14px; top: 150px; z-index: 15; max-width: 320px; padding: 6px 10px; font-size: 8px; line-height: 1.6; color: #e8eaed; background: rgba(18, 20, 24, 0.86); border: 2px solid #000; border-left: 4px solid #f5c542; opacity: 0; transition: opacity 0.3s; pointer-events: none; }
+#chalNote.show { opacity: 1; } #chalNote b { color: #f5c542; } #chalNote em { font-style: normal; color: #fff; }
+@media (max-width: 720px) { .chalBarRow { grid-template-columns: minmax(0, 1fr); } .chalBarRow b { text-align: left; } .chalCat { margin-left: 0; } }
 /* ---- Accessory rarity (COSMETIC ONLY) + collection showcase ---- */
 .accHide { display: none !important; }
 .accViews { flex: 0 0 auto; display: flex; flex-wrap: wrap; gap: 8px; }
@@ -2035,7 +2057,7 @@ const EMBEDDED_ASSETS = {
     <!-- ===================== Start overlay (home page) ===================== -->
     <div id="startScreen" class="overlay homePage">
       <!-- Version: major.minor.patch. The patch digit goes 0-9 and rolls into the minor number (v3.88.9 -> v3.89.0); the minor number is two digits and rolls into the major number (v3.99.9 -> v4.00.0). Bumped by 1 on every change. -->
-      <div id="versionTag" class="versionTag">v3.92.8</div>
+      <div id="versionTag" class="versionTag">v3.92.9</div>
       <div id="homeSidebar" class="homeSidebar">
         <div class="homeSidebarTitle">Your Stats</div>
         <div class="homeSidebarStat">
@@ -2054,6 +2076,7 @@ const EMBEDDED_ASSETS = {
         <button id="testModeBtn" class="testModeButton">Test Mode</button>
         <button id="howToPlayBtn" class="testModeButton">How to Play</button>
         <button id="customizeBtn" class="testModeButton">Customize</button>
+        <button id="challengesBtn" class="testModeButton">Challenges</button>
         <button id="statsBtn" class="testModeButton">Statistics</button>
       </div>
     </div>
@@ -2102,6 +2125,7 @@ const EMBEDDED_ASSETS = {
         <p class="subtitle">Press <b>P</b> to resume</p>
         <button id="resumeBtn" class="bigButton">Resume</button>
         <button id="pauseCustomizeBtn" class="smallLinkButton">Customize</button>
+        <button id="pauseChallengesBtn" class="smallLinkButton">Challenges</button>
         <button id="pauseStatsBtn" class="smallLinkButton">Statistics</button>
         <button id="pauseSaveQuitBtn" class="smallLinkButton">Save &amp; Quit</button>
         <p id="pauseMessage" class="inputError hidden"></p>
@@ -2134,6 +2158,7 @@ const EMBEDDED_ASSETS = {
 
     <!-- ===================== Achievements ===================== -->
     <div id="achToasts" aria-live="polite"></div>
+    <div id="chalNote" aria-live="polite"></div>
     <div id="achievementsScreen" class="overlay hidden">
       <div class="shopPanel achPanel" role="dialog" aria-modal="true" aria-labelledby="achTitle">
         <div class="shopHeader">
@@ -2226,6 +2251,16 @@ const EMBEDDED_ASSETS = {
         <div class="shopHeader"><h1 id="stTitleMain">STATISTICS</h1></div>
         <div id="statsBody" class="shopList statsBody"></div>
         <div class="shopFooter"><button class="bigButton" data-act="achievements">ACHIEVEMENTS</button><button class="bigButton" data-act="close">CLOSE</button><span class="shopHint">ESC = CLOSE</span></div>
+      </div>
+    </div>
+
+    <!-- ===================== Daily Challenges + Missions ===================== -->
+    <div id="challengesScreen" class="overlay hidden">
+      <div class="shopPanel achPanel" role="dialog" aria-modal="true" aria-labelledby="chalTitle">
+        <div class="shopHeader"><h1 id="chalTitle">CHALLENGES</h1><div id="chalHead" class="chalHead"></div></div>
+        <div id="chalTabs" class="shopTabs chalTabs" role="tablist"></div>
+        <div id="chalBody" class="shopList chalBody"></div>
+        <div class="shopFooter"><button id="chalClaimAll" class="bigButton" data-act="claimall">CLAIM ALL</button><button class="bigButton" data-act="close">CLOSE</button><span class="shopHint">ESC = CLOSE</span></div>
       </div>
     </div>
 
@@ -6862,6 +6897,9 @@ ach('minimalist',       'challenge', 'gold',     'Minimalist',       'Survive 10
 ach('against_the_odds_c','challenge','gold',     'Against the Odds', 'Kill 30 zombies in one run while below 25% health.', 'AO', 30, B('lowHpKills'), ['kill']);
 ach('no_shopping_needed','challenge','silver',   'No Shopping Needed','Survive 8 minutes without buying any upgrades.', 'NS', 480, B('noBuyTime'), ['tick'], 'time');
 ach('crowded_streets',  'challenge', 'silver',   'Crowded Streets',  'Kill 8 zombies within 8 seconds inside a small area (about 120 px).', 'CR', 1, FLAG('streets'), ['kill'], 'bool');
+ach('daily_routine',    'challenge', 'bronze',   'Daily Routine',    'Complete 5 daily challenges.',                      'DR', 5, () => CHAL.stats.dailiesDone, ['chal']);
+ach('clean_sweep',      'challenge', 'silver',   'Clean Sweep',      'Complete all 5 daily challenges in one day.',       'CS', 5, () => CHAL.bestDayDone(),     ['chal']);
+ach('on_a_mission',     'challenge', 'silver',   'On a Mission',     'Complete 5 long-term missions.',                    'OM', 5, () => CHAL.missionsDone(),    ['chal']);
 
 // ===== G. Special and Secret (hidden until unlocked) =====
 ach('peanut_power',     'secret', 'bronze',   'Peanut Power',       'Kill 100 zombies.',               'PW', 100,  LIFE('kills'), ['kill'], 'int', true);
@@ -8319,6 +8357,7 @@ class AccessorySystem {
   _reason(d, cause) {
     if (cause.type === 'achievement') return 'Reward for the "' + cause.name + '" achievement.';
     if (cause.type === 'milestone') return 'Milestone reached: ' + cause.text;
+    if (cause.type === 'mission') return 'Reward for the "' + cause.name + '" mission.';
     if (cause.type === 'dev') return 'Test unlock (dev tools).';
     return 'New accessory unlocked.';
   }
@@ -8984,6 +9023,11 @@ class Game {
     this.accMenu = new AccessoriesMenu(ACCESSORIES); // player accessories
     this.statsMenu = new StatsMenu(ACH, () => this.state === 'playing' || this.state === 'paused' || this.state === 'shop'); // lifetime statistics
     this.statsMenu.achMenu = this.achMenu;                          // Statistics -> Achievements
+    this.chalMenu = new ChallengesMenu(CHAL);                        // Daily Challenges + Missions
+    CHAL.isRunActive = () => this.state === 'playing' || this.state === 'paused' || this.state === 'shop';
+    const chalBadge = () => { const n = CHAL.claimable(); for (const id of ['challengesBtn', 'pauseChallengesBtn']) { const b = document.getElementById(id); if (b) b.textContent = 'Challenges' + (n ? ' (' + n + ' to claim)' : ''); } };
+    CHAL.onChange = chalBadge; chalBadge();
+    setInterval(() => { if (!this.chalMenu.isOpen) CHAL.refresh(); }, 30000);   // the daily reset also happens while the game sits on the menu
     this.customizeMenu = new CustomizeMenu(this.accMenu, this.cosMenu); // Customize -> Accessories / Weapon Skins
     ACCESSORIES.onChange = () => this._refreshNewBadges();             // NEW markers on the Customize buttons
     ACCESSORIES.onOpenRequest = (id) => this.openAccessories(id);       // clicking an accessory-unlock notification
@@ -9100,6 +9144,8 @@ class Game {
     document.getElementById('customizeBtn').addEventListener('click', () => { Sound.uiClick(); this.customizeMenu.open(); });
     document.getElementById('pauseCustomizeBtn').addEventListener('click', () => { Sound.uiClick(); this.customizeMenu.open(); });
     document.getElementById('statsBtn').addEventListener('click', () => { Sound.uiClick(); this.statsMenu.open(); });
+    document.getElementById('challengesBtn').addEventListener('click', () => { Sound.uiClick(); this.chalMenu.open(); });
+    document.getElementById('pauseChallengesBtn').addEventListener('click', () => { Sound.uiClick(); this.chalMenu.open(); });
     document.getElementById('pauseStatsBtn').addEventListener('click', () => { Sound.uiClick(); this.statsMenu.open(); });
     document.getElementById('howToPlayBtn').addEventListener('click', () => {
       Sound.uiClick();
@@ -9225,6 +9271,11 @@ class Game {
     this._attachWorld3d();
 
     ACH.startRun({ difficulty: CONFIG.activeDifficulty, city: this._achCityKey() }); // fresh run stats (lifetime stats / unlocks are kept)
+    CHAL.refresh(); CHAL.runStarted();   // a new day's challenges start between runs, never during one
+    if (!ACH._resuming) {                // challenge rewards you claimed are paid into the cash of a NEW run (Continue keeps its own cash)
+      const bonus = CHAL.takeBonus();
+      if (bonus > 0) { this.player.money += bonus; ACH._enqueue({ tier: 'gold', icon: '$', header: 'CHALLENGE REWARDS', name: '+$' + bonus + ' starting cash', desc: 'From the challenge rewards you claimed.' }); }
+    }
 
     this.state = 'playing';
     this._lastTimestamp = null;
@@ -9697,6 +9748,7 @@ class Game {
     // --- Shop: opens once per scheduled interval; _update (and so every gameplay timer) stops while it is open ---
     if (this.shop.due(this.survivalTime)) { this.shop.open(); return; }
     ACH.tick(dt, this); // achievements: movement / survival counters (checks run once a second)
+    CHAL.tick(dt);      // daily challenges / missions (reads the same run statistics)
 
     // --- Player ---
     this.player.handleMovement(this.input, dt, world.width, world.height, this.obstacles);
@@ -9919,6 +9971,7 @@ class Game {
           }
         } else if (pickup.kind === 'health') {
           const healed = this.player.heal(pickup.amount);
+          if (healed > 0) CHAL.healed(healed);   // daily challenges: health restored by medkits
           if (healed > 0) {
             pickup.alive = false;
             this._addFloatingText(pickup.x, pickup.y, `+${healed} HP`, '#2ecc71'); this.fx.pulse(pickup.x, pickup.y, 'health');
@@ -10027,6 +10080,7 @@ class Game {
     this.fx.death(zombie);   // short death effect (the zombie itself is removed from play as before)
     this.player.kills += 1;
     ACH.killed(zombie, srcId, this); // achievements: credited to the weapon that caused the kill
+    CHAL.killed(zombie, srcId);      // daily challenges / missions: zombie type + weapon
     const reward = ShopSystem.killReward(zombie.type); // cash for the shop (bosses / brutes pay more)
     this.player.money += reward;
     this._addFloatingText(zombie.x, zombie.y - 18, `+$${reward}`, '#f5c542');
@@ -10353,6 +10407,7 @@ class Game {
     this.state = 'gameover';
     this.shop.forceClose();
     ACH.runEnded(); // achievements: final bests are stored; lifetime progress is kept
+    CHAL.runEnded(); // challenges: save, and start the next day's set if the day changed during the run
     SavedRun.clear(); // the run is over — nothing left to continue
     document.getElementById('finalStats').textContent =
       `Survived ${Utils.formatTime(this.survivalTime)} — ${this.player.kills} kills` +
@@ -13379,6 +13434,353 @@ class CitySelectFlow {
   }
 }
 
+  </script>
+  <script>
+/**
+ * challenges.js — Daily Challenges + long-term Missions for Operation Peanut.
+ *
+ *  - TRACKING: the game reports real events (kills with zombie type + weapon, medkit healing, per-frame tick). Everything else (distance, survival time,
+ *    areas, damage, purchases) is read from the run statistics the achievement system already keeps (ACH.run / ACH.life), so nothing is counted twice.
+ *  - CURRENCY: the game's only currency is the per-run CASH, so rewards are cash. A claimed reward is BANKED and paid into your cash at the start of your
+ *    next new run (at most CHAL_CONFIG.maxBonusPerRun per run, the rest stays banked). Missions can also unlock an existing accessory.
+ *  - DAILY RESET: one fixed reset time for everybody (00:00 UTC by default, CHAL_CONFIG.resetUtcHour). The day number is floor((now - reset) / 24h) in UTC, so
+ *    time zones never matter. The 5 challenges of a day are generated from that day number with a seeded random generator: same day = same set, so closing and
+ *    reopening the game never rerolls, and a lost save would regenerate the same set. The set and its progress are saved. A new day only starts while you are
+ *    NOT in a run (the old set stays until the run ends) and a missed day just means you get today's set (no backlog). Completed-but-unclaimed rewards of an
+ *    expired set are banked automatically. If the device clock moves backwards, the current set is kept.
+ *  - Nothing counts while Test Mode cheats are on (same rule as achievements).
+ *
+ * Adding a challenge: one chalDef(...) line in CHAL_POOL. Adding a mission: one entry in CHAL_MISSIONS. Both use a tracked `key` (see CHAL_KEYS).
+ */
+const CHAL_SAVE_KEY = 'operationPeanut.challenges';
+const CHAL_SAVE_VERSION = 1;
+const CHAL_CONFIG = {
+  resetUtcHour: 0,                 // the daily reset: 00:00 UTC
+  slots: ['easy', 'easy', 'medium', 'medium', 'hard'],   // 5 challenges a day: the difficulty of each
+  maxPerCategory: 2,               // variety: at most 2 challenges of one category in a day
+  tiers: {                         // reward (cash) and look of each difficulty
+    easy:   { label: 'EASY',   color: '#4fcf70', toast: 'bronze', reward: 40 },
+    medium: { label: 'MEDIUM', color: '#f5c542', toast: 'silver', reward: 90 },
+    hard:   { label: 'HARD',   color: '#ff5a4f', toast: 'gold',   reward: 180 },
+  },
+  maxBonusPerRun: 400,             // banked cash paid into a new run (the rest waits for the next run)
+  ownedAccessoryCash: 150,         // a mission accessory the player already owns pays this much cash instead
+  noteFrac: 0.5,                   // small in-game progress note when a daily challenge passes this fraction
+};
+const CHAL_CATS = { combat: 'COMBAT', weapon: 'WEAPON', survival: 'SURVIVAL', explore: 'EXPLORATION', progress: 'PROGRESS' };
+const chalN = (v) => String(Math.floor(v)).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+const chalT = (s) => { s = Math.max(0, Math.floor(s)); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); };
+const chalFmt = (fmt, v) => fmt === 'time' ? chalT(v) : fmt === 'm' ? chalN(v) + ' m' : chalN(v);
+const chalW = (id) => (CONFIG.WEAPONS[id] ? CONFIG.WEAPONS[id].name : id);
+
+// ---- the daily pool: tracked statistics only. key = what is counted; kind: 'sum' (adds up through the day) or 'max' (best value reached) ----
+const CHAL_POOL = [];
+function chalDef(id, cat, key, kind, fmt, name, targets, weapon) { CHAL_POOL.push({ id, cat, key, kind, fmt, name, targets, weapon: weapon || null }); }
+chalDef('kill_any',     'combat',   'kills',        'sum', 'int',  (t) => `Kill ${chalN(t)} zombies`,                               { easy: 30, medium: 60, hard: 120 });
+chalDef('kill_walker',  'combat',   'kills.walker', 'sum', 'int',  (t) => `Kill ${chalN(t)} walker zombies`,                        { easy: 20, medium: 40, hard: 80 });
+chalDef('kill_runner',  'combat',   'kills.runner', 'sum', 'int',  (t) => `Kill ${chalN(t)} fast zombies (runners)`,                { easy: 8, medium: 15, hard: 30 });
+chalDef('kill_brute',   'combat',   'kills.brute',  'sum', 'int',  (t) => `Kill ${chalN(t)} brute zombies`,                         { easy: 2, medium: 4, hard: 8 });
+chalDef('kill_boss',    'combat',   'kills.boss',   'sum', 'int',  () => 'Defeat a boss zombie',                                    { hard: 1 });
+chalDef('wk_pistol',    'weapon',   'wk.pistol',    'sum', 'int',  (t) => `Kill ${chalN(t)} zombies with the ${chalW('pistol')}`,   { easy: 15, medium: 30, hard: 60 }, 'pistol');
+chalDef('wk_shotgun',   'weapon',   'wk.shotgun',   'sum', 'int',  (t) => `Kill ${chalN(t)} zombies with the ${chalW('shotgun')}`,  { easy: 8, medium: 15, hard: 30 }, 'shotgun');
+chalDef('wk_smg',       'weapon',   'wk.smg',       'sum', 'int',  (t) => `Kill ${chalN(t)} zombies with the ${chalW('smg')}`,      { easy: 10, medium: 25, hard: 50 }, 'smg');
+chalDef('wk_rifle',     'weapon',   'wk.rifle',     'sum', 'int',  (t) => `Kill ${chalN(t)} zombies with the ${chalW('rifle')}`,    { easy: 8, medium: 15, hard: 30 }, 'rifle');
+chalDef('wk_machinegun','weapon',   'wk.machinegun','sum', 'int',  (t) => `Kill ${chalN(t)} zombies with the ${chalW('machinegun')}`, { easy: 10, medium: 25, hard: 50 }, 'machinegun');
+chalDef('kill_melee',   'weapon',   'kills.melee',  'sum', 'int',  (t) => `Kill ${chalN(t)} zombies with melee weapons`,            { easy: 5, medium: 12, hard: 25 });
+chalDef('kill_explo',   'weapon',   'kills.explosive','sum','int', (t) => `Kill ${chalN(t)} zombies with explosives (RPG or grenades)`, { easy: 4, medium: 8, hard: 15 });
+chalDef('run_time',     'survival', 'run.time',     'max', 'time', (t) => `Survive ${chalT(t)} in a single run`,                    { easy: 300, medium: 600, hard: 1200 });
+chalDef('heal',         'survival', 'heal',         'sum', 'int',  (t) => `Restore ${chalN(t)} health using medkits`,               { easy: 50, medium: 100, hard: 200 });
+chalDef('hit_free',     'survival', 'run.hitfree',  'max', 'time', (t) => `Go ${chalT(t)} without taking damage`,                   { easy: 60, medium: 120, hard: 240 });
+chalDef('buy',          'progress', 'purchases',    'sum', 'int',  (t) => `Buy ${chalN(t)} shop upgrade${t === 1 ? '' : 's'}`,      { easy: 1, medium: 3, hard: 5 });
+chalDef('travel',       'explore',  'dist',         'sum', 'm',    (t) => `Travel ${chalN(t)} metres`,                              { easy: 500, medium: 1000, hard: 2500 });
+chalDef('areas',        'explore',  'run.areas',    'max', 'int',  (t) => `Visit ${chalN(t)} different areas of the city in one run`, { easy: 3, medium: 5, hard: 8 });
+chalDef('away',         'explore',  'run.away',     'max', 'm',    (t) => `Get ${chalN(t)} m away from your spawn point`,           { easy: 100, medium: 250, hard: 400 });
+
+// ---- long-term missions: they add up across every session. reward: cash, and optionally an existing accessory ----
+const CHAL_MISSIONS = [
+  { id: 'm_kills_1000',   key: 'kills',          kind: 'sum', fmt: 'int',  name: 'Zombie Exterminator', desc: 'Kill 1,000 zombies.',                          target: 1000,  reward: { cash: 500 } },
+  { id: 'm_brutes_100',   key: 'kills.brute',    kind: 'sum', fmt: 'int',  name: 'Brute Force',         desc: 'Eliminate 100 brute zombies.',                  target: 100,   reward: { cash: 600, acc: 'shoulder_armour' } },
+  { id: 'm_time_60',      key: 'time',           kind: 'sum', fmt: 'time', name: 'Still Standing',      desc: 'Survive for 60 minutes in total.',              target: 3600,  reward: { cash: 400, acc: 'sleeping_bag' } },
+  { id: 'm_firearms_500', key: 'kills.firearm',  kind: 'sum', fmt: 'int',  name: 'Gun Show',            desc: 'Kill 500 zombies using firearms.',              target: 500,   reward: { cash: 450 } },
+  { id: 'm_dist_10k',     key: 'dist',           kind: 'sum', fmt: 'm',    name: 'Long Haul',           desc: 'Travel 10 kilometres.',                         target: 10000, reward: { cash: 500, acc: 'radio_antenna' } },
+  { id: 'm_daily_25',     key: 'dailies',        kind: 'sum', fmt: 'int',  name: 'Creature of Habit',   desc: 'Complete 25 daily challenges.',                 target: 25,    reward: { cash: 750, acc: 'top_hat' } },
+  { id: 'm_daily_10',     key: 'dailies',        kind: 'sum', fmt: 'int',  name: 'Regular',             desc: 'Complete 10 daily challenges.',                 target: 10,    reward: { cash: 300, acc: 'police_badge' } },
+  { id: 'm_runners_200',  key: 'kills.runner',   kind: 'sum', fmt: 'int',  name: 'Runner Down',         desc: 'Kill 200 fast zombies (runners).',              target: 200,   reward: { cash: 350 } },
+  { id: 'm_melee_100',    key: 'kills.melee',    kind: 'sum', fmt: 'int',  name: 'Up Close',            desc: 'Kill 100 zombies with melee weapons.',          target: 100,   reward: { cash: 350 } },
+  { id: 'm_explo_100',    key: 'kills.explosive',kind: 'sum', fmt: 'int',  name: 'Demolition Crew',     desc: 'Kill 100 zombies with explosives.',             target: 100,   reward: { cash: 450 } },
+  { id: 'm_boss_3',       key: 'kills.boss',     kind: 'sum', fmt: 'int',  name: 'Boss Hunter',         desc: 'Defeat 3 boss zombies.',                        target: 3,     reward: { cash: 400, acc: 'pirate_hat' } },
+  { id: 'm_run_20',       key: 'run.time',       kind: 'max', fmt: 'time', name: 'Marathon',            desc: 'Survive 20 minutes in a single run.',           target: 1200,  reward: { cash: 400 } },
+  { id: 'm_buy_20',       key: 'purchases',      kind: 'sum', fmt: 'int',  name: 'Big Spender',         desc: 'Buy 20 shop upgrades.',                         target: 20,    reward: { cash: 300 } },
+];
+
+function chalRng(seed) {   // mulberry32: the same day number always gives the same numbers
+  let a = (seed * 2654435761) >>> 0;
+  return () => { a = (a + 0x6D2B79F5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+}
+const chalDefById = new Map(CHAL_POOL.map((d) => [d.id, d]));
+const chalMissionById = new Map(CHAL_MISSIONS.map((m) => [m.id, m]));
+
+class ChallengeSystem {
+  constructor() {
+    this.state = null; this.devOffset = 0; this._clock = null;
+    this.isRunActive = () => false;      // set by the Game: true while a run is in progress (playing / paused / shop)
+    this.onChange = null;                // menu badges
+    this._acc = 0; this._dirty = false; this._lastSave = 0; this._runRef = null; this._note = null; this._noteT = 0;
+    this._load();
+    this.refresh();
+    window.addEventListener('pagehide', () => this.save(true));
+    document.addEventListener('visibilitychange', () => { if (document.hidden) this.save(true); });
+  }
+  get active() { return !TEST_MODE.isActive(); }
+  get stats() { return this.state.stats; }
+  missionsDone() { let n = 0; for (const id in this.state.missions) if (this.state.missions[id].done) n++; return n; }
+  bestDayDone() { return this.state.stats.bestDayDone || 0; }
+
+  // ---- clock / day number ----
+  now() { return (this._clock ? this._clock() : Date.now()) + this.devOffset * 86400000; }
+  dayOf(ms) { return Math.floor((ms - CHAL_CONFIG.resetUtcHour * 3600000) / 86400000); }
+  nextResetMs(dayKey) { return (dayKey + 1) * 86400000 + CHAL_CONFIG.resetUtcHour * 3600000; }
+  today() { return this.dayOf(this.now()); }
+
+  // ---- generation ----
+  _freshState() { return { v: CHAL_SAVE_VERSION, dayKey: 0, daily: [], missions: {}, bank: 0, stats: { dailiesDone: 0, bestDayDone: 0 }, expired: null }; }
+  _generate(dayKey) {
+    const rnd = chalRng(dayKey), pool = CHAL_POOL.filter((d) => !d.weapon || CONFIG.WEAPONS[d.weapon]);   // only things this game really has
+    const out = [], cat = {};
+    for (const tier of CHAL_CONFIG.slots) {
+      let c = pool.filter((d) => d.targets[tier] != null && !out.some((o) => o.def === d.id) && (cat[d.cat] || 0) < CHAL_CONFIG.maxPerCategory);
+      if (!c.length) c = pool.filter((d) => d.targets[tier] != null && !out.some((o) => o.def === d.id));
+      if (!c.length) continue;
+      const d = c[Math.floor(rnd() * c.length)];
+      cat[d.cat] = (cat[d.cat] || 0) + 1;
+      out.push({ def: d.id, tier, target: d.targets[tier], prog: 0, done: false, claimed: false, noted: false, reward: CHAL_CONFIG.tiers[tier].reward });
+    }
+    return out;
+  }
+  // Starts today's set when the saved one is from an earlier day. Never during a run; never when the clock went backwards.
+  refresh() {
+    const S = this.state, today = this.today();
+    if (S.dayKey && today <= S.dayKey && S.daily.length) return false;
+    if (S.dayKey && today > S.dayKey && this.isRunActive()) return false;   // the run in progress finishes on the old set
+    if (S.dayKey && S.daily.length) this._expire(S);
+    S.dayKey = today; S.daily = this._generate(today); this._dirty = true; this.save(true);
+    if (this.onChange) this.onChange();
+    return true;
+  }
+  _expire(S) {   // an expired set: rewards that were earned but not claimed are banked (progress on unfinished ones is dropped)
+    let n = 0, cash = 0;
+    for (const c of S.daily) if (c.done && !c.claimed) { c.claimed = true; S.bank += c.reward; cash += c.reward; n++; }
+    S.expired = n ? { n, cash } : null;
+    if (n) ACH._enqueue({ tier: 'silver', icon: '$', header: 'DAILY CHALLENGES RESET', name: n + (n === 1 ? ' reward' : ' rewards') + ' banked: $' + cash, desc: 'You finished them but did not claim them.' });
+  }
+
+  // ---- tracking ----
+  _rebase() {
+    const run = ACH.run; this._runRef = run;
+    this._lastTime = run.time; this._lastDist = run.distM; this._lastDmg = run.damageTaken; this._hitFreeStart = run.time; this._lastPurch = ACH.life.purchases;
+  }
+  runStarted() { this._runRef = null; }
+  runEnded() { this._runRef = null; this.save(true); this.refresh(); }
+  _items(key) {
+    const out = [];
+    for (const c of this.state.daily) { const d = chalDefById.get(c.def); if (d && d.key === key) out.push({ it: c, kind: d.kind, mission: false }); }
+    for (const m of CHAL_MISSIONS) if (m.key === key) { const it = this._mission(m.id); out.push({ it, kind: m.kind, mission: true, m }); }
+    return out;
+  }
+  _mission(id) { return this.state.missions[id] || (this.state.missions[id] = { prog: 0, done: false, claimed: false, noted: false }); }
+  _add(key, n) { if (n > 0) this._apply(key, n, false); }
+  _max(key, v) { this._apply(key, v, true); }
+  _apply(key, v, isMax) {
+    for (const x of this._items(key)) {
+      const it = x.it; if (it.done) continue;
+      const nv = x.kind === 'max' ? Math.max(it.prog, isMax ? v : 0) : it.prog + (isMax ? 0 : v);
+      if (nv === it.prog) continue;
+      it.prog = nv; this._dirty = true;
+      const target = x.mission ? x.m.target : it.target;
+      if (it.prog >= target) this._complete(it, x.mission, x.m);
+      else if (!x.mission && !it.noted && it.prog >= target * CHAL_CONFIG.noteFrac) { it.noted = true; this._progressNote(it); }
+    }
+  }
+  _complete(it, isMission, m) {
+    it.done = true;
+    const S = this.state;
+    if (isMission) {
+      it.prog = m.target;
+      ACH._enqueue({ tier: 'platinum', icon: 'MS', header: 'MISSION COMPLETE', name: m.name, desc: 'Reward: ' + this.rewardText(m.reward) + ' - claim it in Challenges.' });
+    } else {
+      const d = chalDefById.get(it.def), t = CHAL_CONFIG.tiers[it.tier];
+      it.prog = it.target;
+      S.stats.dailiesDone++;
+      const doneToday = S.daily.filter((c) => c.done).length;
+      if (doneToday > S.stats.bestDayDone) S.stats.bestDayDone = doneToday;
+      ACH._enqueue({ tier: t.toast, icon: 'DC', header: t.label + ' CHALLENGE COMPLETE', name: d.name(it.target), desc: 'Reward: $' + it.reward + ' - claim it in Challenges.' });
+      this._add('dailies', 1);
+    }
+    this._dirty = true; this.save(true);
+    if (this.onChange) this.onChange();
+    ACH._eval('chal');   // achievements fed by challenges / missions (Daily Routine, Clean Sweep, On a Mission)
+  }
+  _progressNote(it) {   // a small, quiet note while playing (never a popup)
+    const el = document.getElementById('chalNote'); if (!el) return;
+    const d = chalDefById.get(it.def);
+    el.innerHTML = '<b>CHALLENGE</b> ' + d.name(it.target) + ' <em>' + chalFmt(d.fmt, Math.min(it.prog, it.target)) + ' / ' + chalFmt(d.fmt, it.target) + '</em>';
+    el.classList.add('show'); clearTimeout(this._noteT); this._noteT = setTimeout(() => el.classList.remove('show'), 3200);
+  }
+  killed(zombie, srcId) {
+    if (!this.active) return;
+    this._add('kills', 1);
+    const tid = zombie && zombie.type && zombie.type.id; if (tid) this._add('kills.' + tid, 1);
+    if (srcId) this._add('wk.' + srcId, 1);
+    const cfg = srcId && CONFIG.WEAPONS[srcId];
+    if (cfg) {
+      if (cfg.melee) this._add('kills.melee', 1);
+      else if (cfg.explosive || cfg.thrown) this._add('kills.explosive', 1);
+      else if (!cfg.flame && !cfg.fuelTank) this._add('kills.firearm', 1);
+    }
+  }
+  healed(n) { if (this.active && n > 0) this._add('heal', n); }
+  tick(dt) {
+    if (!this.active) return;
+    this._acc += dt; if (this._acc < 0.25) return; this._acc = 0;
+    const run = ACH.run;
+    if (this._runRef !== run) this._rebase();
+    const dT = run.time - this._lastTime; this._lastTime = run.time; if (dT > 0 && dT < 5) this._add('time', dT);
+    const dD = run.distM - this._lastDist; this._lastDist = run.distM; if (dD > 0 && dD < 50) this._add('dist', dD);
+    const pu = ACH.life.purchases; if (pu > this._lastPurch) this._add('purchases', pu - this._lastPurch); this._lastPurch = pu;
+    if (run.damageTaken > this._lastDmg + 1e-9) this._hitFreeStart = run.time; this._lastDmg = run.damageTaken;
+    this._max('run.time', run.time); this._max('run.away', run.away); this._max('run.areas', run.cellsHood.length); this._max('run.hitfree', run.time - this._hitFreeStart);
+    if (this._dirty) this.save(false);
+  }
+
+  // ---- rewards ----
+  rewardText(r) { const p = []; if (r.cash) p.push('$' + r.cash); if (r.acc) { const d = ACCESSORIES.byId.get(r.acc); if (d) p.push(d.name); } return p.join(' + '); }
+  claimable() { let n = 0; for (const c of this.state.daily) if (c.done && !c.claimed) n++; for (const id in this.state.missions) { const m = this.state.missions[id]; if (m.done && !m.claimed) n++; } return n; }
+  // kind: 'daily' (id = index in today's set) or 'mission' (id = mission id). The claimed flag is set before anything is paid and everything is saved in ONE write, so a reward can never be paid twice.
+  claim(kind, id) {
+    const S = this.state; let it, reward, label;
+    if (kind === 'daily') { it = S.daily[id]; if (!it) return null; reward = { cash: it.reward }; label = chalDefById.get(it.def).name(it.target); }
+    else { const m = chalMissionById.get(id); it = S.missions[id]; if (!m || !it) return null; reward = m.reward; label = m.name; }
+    if (!it.done || it.claimed) return null;
+    it.claimed = true;
+    let cash = reward.cash || 0, accName = null, converted = false;
+    if (reward.acc) {
+      const d = ACCESSORIES.byId.get(reward.acc);
+      if (d && !ACCESSORIES.unlocked[d.id]) { ACCESSORIES._grant(d, true, { type: 'mission', name: label }); accName = d.name; }
+      else { cash += CHAL_CONFIG.ownedAccessoryCash; converted = true; }   // never the same accessory twice: already owned = cash instead
+    }
+    S.bank += cash; this._dirty = true; this.save(true);
+    if (this.onChange) this.onChange();
+    return { cash, accName, converted };
+  }
+  claimAll() { let cash = 0, n = 0; this.state.daily.forEach((c, i) => { const r = this.claim('daily', i); if (r) { cash += r.cash; n++; } }); for (const m of CHAL_MISSIONS) { const r = this.claim('mission', m.id); if (r) { cash += r.cash; n++; } } return { cash, n }; }
+  // Paid into a NEW run's cash (never while Test Mode cheats are on).
+  takeBonus() {
+    if (!this.active) return 0;
+    const n = Math.min(this.state.bank, CHAL_CONFIG.maxBonusPerRun); if (n <= 0) return 0;
+    this.state.bank -= n; this.save(true); if (this.onChange) this.onChange();
+    return n;
+  }
+
+  // ---- saving ----
+  save(force) {
+    const now = Date.now();
+    if (!force && (!this._dirty || now - this._lastSave < 3000)) return;
+    this._lastSave = now; this._dirty = false;
+    try { localStorage.setItem(CHAL_SAVE_KEY, JSON.stringify(Object.assign({}, this.state, { savedAt: now, devOffset: this.devOffset }))); } catch (e) { /* storage blocked: the game keeps working */ }
+  }
+  _load() {
+    this.state = this._freshState();
+    let raw = null; try { raw = localStorage.getItem(CHAL_SAVE_KEY); } catch (e) { return; }
+    if (!raw) return;
+    let d = null; try { d = JSON.parse(raw); } catch (e) { d = null; }
+    if (!d || typeof d !== 'object') { try { localStorage.setItem(CHAL_SAVE_KEY + '.corrupt', raw); } catch (e) { /* ignore */ } return; }
+    const S = this.state, num = (v, def) => (Number.isFinite(v) ? v : def);
+    S.dayKey = num(d.dayKey, 0); S.bank = Math.max(0, num(d.bank, 0)); this.devOffset = Math.trunc(num(d.devOffset, 0));
+    if (d.stats && typeof d.stats === 'object') for (const k of Object.keys(S.stats)) S.stats[k] = Math.max(0, num(d.stats[k], 0));
+    if (Array.isArray(d.daily)) for (const c of d.daily) {
+      const def = c && chalDefById.get(c.def); if (!def || !CHAL_CONFIG.tiers[c.tier] || !(c.target > 0)) continue;
+      S.daily.push({ def: c.def, tier: c.tier, target: c.target, prog: Math.max(0, num(c.prog, 0)), done: c.done === true, claimed: c.claimed === true && c.done === true, noted: c.noted === true, reward: Math.max(0, num(c.reward, CHAL_CONFIG.tiers[c.tier].reward)) });
+    }
+    if (d.missions && typeof d.missions === 'object') for (const id of Object.keys(d.missions)) {
+      const m = d.missions[id]; if (!chalMissionById.has(id) || !m || typeof m !== 'object') continue;
+      S.missions[id] = { prog: Math.max(0, num(m.prog, 0)), done: m.done === true, claimed: m.claimed === true && m.done === true, noted: m.noted === true };
+    }
+  }
+
+  // ---- dev tools (Challenges menu > DEV TOOLS) ----
+  devProgress(frac) { for (const c of this.state.daily) if (!c.done) { c.prog = Math.min(c.target * 0.999, c.prog + c.target * frac); } for (const m of CHAL_MISSIONS) { const it = this._mission(m.id); if (!it.done) it.prog = Math.min(m.target * 0.999, it.prog + m.target * frac); } this._dirty = true; this.save(true); }
+  devComplete(kind) {
+    if (kind === 'daily') { for (const c of this.state.daily) if (!c.done) { c.prog = c.target; this._complete(c, false); } }
+    else for (const m of CHAL_MISSIONS) { const it = this._mission(m.id); if (!it.done) { it.prog = m.target; this._complete(it, true, m); } }
+  }
+  devNextDay() { this.devOffset++; this.refresh(); }
+  devReset() { this.state = this._freshState(); this.devOffset = 0; this.refresh(); }
+}
+const CHAL = new ChallengeSystem();
+
+// ===== Challenges menu =====
+class ChallengesMenu extends PanelMenu {
+  constructor(sys) { super('challengesScreen'); this.sys = sys; this.tab = 'daily'; this._iv = null; this._msg = ''; }
+  open() { if (this.isOpen) return; this.sys.refresh(); super.open(); this._iv = setInterval(() => this._tick(), 1000); }
+  close() { if (!this.isOpen) return; super.close(); clearInterval(this._iv); this._iv = null; }
+  _tick() { if (this.sys.refresh()) this.render(); this._countdown(); }
+  _countdown() {
+    const el = document.getElementById('chalReset'); if (!el) return;
+    const S = this.sys.state, ms = this.sys.nextResetMs(S.dayKey) - this.sys.now();
+    if (ms <= 0) { el.textContent = 'NEW CHALLENGES START WHEN YOUR RUN ENDS'; return; }
+    const s = Math.floor(ms / 1000), h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), x = s % 60;
+    const at = new Date(Date.now() + ms).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    el.textContent = `RESETS IN ${h}:${String(m).padStart(2, '0')}:${String(x).padStart(2, '0')} (${at} YOUR TIME)`;
+  }
+  onAct(act, t) {
+    const S = this.sys;
+    if (act === 'tab') { Sound.uiClick(); this.tab = t.dataset.tab; this._msg = ''; this.render(); document.getElementById('chalBody').scrollTop = 0; }
+    else if (act === 'claim') { const r = S.claim(t.dataset.kind, t.dataset.kind === 'daily' ? Number(t.dataset.id) : t.dataset.id); if (r) { Sound.uiClick(); this._msg = this._claimMsg(r); } else Sound.emptyClick(); this.render(); }
+    else if (act === 'claimall') { const r = S.claimAll(); if (r.n) { Sound.uiClick(); this._msg = `CLAIMED ${r.n} - $${r.cash} BANKED`; } else Sound.emptyClick(); this.render(); }
+    else if (act === 'dev_prog') { S.devProgress(0.4); this.render(); }
+    else if (act === 'dev_daily') { S.devComplete('daily'); this.render(); }
+    else if (act === 'dev_missions') { S.devComplete('missions'); this.render(); }
+    else if (act === 'dev_day') { S.devNextDay(); this._msg = S.isRunActive() ? 'NEXT DAY WAITS UNTIL YOUR RUN ENDS' : ''; this.render(); }
+    else if (act === 'dev_reset') { S.devReset(); this._msg = ''; this.render(); }
+    else super.onAct(act);
+  }
+  _claimMsg(r) { return `CLAIMED $${r.cash} BANKED` + (r.accName ? ' + ' + r.accName.toUpperCase() + ' UNLOCKED' : '') + (r.converted ? ' (ACCESSORY ALREADY OWNED: CASH INSTEAD)' : ''); }
+  render() {
+    const S = this.sys, st = S.state, body = document.getElementById('chalBody'), keep = body.scrollTop;
+    const dDone = st.daily.filter((c) => c.done).length, mDone = S.missionsDone();
+    document.getElementById('chalTabs').innerHTML = [['daily', `DAILY CHALLENGES ${dDone}/${st.daily.length}`], ['missions', `LONG-TERM MISSIONS ${mDone}/${CHAL_MISSIONS.length}`]].map(([v, l]) => `<button class="shopTab${this.tab === v ? ' active' : ''}" role="tab" aria-selected="${this.tab === v}" data-act="tab" data-tab="${v}">${l}</button>`).join('');
+    const n = S.claimable();
+    document.getElementById('chalHead').innerHTML = `<span>BANKED CASH <b>$${st.bank}</b></span><span class="chalSub">Paid into your cash when a new run starts (up to $${CHAL_CONFIG.maxBonusPerRun} per run).</span>` +
+      (this.tab === 'daily' ? `<span id="chalReset" class="chalReset"></span>` : '') + (this._msg ? `<span class="chalMsg">${this._msg}</span>` : '');
+    const ca = document.getElementById('chalClaimAll'); ca.disabled = n === 0; ca.textContent = n ? `CLAIM ALL (${n})` : 'CLAIM ALL';
+    let html = '';
+    if (this.tab === 'daily') {
+      if (st.expired) html += `<div class="chalNote2">${st.expired.n} finished challenge${st.expired.n === 1 ? '' : 's'} from the last set ${st.expired.n === 1 ? 'was' : 'were'} banked for you ($${st.expired.cash}).</div>`;
+      st.daily.forEach((c, i) => { const d = chalDefById.get(c.def); html += this._card({ name: d.name(c.target), tier: c.tier, prog: c.prog, target: c.target, fmt: d.fmt, done: c.done, claimed: c.claimed, rewardHtml: '$' + c.reward, kind: 'daily', id: i, cat: CHAL_CATS[d.cat] }); });
+      if (!st.daily.length) html += '<div class="chalNote2">No challenges today.</div>';
+    } else {
+      html += `<div class="chalNote2">Missions add up across every run and session, counted from when this system was added. Each one pays once.</div>`;
+      for (const m of CHAL_MISSIONS) { const it = S._mission(m.id), acc = m.reward.acc && ACCESSORIES.byId.get(m.reward.acc); html += this._card({ name: m.name, desc: m.desc, tier: 'mission', prog: it.prog, target: m.target, fmt: m.fmt, done: it.done, claimed: it.claimed, rewardHtml: '$' + m.reward.cash, acc, kind: 'mission', id: m.id }); }
+    }
+    html += `<details class="accDev chalDev"><summary>DEV TOOLS</summary><div class="accBtns"><button class="shopWpn" data-act="dev_prog">+40% PROGRESS</button><button class="shopWpn" data-act="dev_daily">COMPLETE DAILIES</button><button class="shopWpn" data-act="dev_missions">COMPLETE MISSIONS</button><button class="shopWpn" data-act="dev_day">SIMULATE NEXT DAY</button><button class="shopWpn" data-act="dev_reset">RESET CHALLENGE DATA</button></div></details>`;
+    const devOpen = !!(body.querySelector('.chalDev') && body.querySelector('.chalDev').open);   // a redraw must not fold the dev tools shut
+    body.innerHTML = html; body.scrollTop = keep;
+    if (devOpen) body.querySelector('.chalDev').open = true;
+    for (const cv of body.querySelectorAll('canvas[data-acc]')) { const d = ACCESSORIES.byId.get(cv.dataset.acc); if (d) ACCESSORIES.drawIcon(cv, d, 'open'); }
+    this._countdown();
+  }
+  _card(o) {
+    const T = CHAL_CONFIG.tiers[o.tier], color = T ? T.color : '#7fe3ff', label = T ? T.label : 'MISSION';
+    const frac = o.target > 0 ? Math.min(1, o.prog / o.target) : 0, pct = Math.round(frac * 100), val = Math.min(o.prog, o.target);
+    const status = o.claimed ? '<span class="cosTag eq">CLAIMED</span>' : o.done ? `<button class="shopBuyBtn" data-act="claim" data-kind="${o.kind}" data-id="${o.id}">CLAIM</button>` : `<span class="cosTag lk">${pct}%</span>`;
+    const reward = `<span class="chalReward"><span class="chalRwdLabel">REWARD</span> <b>${o.rewardHtml}</b>${o.acc ? ` <canvas class="chalAcc" width="34" height="34" data-acc="${o.acc.id}" title="${o.acc.name}"></canvas><span class="chalAccName">${o.acc.name}</span>` : ''}</span>`;
+    return `<div class="chalCard${o.done ? ' done' : ''}${o.claimed ? ' claimed' : ''}" style="--c:${color}">` +
+      `<div class="chalTop"><span class="chalDiff">${label}</span><span class="chalName">${o.name}</span>${o.cat ? `<span class="chalCat">${o.cat}</span>` : ''}${o.done ? '<span class="chalCheck" aria-label="completed">&#10003;</span>' : ''}</div>` +
+      (o.desc ? `<div class="chalDesc">${o.desc}</div>` : '') +
+      `<div class="chalBarRow"><div class="achBar"><i style="width:${pct}%"></i></div><b>${chalFmt(o.fmt, val)} / ${chalFmt(o.fmt, o.target)}</b></div>` +
+      `<div class="chalFoot">${reward}${status}</div></div>`;
+  }
+}
   </script>
   <script>
 /**
