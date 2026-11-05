@@ -1072,6 +1072,37 @@ html, body, button, input, select, textarea {
 }
 @media (max-height: 560px) { .wpnArt { max-width: 96px; } .wpnCard { gap: 3px; padding: 6px; } .wpnCard .achDesc { display: none; } .wpnCard .accReq { min-height: 3.2em; } }
 @media (max-width: 820px) and (max-height: 560px) { .custTab { padding: 5px 10px; font-size: 8px; } .wpnCaption { display: none; } #wpnGrid { grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); } }
+/* ---- Player level / XP ---- */
+.lvBadge { display: inline-flex; flex-direction: column; align-items: center; justify-content: center; flex: 0 0 auto; min-width: 38px; height: 38px; padding: 0 4px; box-sizing: border-box; background: #14171b; border: 3px solid var(--lvc, #8a8f96); color: #fff; line-height: 1; }
+.lvBadge i { font-style: normal; font-size: 6px; letter-spacing: 1px; color: var(--lvc, #8a8f96); } .lvBadge b { font-size: 14px; font-weight: normal; margin-top: 2px; }
+.lvTier-plain { --lvc: #8a8f96; } .lvTier-bronze { --lvc: #c98a4b; } .lvTier-silver { --lvc: #c4ccd4; } .lvTier-gold { --lvc: #f5c542; } .lvTier-platinum { --lvc: #7fe3ff; }
+.lvBadge.lvBig { min-width: 64px; height: 64px; } .lvBadge.lvBig i { font-size: 8px; } .lvBadge.lvBig b { font-size: 26px; }
+.xpBar { height: 8px; margin-top: 5px; background: #14171b; border: 2px solid var(--px-ink); } .xpBar i { display: block; height: 100%; background: #5ec8ff; }
+.xpNums { display: flex; justify-content: space-between; gap: 8px; margin-top: 3px; font-size: 7px; color: var(--px-text); } .xpNums span { color: var(--px-dim); }
+.lvRow { display: flex; align-items: center; gap: 10px; } .lvText { display: flex; flex-direction: column; gap: 3px; min-width: 0; } .lvText b { font-size: 9px; font-weight: normal; color: #fff; } .lvText span { font-size: 7px; color: var(--px-dim); }
+.homeLevel, .pauseLevel { min-width: 170px; } .pauseLevel { width: 240px; margin: 0 auto 12px; text-align: left; }
+.lvSection { flex: 0 0 auto; padding: 8px 12px; margin-bottom: 8px; background: #1b1f26; border: 3px solid var(--px-ink); }
+.lvTop { display: flex; align-items: center; gap: 16px; } .lvMain { flex: 1 1 auto; min-width: 0; }
+.lvName { font-size: 12px; color: #fff; } .lvName b { color: #f5c542; font-weight: normal; }
+.lvStats { display: flex; flex-wrap: wrap; gap: 2px 18px; margin: 4px 0 2px; font-size: 7px; color: var(--px-dim); } .lvStats b { color: #f5c542; font-weight: normal; font-size: 9px; }
+.lvNext { margin-top: 5px; font-size: 7px; color: #cfd3d8; line-height: 1.6; }
+.xpHist { display: grid; grid-template-columns: 62px minmax(0, 1fr) auto; gap: 8px; padding: 3px 0; font-size: 8px; line-height: 1.5; border-bottom: 1px solid rgba(255,255,255,0.06); } .xpHist b { color: #5ec8ff; font-weight: normal; } .xpHist em { font-style: normal; color: var(--px-dim); font-size: 7px; }
+.lvRwRow { display: grid; grid-template-columns: 52px minmax(0, 1fr) auto; gap: 8px; padding: 4px 0; font-size: 8px; line-height: 1.5; border-bottom: 1px solid rgba(255,255,255,0.06); color: var(--px-dim); } .lvRwRow b { color: #fff; font-weight: normal; } .lvRwRow em { font-style: normal; font-size: 7px; }
+.lvRwRow.got { color: #cfd3d8; } .lvRwRow.got em { color: #4fcf70; } .lvRwRow.next { color: #fff; background: rgba(245,197,66,0.08); } .lvRwRow.next em { color: #f5c542; }
+.stTabs { margin: 0 0 8px; }
+.runXp { margin: 8px auto 12px; width: min(300px, 80vw); text-align: left; font-size: 9px; }
+.runXpTitle { text-align: center; font-size: 12px; color: #5ec8ff; margin-bottom: 6px; } .runXpLine { display: flex; justify-content: space-between; padding: 2px 0; color: var(--px-text); } .runXpLine b { color: #fff; font-weight: normal; }
+.runXpLevel { display: flex; align-items: center; gap: 10px; margin-top: 8px; } .runXpUp { color: #f5c542; font-size: 10px; } .runXpNote { text-align: center; color: var(--px-dim); }
+#levelUpBanner { position: fixed; top: 76px; left: 50%; z-index: 55; width: min(340px, 90vw); box-sizing: border-box; padding: 10px 16px; text-align: center; color: #fff; background: rgba(18, 20, 24, 0.95); border: 3px solid #f5c542; box-shadow: 0 0 18px rgba(245, 197, 66, 0.45); opacity: 0; pointer-events: none; transform: translate(-50%, -24px); }
+#levelUpBanner.show { animation: lvIn 0.35s ease-out forwards, lvGlow 1.1s ease-in-out 2; } #levelUpBanner.hide { opacity: 0; transition: opacity 0.4s; transform: translate(-50%, 0); }
+#levelUpBanner .lvHead { font-size: 16px; letter-spacing: 2px; color: #f5c542; } #levelUpBanner .lvLevels { margin-top: 4px; font-size: 10px; color: var(--px-dim); } #levelUpBanner .lvLevels b { color: #fff; font-weight: normal; } #levelUpBanner .lvLevels em { font-style: normal; color: #4fcf70; }
+#levelUpBanner .lvXp { margin-top: 3px; font-size: 8px; color: #5ec8ff; } #levelUpBanner .lvRw { margin-top: 3px; font-size: 8px; color: #cfd3d8; }
+@keyframes lvIn { from { opacity: 0; transform: translate(-50%, -24px) scale(0.92); } to { opacity: 1; transform: translate(-50%, 0) scale(1); } }
+@keyframes lvGlow { 0%, 100% { box-shadow: 0 0 10px rgba(245, 197, 66, 0.3); } 50% { box-shadow: 0 0 26px rgba(245, 197, 66, 0.8); } }
+@media (prefers-reduced-motion: reduce) { #levelUpBanner.show { animation: none; opacity: 1; transform: translate(-50%, 0); } }
+@media (max-height: 560px) { .lvSection { padding: 4px 10px; margin-bottom: 4px; } .lvBadge.lvBig { min-width: 40px; height: 40px; } .lvBadge.lvBig i { display: none; } .lvBadge.lvBig b { font-size: 16px; margin: 0; } .lvName { font-size: 10px; } .lvStats { margin: 2px 0 0; } .lvNext, .xpNums span { display: none; } .xpBar { margin-top: 2px; }
+  .stTabs { margin-bottom: 4px; } .runXpLine { display: none; } .runXp { margin: 4px auto 6px; } .runXpTitle { margin-bottom: 2px; font-size: 10px; } .runXpLevel { margin-top: 4px; } }
+@media (max-width: 720px) { .lvTop { gap: 10px; } .lvBadge.lvBig { min-width: 48px; height: 48px; } .lvBadge.lvBig b { font-size: 20px; } .xpHist { grid-template-columns: 52px minmax(0, 1fr); } .xpHist em { display: none; } }
 /* ---- Bring Cash screen ---- */
 .bringBox { display: flex; flex-direction: column; gap: 10px; width: min(460px, 86vw); margin: 4px auto 14px; padding: 14px; background: #1b1f26; border: 3px solid var(--px-ink); }
 .bringRow { display: flex; justify-content: space-between; align-items: baseline; font-size: 10px; color: var(--px-dim); } .bringRow b { font-size: 14px; font-weight: normal; color: #fff; }
@@ -2097,9 +2128,10 @@ const EMBEDDED_ASSETS = {
     <!-- ===================== Start overlay (home page) ===================== -->
     <div id="startScreen" class="overlay homePage">
       <!-- Version: major.minor.patch. The patch digit goes 0-9 and rolls into the minor number (v3.88.9 -> v3.89.0); the minor number is two digits and rolls into the major number (v3.99.9 -> v4.00.0). Bumped by 1 on every change. -->
-      <div id="versionTag" class="versionTag">v3.93.1</div>
+      <div id="versionTag" class="versionTag">v3.93.2</div>
       <div id="homeSidebar" class="homeSidebar">
         <div class="homeSidebarTitle">Your Stats</div>
+        <div id="homeLevel" class="homeLevel"></div>
         <div class="homeSidebarStat">
           <div class="homeSidebarLabel">High Score Time</div>
           <div id="sidebarHighScore" class="homeSidebarValue">0:00</div>
@@ -2117,7 +2149,7 @@ const EMBEDDED_ASSETS = {
         <button id="howToPlayBtn" class="testModeButton">How to Play</button>
         <button id="customizeBtn" class="testModeButton">Customize</button>
         <button id="challengesBtn" class="testModeButton">Challenges</button>
-        <button id="statsBtn" class="testModeButton">Statistics</button>
+        <button id="statsBtn" class="testModeButton">Progression</button>
       </div>
     </div>
 
@@ -2163,10 +2195,11 @@ const EMBEDDED_ASSETS = {
       <div class="overlayBox">
         <h1>PAUSED</h1>
         <p class="subtitle">Press <b>P</b> to resume</p>
+        <div id="pauseLevel" class="pauseLevel"></div>
         <button id="resumeBtn" class="bigButton">Resume</button>
         <button id="pauseCustomizeBtn" class="smallLinkButton">Customize</button>
         <button id="pauseChallengesBtn" class="smallLinkButton">Challenges</button>
-        <button id="pauseStatsBtn" class="smallLinkButton">Statistics</button>
+        <button id="pauseStatsBtn" class="smallLinkButton">Progression</button>
         <button id="pauseSaveQuitBtn" class="smallLinkButton">Save &amp; Quit</button>
         <p id="pauseMessage" class="inputError hidden"></p>
       </div>
@@ -2190,6 +2223,7 @@ const EMBEDDED_ASSETS = {
       <div class="overlayBox">
         <h1 class="deathTitle">YOU DIED</h1>
         <p id="finalStats" class="subtitle">Survived 0:00 — 0 kills</p>
+        <div id="runXp" class="runXp"></div>
         <button id="restartBtn" class="bigButton">Restart</button>
         <button id="changeCityBtn" class="smallLinkButton">Change City</button>
         <button id="mainMenuBtn" class="smallLinkButton">Main Menu</button>
@@ -2199,6 +2233,7 @@ const EMBEDDED_ASSETS = {
     <!-- ===================== Achievements ===================== -->
     <div id="achToasts" aria-live="polite"></div>
     <div id="chalNote" aria-live="polite"></div>
+    <div id="levelUpBanner" aria-live="polite"></div>
     <div id="achievementsScreen" class="overlay hidden">
       <div class="shopPanel achPanel" role="dialog" aria-modal="true" aria-labelledby="achTitle">
         <div class="shopHeader">
@@ -2276,7 +2311,9 @@ const EMBEDDED_ASSETS = {
     <!-- ===================== Statistics ===================== -->
     <div id="statsScreen" class="overlay hidden">
       <div class="shopPanel achPanel" role="dialog" aria-modal="true" aria-labelledby="stTitleMain">
-        <div class="shopHeader"><h1 id="stTitleMain">STATISTICS</h1></div>
+        <div class="shopHeader"><h1 id="stTitleMain">PROGRESSION</h1></div>
+        <div id="lvSection" class="lvSection"></div>
+        <div id="stTabs" class="shopTabs stTabs" role="tablist"></div>
         <div id="statsBody" class="shopList statsBody"></div>
         <div class="shopFooter"><button class="bigButton" data-act="achievements">ACHIEVEMENTS</button><button class="bigButton" data-act="close">CLOSE</button><span class="shopHint">ESC = CLOSE</span></div>
       </div>
@@ -6977,6 +7014,7 @@ function achDefaultLife() {
 function achNewRun() {
   return {
     diff: null, hardest: false, city: null, cityNew: false, time: 0,
+    xpRun: 0, xpCombat: 0, xpAcc: 0, xpId: 0, xpBest0: -1, xpM: [], xpSrc: {},   // XP earned in this run + its once-per-run milestones (saved with the run, so Continue cannot repeat them)
     kills: 0, meleeKills: 0, pistolKills: 0, noDmgKills: 0, lowHpKills: 0, hardKills: 0,
     usedNonMelee: false, usedNonPistol: false, hardPlus: false,   // hardPlus: Hard or Nightmare
     shots: 0, damageDealt: 0, distM: 0,   // run-only numbers shown on the Statistics screen
@@ -7006,6 +7044,7 @@ class AchievementSystem {
     this._dirty = false; this._lastSave = 0; this._tickAcc = 0; this._resuming = false;
     this._cosRaw = null; this.cosSerialize = null; this.onUnlock = null; // set up by CosmeticsSystem
     this._accRaw = null; this.accSerialize = null; this.onEvent = null;   // set up by AccessorySystem
+    this._xpRaw = null; this.xpSerialize = null; this.onAchievement = null;   // set up by XpSystem (player level / XP)
     this._load();
     this._beginSession();
     window.addEventListener('pagehide', () => this.save(true));
@@ -7059,6 +7098,7 @@ class AchievementSystem {
     this.save(true);
     this._eval('unlock'); // Overachiever / Completionist (re-entrancy is safe: each id can only unlock once)
     if (this.onUnlock) this.onUnlock(d); // cosmetic rewards tied to achievements
+    if (this.onAchievement) this.onAchievement(d); // XP for the achievement (once: the registry in the XP save)
   }
   _best(key, v) { if (v > (this.life.best[key] || 0)) { this.life.best[key] = v; this._dirty = true; } }
 
@@ -7272,7 +7312,7 @@ class AchievementSystem {
     if (!force && (!this._dirty || now - this._lastSave < 5000)) return;
     this._lastSave = now; this._dirty = false;
     try {
-      localStorage.setItem(ACH_SAVE_KEY, JSON.stringify({ v: ACH_SAVE_VERSION, savedAt: now, unlocked: this.unlocked, life: this.life, cos: this.cosSerialize ? this.cosSerialize() : this._cosRaw, acc: this.accSerialize ? this.accSerialize() : this._accRaw }));
+      localStorage.setItem(ACH_SAVE_KEY, JSON.stringify({ v: ACH_SAVE_VERSION, savedAt: now, unlocked: this.unlocked, life: this.life, cos: this.cosSerialize ? this.cosSerialize() : this._cosRaw, acc: this.accSerialize ? this.accSerialize() : this._accRaw, xp: this.xpSerialize ? this.xpSerialize() : this._xpRaw }));
     } catch (e) { /* storage full / blocked: the game keeps working, progress just isn't kept */ }
   }
   _load() {
@@ -7288,6 +7328,7 @@ class AchievementSystem {
     data = this._migrate(data);
     this._cosRaw = data.cos && typeof data.cos === 'object' ? data.cos : null;
     this._accRaw = data.acc && typeof data.acc === 'object' ? data.acc : null;
+    this._xpRaw = data.xp && typeof data.xp === 'object' ? data.xp : null;
     const L = achDefaultLife(), src = data.life;
     for (const k of Object.keys(L)) {
       const def = L[k], v = src[k];
@@ -7545,6 +7586,8 @@ class CosmeticsSystem {   // weapon skins only
       }
     }
   }
+  // A level reward: unlocks the skin once (false if it is unknown or already owned).
+  grantSkin(id) { const d = this.byId.get(id); if (!d || this.unlocked[d.id]) return false; this.unlocked[d.id] = Date.now(); this.ach._dirty = true; this.ach.save(true); return true; }
   equip(id) {
     const d = this.byId.get(id);
     if (!d || !this.isUnlocked(id)) return false;                    // locked skins can never be equipped
@@ -7630,8 +7673,13 @@ function openChildMenu(parent, child) {
 }
 // ===== Statistics screen =====
 class StatsMenu extends PanelMenu {
-  constructor(sys, isRunActive) { super('statsScreen'); this.sys = sys; this.isRunActive = isRunActive; this.achMenu = null; }
-  onAct(act) { if (act === 'achievements' && this.achMenu) { Sound.uiClick(); openChildMenu(this, this.achMenu); } else super.onAct(act); }   // Achievements live under Statistics
+  constructor(sys, isRunActive) { super('statsScreen'); this.sys = sys; this.isRunActive = isRunActive; this.achMenu = null; this.tab = 'stats'; }
+  onAct(act, t) {
+    if (act === 'achievements' && this.achMenu) { Sound.uiClick(); openChildMenu(this, this.achMenu); }
+    else if (act === 'tab') { Sound.uiClick(); this.tab = t.dataset.tab === 'xp' ? 'xp' : 'stats'; this.render(); document.getElementById('statsBody').scrollTop = 0; }
+    else if (act === 'title') { if (XP.setTitle(t.dataset.title)) Sound.uiClick(); this.render(); }
+    else super.onAct(act);
+  }   // Achievements live under Statistics
   _n(v) { return String(Math.floor(v)).replace(/\B(?=(\d{3})+(?!\d))/g, ','); }
   _t(s) { s = Math.floor(s); const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), x = s % 60; return h > 0 ? `${h}:${String(m).padStart(2, '0')}:${String(x).padStart(2, '0')}` : `${m}:${String(x).padStart(2, '0')}`; }
   _km(m) { return m >= 1000 ? (m / 1000).toFixed(2) + ' km' : Math.floor(m) + ' m'; }
@@ -7674,7 +7722,10 @@ class StatsMenu extends PanelMenu {
       cmp('Time survived', this._t(R.time), this._t(L.timeS)) + cmp('Distance travelled', this._km(R.distM || 0), this._km(L.distanceM)) +
       cmp('Upgrades purchased', this._n(R.purchases), this._n(L.purchases)) + cmp('Weapons found', this._n(R.weaponsGot), this._n(got)) +
       `</table>${live ? '' : '<div class="stNote">Start a run to see current-run numbers.</div>'}</div>`;
-    document.getElementById('statsBody').innerHTML = html;
+    document.getElementById('lvSection').innerHTML = XP.sectionHtml();   // the Player Level section stays at the top of both tabs
+    document.getElementById('stTabs').innerHTML = [['stats', 'STATS'], ['xp', 'XP & REWARDS']].map(([v, l]) => `<button class="shopTab${this.tab === v ? ' active' : ''}" role="tab" aria-selected="${this.tab === v}" data-act="tab" data-tab="${v}">${l}</button>`).join('');
+    const body = document.getElementById('statsBody'), keep = body.scrollTop;
+    body.innerHTML = this.tab === 'xp' ? XP.progressHtml() : html; body.scrollTop = keep;
   }
 }
 
@@ -8368,6 +8419,7 @@ class AccessorySystem {
     this.by[d.id] = cause.type === 'achievement' ? 'ach:' + cause.id : cause.type;
     if (cause.type !== 'starter') this.unseen[d.id] = true;
     this.ach._dirty = true;
+    if (this.onGrant) this.onGrant(d, cause);   // XP for an accessory unlocked by a milestone
     if (notify) this._notify(d, cause);
     this.ach.save(true);
     if (this.onChange) this.onChange();
@@ -8376,6 +8428,7 @@ class AccessorySystem {
   _reason(d, cause) {
     if (cause.type === 'achievement') return 'Reward for the "' + cause.name + '" achievement.';
     if (cause.type === 'milestone') return 'Milestone reached: ' + cause.text;
+    if (cause.type === 'level') return 'Reward for reaching ' + cause.name + '.';
     if (cause.type === 'mission') return 'Reward for the "' + cause.name + '" mission.';
     if (cause.type === 'dev') return 'Test unlock (dev tools).';
     return 'New accessory unlocked.';
@@ -9397,6 +9450,7 @@ class Game {
 
     ACH.startRun({ difficulty: CONFIG.activeDifficulty, city: this._achCityKey() }); // fresh run stats (lifetime stats / unlocks are kept)
     CHAL.refresh(); CHAL.runStarted();   // a new day's challenges start between runs, never during one
+    XP.runStarted(!!ACH._resuming);      // player XP: run state (a resumed run keeps its own milestones)
     if (!ACH._resuming) {                // challenge rewards you claimed are paid into the cash of a NEW run (Continue keeps its own cash)
       const bonus = CHAL.takeBonus(CHAL.bring); CHAL.bring = 0;   // only the amount chosen on the Bring Cash screen (Restart / no choice = none; the rest stays banked)
       if (bonus > 0) { this.player.money += bonus; ACH._enqueue({ tier: 'gold', icon: '$', header: 'CHALLENGE REWARDS', name: '+$' + bonus + ' starting cash', desc: 'The banked cash you chose to bring.' }); }
@@ -9877,6 +9931,7 @@ class Game {
     if (this.shop.due(this.survivalTime)) { this.shop.open(); return; }
     ACH.tick(dt, this); // achievements: movement / survival counters (checks run once a second)
     CHAL.tick(dt);      // daily challenges / missions (reads the same run statistics)
+    XP.tick(dt);        // player XP: survival milestones
 
     // --- Player ---
     this.player.handleMovement(this.input, dt, world.width, world.height, this.obstacles);
@@ -10209,6 +10264,7 @@ class Game {
     this.player.kills += 1;
     ACH.killed(zombie, srcId, this); // achievements: credited to the weapon that caused the kill
     CHAL.killed(zombie, srcId);      // daily challenges / missions: zombie type + weapon
+    XP.killed(zombie, srcId);        // player XP
     const reward = ShopSystem.killReward(zombie.type); // cash for the shop (bosses / brutes pay more)
     this.player.money += reward;
     this._addFloatingText(zombie.x, zombie.y - 18, `+$${reward}`, '#f5c542');
@@ -10534,12 +10590,14 @@ class Game {
   _gameOver() {
     this.state = 'gameover';
     this.shop.forceClose();
+    const xpResult = XP.runEnded(); // player XP: end-of-run bonuses (before the achievement system stores the new best)
     ACH.runEnded(); // achievements: final bests are stored; lifetime progress is kept
     CHAL.runEnded(); // challenges: save, and start the next day's set if the day changed during the run
     SavedRun.clear(); // the run is over — nothing left to continue
     document.getElementById('finalStats').textContent =
       `Survived ${Utils.formatTime(this.survivalTime)} — ${this.player.kills} kills` +
       (this.testModeRun ? ' (Test Mode — not counted toward your stats)' : '');
+    document.getElementById('runXp').innerHTML = XP.runResultHtml(xpResult);
     document.getElementById('gameOverScreen').classList.remove('hidden');
     Sound.gameOver();
 
@@ -13687,7 +13745,7 @@ const chalMissionById = new Map(CHAL_MISSIONS.map((m) => [m.id, m]));
 
 class ChallengeSystem {
   constructor() {
-    this.state = null; this.devOffset = 0; this._clock = null; this.bring = 0;   // bring = banked cash chosen for the next new run
+    this.state = null; this.devOffset = 0; this._clock = null; this.bring = 0; this.xpHook = null; this._devNoXp = false;   // bring = banked cash chosen for the next new run
     this.isRunActive = () => false;      // set by the Game: true while a run is in progress (playing / paused / shop)
     this.onChange = null;                // menu badges
     this._acc = 0; this._dirty = false; this._lastSave = 0; this._runRef = null; this._note = null; this._noteT = 0;
@@ -13782,6 +13840,7 @@ class ChallengeSystem {
       this._add('dailies', 1);
     }
     this._dirty = true; this.save(true);
+    if (this.xpHook && !this._devNoXp) { if (isMission) this.xpHook('mission', it, m.id); else this.xpHook('daily', it, null, S.dayKey, it.def, it.tier); }   // XP, once per challenge / mission
     if (this.onChange) this.onChange();
     ACH._eval('chal');   // achievements fed by challenges / missions (Daily Routine, Clean Sweep, On a Mission)
   }
@@ -13875,7 +13934,11 @@ class ChallengeSystem {
 
   // ---- dev tools (Challenges menu > DEV TOOLS) ----
   devProgress(frac) { for (const c of this.state.daily) if (!c.done) { c.prog = Math.min(c.target * 0.999, c.prog + c.target * frac); } for (const m of CHAL_MISSIONS) { const it = this._mission(m.id); if (!it.done) it.prog = Math.min(m.target * 0.999, it.prog + m.target * frac); } this._dirty = true; this.save(true); }
+  addBank(n) { n = Math.floor(n); if (n > 0) { this.state.bank += n; this._dirty = true; this.save(true); if (this.onChange) this.onChange(); } }   // level rewards (cash)
   devComplete(kind) {
+    this._devNoXp = true; try { this._devComplete(kind); } finally { this._devNoXp = false; }   // the dev tools never pay XP
+  }
+  _devComplete(kind) {
     if (kind === 'daily') { for (const c of this.state.daily) if (!c.done) { c.prog = c.target; this._complete(c, false); } }
     else for (const m of CHAL_MISSIONS) { const it = this._mission(m.id); if (!it.done) { it.prog = m.target; this._complete(it, true, m); } }
   }
@@ -13947,6 +14010,254 @@ class ChallengesMenu extends PanelMenu {
       `<div class="chalFoot">${reward}${status}</div></div>`;
   }
 }
+  </script>
+  <script>
+/**
+ * xp.js — Player Level + XP progression for Operation Peanut.
+ *
+ *  LEVEL CURVE: going from level n to n+1 costs  100 + 30 * (n - 1)  XP  (100, 130, 160 ...). The first levels come fast (level 2 after about one run), each later level costs
+ *    a little more, and there is no maximum level. Total XP needed to START level L = 100(L-1) + 15(L-1)(L-2). The level is always computed from the total XP.
+ *  XP SOURCES (all values in XP_CONFIG): kills by zombie type, kill streaks, survival milestones in a run, run bonuses, achievements (by tier), daily challenges (by difficulty),
+ *    missions, first time in a city, accessories unlocked by a milestone. Every one-time source goes through an "awarded" registry that is saved, so a reward is never paid twice
+ *    (refreshing, reopening menus, Save & Quit / Continue, re-unlocking). Per-run milestones live in the run itself, so they survive Save & Quit / Continue. Kill XP has a soft cap per run.
+ *  SAVING: inside the existing achievement save (key `xp`). Nothing counts while Test Mode cheats are on. Older saves are migrated once: the achievements and missions you already
+ *    completed are credited (one time) so your level reflects what you have done.
+ */
+const XP_CONFIG = {
+  kill: { walker: 1, runner: 2, brute: 5, boss: 100 },        // XP per kill, by zombie type
+  killDefault: 1,
+  runCombatSoftCap: 800,                                        // after this much kill XP in ONE run, kills pay a quarter (no endless farming)
+  softCapMult: 0.25,
+  streak: [[10, 10], [25, 25], [50, 50], [100, 100], [200, 150]],   // kills in a row without taking damage -> XP, each once per run
+  survive: [[5, 20], [10, 30], [15, 40], [20, 60], [30, 100], [45, 150], [60, 250]],   // minutes survived in ONE run -> XP, each once per run (then +100 every 15 min)
+  surviveAfter: { everyMin: 15, xp: 100 },
+  runDone: { minSeconds: 120, xp: 10 },                         // finishing (dying in) a run that lasted at least 2 minutes
+  record: { minSeconds: 180, xp: 50 },                          // beating your longest run (at least 3 minutes)
+  ach: { bronze: 25, silver: 50, gold: 100, platinum: 200 },    // an achievement, once
+  chal: { easy: 30, medium: 60, hard: 120 },                    // a daily challenge, once per day's challenge
+  mission: 250,                                                 // a mission, once (a mission can set its own `xp`)
+  newCity: 40,                                                  // the first run in a city
+  accMilestone: { common: 5, uncommon: 10, rare: 20, epic: 40, legendary: 80 },   // an accessory unlocked by a statistic milestone (not by an achievement or a reward)
+  ownedCash: 75,                                                // a level reward you already own pays this much banked cash instead
+  historyMax: 40,
+};
+// Milestone rewards (cosmetic only: existing accessories and weapon skins, banked cash, titles). Beyond level 50 every 5th level pays cash.
+const XP_REWARDS = {
+  2: { cash: 50 }, 3: { title: 'Rookie' }, 4: { acc: 'cat_ears' }, 5: { cash: 100, title: 'Survivor' }, 7: { acc: 'hard_hat' }, 8: { cash: 100 },
+  10: { skin: 'military_rifle', title: 'Zombie Slayer' }, 12: { acc: 'nerd_glasses' }, 15: { acc: 'cowboy_hat', cash: 150 }, 18: { skin: 'toxic_smg' },
+  20: { acc: 'ninja_scarf', title: 'Veteran' }, 25: { skin: 'chrome_machinegun', cash: 250, title: 'Hardened' }, 30: { acc: 'viking_helmet', title: 'Peanut Warlord' },
+  35: { skin: 'frost_flamethrower' }, 40: { acc: 'jetpack', cash: 300 }, 50: { acc: 'crown', title: 'Peanut King' },
+};
+function xpLevelReward(L) { if (XP_REWARDS[L]) return XP_REWARDS[L]; if (L > 50 && L % 5 === 0) return L % 25 === 0 ? { cash: 500, title: 'Legend ' + L } : { cash: L % 10 === 0 ? 400 : 250 }; return null; }
+function xpNeed(n) { return 100 + 30 * (n - 1); }                                  // XP to go from level n to n + 1
+function xpStart(L) { return 100 * (L - 1) + 15 * (L - 1) * (L - 2); }             // total XP at which level L starts
+function xpLevelOf(total) {
+  let n = Math.max(0, Math.floor((-85 + Math.sqrt(7225 + 60 * Math.max(0, total))) / 30));
+  while (xpStart(n + 2) <= total) n++; while (n > 0 && xpStart(n + 1) > total) n--;   // (guards against float rounding)
+  return n + 1;
+}
+const xpN = (v) => String(Math.floor(v)).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+const xpTier = (L) => L >= 75 ? 'platinum' : L >= 50 ? 'gold' : L >= 25 ? 'silver' : L >= 10 ? 'bronze' : 'plain';   // profile badge frame
+
+class XpSystem {
+  constructor() {
+    this.s = this._fresh(); this._q = []; this._busy = false; this._uiT = 0; this._noXp = false; this._lvl0 = 1;
+    ACH.xpSerialize = () => this.serialize();                       // the XP is part of the existing achievement save
+    ACH.onAchievement = (d) => this.achievement(d);
+    CHAL.xpHook = (kind, it, id, dayKey, def, tier) => this.challenge(kind, it, id, dayKey, def, tier);
+    if (ACH._xpRaw) this._load(ACH._xpRaw); else { this._migrate(); ACH.save(true); }
+    ACCESSORIES.onGrant = (d, cause) => this.accessoryGranted(d, cause);
+    this._prune(); this._lvl0 = this.level();
+    setInterval(() => { if (this._ui) { this._ui = 0; this.renderAll(); } }, 600);   // menus refresh even when the game loop is not running
+  }
+  get active() { return ACH.active && !this._noXp; }
+  _fresh() { return { v: 1, total: 0, cat: { combat: 0, survival: 0, ach: 0, chal: 0, other: 0 }, history: [], awarded: {}, claimed: {}, titles: [], title: null }; }
+  level() { return xpLevelOf(this.s.total); }
+  info() {
+    const L = this.level(), a = xpStart(L), b = xpStart(L + 1), into = this.s.total - a, need = b - a;
+    return { level: L, total: this.s.total, into, need, left: b - this.s.total, pct: need > 0 ? Math.min(100, Math.floor(100 * into / need)) : 0, levels: L - 1, tier: xpTier(L), title: this.s.title };
+  }
+  nextReward() { const L = this.level(); for (let l = L + 1; l <= L + 200; l++) { const r = xpLevelReward(l); if (r) return { level: l, reward: r }; } return null; }
+  rewardText(r) {
+    const p = []; if (r.cash) p.push('$' + r.cash + ' banked cash');
+    if (r.acc) { const d = ACCESSORIES.byId.get(r.acc); p.push((d ? d.name : r.acc) + ' accessory'); }
+    if (r.skin) { const d = COSMETICS.byId.get(r.skin); p.push((d ? d.name : r.skin) + ' weapon skin'); }
+    if (r.title) p.push('title "' + r.title + '"'); return p.join(' + ');
+  }
+
+  // ---- awarding ----
+  // key: a registry id for ONE-TIME sources (never paid twice); run: also counted in this run's results.
+  award(amt, cat, label, key) {
+    amt = Math.floor(amt); if (!this.active || !(amt > 0)) return 0;
+    const s = this.s; if (key) { if (s.awarded[key]) return 0; s.awarded[key] = 1; }
+    const before = this.level(), run = ACH.run;
+    s.total += amt; s.cat[cat] = (s.cat[cat] || 0) + amt;
+    if (run) { run.xpRun = (run.xpRun || 0) + amt; if (!run.xpSrc || typeof run.xpSrc !== 'object') run.xpSrc = {}; run.xpSrc[cat] = (run.xpSrc[cat] || 0) + amt; }
+    this._hist(amt, cat, label, cat === 'combat' && run ? run.xpId : 0);
+    ACH._dirty = true; this._ui = 1;
+    const after = this.level();
+    if (after > before) { this._levelUp(before, after, amt, label); ACH.save(true); } else ACH.save(false);
+    return amt;
+  }
+  _hist(amt, cat, label, runId) {
+    const h = this.s.history, last = h[0];
+    if (runId && last && last.k === 'combat' && last.r === runId) { last.a += amt; last.n = (last.n || 1) + 1; last.t = Date.now(); last.s = 'Combat: ' + last.n + ' kills'; return; }   // kills of one run share one line
+    h.unshift({ t: Date.now(), a: amt, k: cat, s: label, r: runId || 0, n: runId ? 1 : 0 });
+    if (runId) h[0].s = 'Combat: 1 kill';
+    if (h.length > XP_CONFIG.historyMax) h.length = XP_CONFIG.historyMax;
+  }
+  _levelUp(from, to, amt, label) {
+    const rewards = [];
+    for (let L = from + 1; L <= to; L++) rewards.push(...this._grantReward(L));   // every level passed gets its reward, exactly once
+    this.s.history.unshift({ t: Date.now(), a: 0, k: 'level', s: 'Level up: ' + from + ' to ' + to, r: 0, n: 0 });
+    if (this.s.history.length > XP_CONFIG.historyMax) this.s.history.length = XP_CONFIG.historyMax;
+    this._banner({ from, to, amt, label, rewards });
+  }
+  _grantReward(L) {
+    const s = this.s; if (s.claimed[L]) return []; s.claimed[L] = 1;   // claimed BEFORE anything is paid
+    const r = xpLevelReward(L), out = []; if (!r) return out;
+    if (r.cash) { CHAL.addBank(r.cash); out.push('$' + r.cash + ' banked cash'); }
+    if (r.acc) {
+      const d = ACCESSORIES.byId.get(r.acc);
+      if (d && !ACCESSORIES.unlocked[d.id]) { ACCESSORIES._grant(d, false, { type: 'level', name: 'Level ' + L }); out.push(d.name + ' (accessory)'); }
+      else { CHAL.addBank(XP_CONFIG.ownedCash); out.push('$' + XP_CONFIG.ownedCash + ' (accessory already owned)'); }
+    }
+    if (r.skin) {
+      const d = COSMETICS.byId.get(r.skin);
+      if (d && COSMETICS.grantSkin(d.id)) out.push(d.name + ' (weapon skin)');
+      else { CHAL.addBank(XP_CONFIG.ownedCash); out.push('$' + XP_CONFIG.ownedCash + ' (skin already owned)'); }
+    }
+    if (r.title) { if (!s.titles.includes(r.title)) s.titles.push(r.title); s.title = r.title; out.push('Title: ' + r.title); }
+    ACH._dirty = true;
+    return out;
+  }
+  setTitle(t) { if (t === null || this.s.titles.includes(t)) { this.s.title = t; ACH._dirty = true; ACH.save(true); this.renderAll(); return true; } return false; }
+
+  // ---- XP sources ----
+  killed(zombie, srcId) {
+    if (!this.active) return;
+    const run = ACH.run, tid = zombie && zombie.type && zombie.type.id, base = XP_CONFIG.kill[tid] != null ? XP_CONFIG.kill[tid] : XP_CONFIG.killDefault;
+    let amt = base;
+    if ((run.xpCombat || 0) >= XP_CONFIG.runCombatSoftCap) { run.xpAcc = (run.xpAcc || 0) + base * XP_CONFIG.softCapMult; amt = Math.floor(run.xpAcc); run.xpAcc -= amt; }   // soft cap: fractions are carried, never lost or doubled
+    else run.xpCombat = (run.xpCombat || 0) + base;
+    if (amt > 0) this.award(amt, 'combat', 'Combat');
+    const st = run.noDmgKills;
+    for (const [n, xp] of XP_CONFIG.streak) if (st >= n && this._once('k' + n)) this.award(xp, 'combat', 'Kill streak: ' + n + ' without damage');
+  }
+  _once(id) { const run = ACH.run; if (!Array.isArray(run.xpM)) run.xpM = []; if (run.xpM.includes(id)) return false; run.xpM.push(id); return true; }   // per-run milestones are saved with the run
+  tick(dt) {
+    if (!this.active) { return; }
+    this._tAcc = (this._tAcc || 0) + dt;
+    if (this._tAcc >= 0.5) {
+      this._tAcc = 0; const run = ACH.run, min = run.time / 60;
+      for (const [m, xp] of XP_CONFIG.survive) if (min >= m && this._once('s' + m)) this.award(xp, 'survival', 'Survived ' + m + ' minutes in one run');
+      const last = XP_CONFIG.survive[XP_CONFIG.survive.length - 1][0], ev = XP_CONFIG.surviveAfter.everyMin;
+      for (let m = last + ev; m <= min; m += ev) if (this._once('s' + m)) this.award(XP_CONFIG.surviveAfter.xp, 'survival', 'Survived ' + m + ' minutes in one run');
+    }
+    if (this._ui && performance.now() - this._uiT > 500) { this._uiT = performance.now(); this._ui = 0; this.renderAll(); }
+  }
+  runStarted(resuming) {
+    this._lvl0 = this.level();
+    const run = ACH.run; if (!run.xpId) run.xpId = Date.now() + Math.floor(Math.random() * 1000);
+    if (!(run.xpBest0 >= 0)) run.xpBest0 = ACH.life.best.runTime || 0;   // the longest run BEFORE this one (the achievement system raises `best` live, so it is remembered here and saved with the run)
+    if (!resuming && run.cityNew && run.city) this.award(XP_CONFIG.newCity, 'other', 'First run in ' + String(run.city).replace(',', ', '), 'city:' + run.city);
+    this.renderAll();
+  }
+  // Called when the run ends. Returns the results for the end-of-run screen.
+  runEnded() {
+    const run = ACH.run; if (!run) return null;
+    if (this.active) {
+      const prevBest = run.xpBest0 >= 0 ? run.xpBest0 : (ACH.life.best.runTime || 0);
+      if (run.time >= XP_CONFIG.runDone.minSeconds && this._once('end')) this.award(XP_CONFIG.runDone.xp, 'survival', 'Completed a run');
+      if (run.time >= XP_CONFIG.record.minSeconds && run.time > prevBest && this._once('rec')) this.award(XP_CONFIG.record.xp, 'survival', 'New survival record: ' + Utils.formatTime(run.time));
+    }
+    ACH.save(true); this.renderAll();
+    return { earned: run.xpRun || 0, src: Object.assign({}, run.xpSrc || {}), levelBefore: this._lvl0, levelAfter: this.level(), active: this.active };
+  }
+  achievement(d) { this.award(XP_CONFIG.ach[d.tier] || 25, 'ach', 'Achievement: ' + d.name, 'ach:' + d.id); }
+  challenge(kind, it, id, dayKey, def, tier) {
+    if (kind === 'mission') { const m = chalMissionById.get(id); this.award(m && m.xp ? m.xp : XP_CONFIG.mission, 'chal', 'Mission: ' + (m ? m.name : id), 'mission:' + id); }
+    else this.award(XP_CONFIG.chal[tier] || 30, 'chal', 'Daily challenge: ' + (chalDefById.get(def) ? chalDefById.get(def).name(it.target) : def), 'daily:' + dayKey + ':' + def);
+  }
+  accessoryGranted(d, cause) { if (cause && cause.type === 'milestone') this.award(XP_CONFIG.accMilestone[d.rarity] || 5, 'other', 'Unlocked ' + d.name, 'acc:' + d.id); }
+
+  // ---- saving ----
+  serialize() { const s = this.s; return { v: 1, total: s.total, cat: s.cat, history: s.history, awarded: s.awarded, claimed: s.claimed, titles: s.titles, title: s.title }; }
+  _load(raw) {
+    const s = this._fresh(), num = (v) => (Number.isFinite(v) && v >= 0 ? Math.floor(v) : 0);
+    s.total = num(raw.total);
+    if (raw.cat && typeof raw.cat === 'object') for (const k of Object.keys(s.cat)) s.cat[k] = num(raw.cat[k]);
+    if (Array.isArray(raw.history)) for (const h of raw.history.slice(0, XP_CONFIG.historyMax)) if (h && typeof h.s === 'string') s.history.push({ t: num(h.t), a: num(h.a), k: String(h.k || 'other').slice(0, 12), s: h.s.slice(0, 90), r: num(h.r), n: num(h.n) });
+    if (raw.awarded && typeof raw.awarded === 'object') { let n = 0; for (const k of Object.keys(raw.awarded)) { if (++n > 3000) break; if (raw.awarded[k]) s.awarded[k] = 1; } }
+    if (raw.claimed && typeof raw.claimed === 'object') for (const k of Object.keys(raw.claimed)) if (raw.claimed[k] && Number.isInteger(Number(k))) s.claimed[k] = 1;
+    if (Array.isArray(raw.titles)) s.titles = raw.titles.filter((t) => typeof t === 'string').slice(0, 100);
+    s.title = typeof raw.title === 'string' && s.titles.includes(raw.title) ? raw.title : null;
+    this.s = s;
+  }
+  // First load of a save that has no XP yet: credit what the player already completed (achievements + missions), once, and hand out the rewards of the levels that reaches.
+  _migrate() {
+    const s = this.s; let n = 0, got = 0;
+    for (const id of Object.keys(ACH.unlocked)) { const d = ACH.byId.get(id); if (!d) continue; const xp = XP_CONFIG.ach[d.tier] || 25; s.total += xp; s.cat.ach += xp; s.awarded['ach:' + id] = 1; n++; }
+    for (const id of Object.keys(CHAL.state.missions)) { const m = CHAL.state.missions[id]; if (m && m.done) { const xp = (chalMissionById.get(id) || {}).xp || XP_CONFIG.mission; s.total += xp; s.cat.chal += xp; s.awarded['mission:' + id] = 1; n++; } }
+    if (n) s.history.unshift({ t: Date.now(), a: s.total, k: 'other', s: 'Credit for ' + n + ' completed achievements and missions', r: 0, n: 0 });
+    const L = this.level(); const rewards = [];
+    for (let l = 2; l <= L; l++) { rewards.push(...this._grantReward(l)); got++; }
+    if (L > 1) this._welcome = { level: L, rewards };
+    ACH._dirty = true;
+  }
+  _prune() {   // yesterday's challenge keys can go: a finished challenge is flagged done in its own saved set
+    const day = CHAL.state.dayKey; for (const k of Object.keys(this.s.awarded)) if (k.startsWith('daily:')) { const d = Number(k.split(':')[1]); if (Number.isFinite(d) && d < day - 2) delete this.s.awarded[k]; }
+  }
+  announceWelcome() { if (this._welcome) { const w = this._welcome; this._welcome = null; this._banner({ from: 1, to: w.level, amt: this.s.total, label: 'Credit for your existing progress', rewards: w.rewards, welcome: true }); } }
+
+  // ---- level-up banner (small, top centre, never longer than a few seconds) ----
+  _banner(info) { this._q.push(info); if (!this._busy) this._nextBanner(); this._ui = 1; }
+  _nextBanner() {
+    const el = document.getElementById('levelUpBanner'); const info = this._q.shift();
+    if (!el || !info) { this._busy = false; return; }
+    this._busy = true;
+    const multi = info.to - info.from > 1, rw = info.rewards.slice(0, 4).map((r) => '<div class="lvRw">' + r + '</div>').join('') + (info.rewards.length > 4 ? '<div class="lvRw">+' + (info.rewards.length - 4) + ' more</div>' : '');
+    el.innerHTML = `<div class="lvHead">${info.welcome ? 'LEVELS CREDITED' : 'LEVEL UP!'}</div><div class="lvLevels"><span>LEVEL ${info.from}</span> &#9654; <b>LEVEL ${info.to}</b>${multi ? ` <em>(+${info.to - info.from} levels)</em>` : ''}</div><div class="lvXp">${info.welcome ? '' : '+' + xpN(info.amt) + ' XP &middot; '}${info.label}</div>${rw}`;
+    el.className = 'show';
+    clearTimeout(this._bt); this._bt = setTimeout(() => { el.className = 'hide'; setTimeout(() => { this._busy = false; this._nextBanner(); }, 450); }, info.rewards.length ? 4200 : 3200);
+  }
+
+  // ---- display ----
+  badgeHtml(big) { const i = this.info(); return `<span class="lvBadge lvTier-${i.tier}${big ? ' lvBig' : ''}" title="Level ${i.level}"><i>LV</i><b>${i.level}</b></span>`; }
+  barHtml() { const i = this.info(); return `<div class="xpBar"><i style="width:${i.pct}%"></i></div><div class="xpNums">${xpN(i.into)} / ${xpN(i.need)} XP <span>${xpN(i.left)} to next level</span></div>`; }
+  compactHtml() { const i = this.info(); return `<div class="lvRow">${this.badgeHtml()}<div class="lvText"><b>${i.title ? i.title : 'Level ' + i.level}</b><span>${xpN(i.total)} XP total</span></div></div>${this.barHtml()}`; }
+  renderAll() {
+    const h = document.getElementById('homeLevel'); if (h) h.innerHTML = this.compactHtml();
+    const p = document.getElementById('pauseLevel'); if (p) p.innerHTML = this.compactHtml();
+  }
+  ago(t) { const s = Math.max(0, Math.floor((Date.now() - t) / 1000)); return s < 60 ? 'just now' : s < 3600 ? Math.floor(s / 60) + ' min ago' : s < 86400 ? Math.floor(s / 3600) + ' h ago' : Math.floor(s / 86400) + ' d ago'; }
+  sectionHtml() {   // top of the PROGRESSION page
+    const i = this.info(), nx = this.nextReward();
+    return `<div class="lvTop">${this.badgeHtml(true)}<div class="lvMain"><div class="lvName">${i.title ? '<b>' + i.title + '</b> &middot; ' : ''}LEVEL ${i.level}</div>` +
+      `<div class="lvStats"><span>TOTAL XP <b>${xpN(i.total)}</b></span><span>NEXT LEVEL <b>${xpN(i.left)} XP</b> to go</span><span>LEVELS GAINED <b>${i.levels}</b></span></div>${this.barHtml()}` +
+      `<div class="lvNext">${nx ? 'NEXT REWARD &middot; LEVEL ' + nx.level + ': ' + this.rewardText(nx.reward) : ''}</div></div></div>`;
+  }
+  progressHtml() {   // the XP & REWARDS tab
+    const s = this.s, i = this.info(), cat = (k) => xpN(s.cat[k] || 0);
+    const row = (a, b) => `<div class="stRow"><span>${a}</span><b>${b}</b></div>`;
+    const lifetime = `<div class="stCard"><div class="stTitle">LIFETIME XP</div>${row('Current level', i.level)}${row('Total lifetime XP', xpN(i.total))}${row('Total levels gained', i.levels)}${row('XP from combat', cat('combat'))}${row('XP from survival', cat('survival'))}` +
+      `${row('XP from achievements', cat('ach'))}${row('XP from challenges and missions', cat('chal'))}${row('XP from milestones and bonuses', cat('other'))}</div>`;
+    const hist = `<div class="stCard"><div class="stTitle">RECENT XP</div>` + (s.history.length ? s.history.slice(0, 18).map((h) => `<div class="xpHist"><b>${h.k === 'level' ? 'LEVEL' : '+' + xpN(h.a)}</b><span>${h.s}</span><em>${this.ago(h.t)}</em></div>`).join('') : '<div class="stNote">No XP yet. Kill zombies, survive and complete objectives.</div>') + '</div>';
+    let rw = ''; const top = Math.max(i.level + 12, 20);
+    for (let L = 2; L <= top; L++) { const r = xpLevelReward(L); if (!r) continue; const got = !!s.claimed[L]; rw += `<div class="lvRwRow${got ? ' got' : L === (this.nextReward() || {}).level ? ' next' : ''}"><b>LV ${L}</b><span>${this.rewardText(r)}</span><em>${got ? 'RECEIVED' : L <= i.level ? 'RECEIVED' : 'LOCKED'}</em></div>`; }
+    const titles = s.titles.length ? s.titles.map((t) => `<button class="shopWpn${s.title === t ? ' active' : ''}" data-act="title" data-title="${t.replace(/"/g, '&quot;')}">${t}</button>`).join('') : '<span class="stNote">Titles are earned as level rewards.</span>';
+    return `<div class="stGrid">${lifetime}${hist}</div><div class="stCard stWide"><div class="stTitle">LEVEL REWARDS</div>${rw}</div><div class="stCard stWide"><div class="stTitle">YOUR TITLE</div><div class="accBtns">${titles}</div></div>`;
+  }
+  runResultHtml(r) {
+    if (!r) return '';
+    if (!r.active) return '<div class="runXpNote">Test Mode: no XP earned.</div>';
+    const names = { combat: 'Combat', survival: 'Survival', ach: 'Achievements', chal: 'Challenges and missions', other: 'Milestones' };
+    const lines = Object.keys(names).filter((k) => r.src[k] > 0).map((k) => `<div class="runXpLine"><span>${names[k]}</span><b>+${xpN(r.src[k])}</b></div>`).join('');
+    return `<div class="runXpTitle">+${xpN(r.earned)} XP THIS RUN</div>${lines}<div class="runXpLevel">${this.badgeHtml()}${r.levelAfter > r.levelBefore ? `<span class="runXpUp">LEVEL UP! ${r.levelBefore} &#9654; ${r.levelAfter}</span>` : ''}</div>${this.barHtml()}`;
+  }
+}
+const XP = new XpSystem();
+XP.renderAll(); setTimeout(() => XP.announceWelcome(), 1500);
   </script>
   <script>
 /**
