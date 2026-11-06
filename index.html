@@ -1072,6 +1072,41 @@ html, body, button, input, select, textarea {
 }
 @media (max-height: 560px) { .wpnArt { max-width: 96px; } .wpnCard { gap: 3px; padding: 6px; } .wpnCard .achDesc { display: none; } .wpnCard .accReq { min-height: 3.2em; } }
 @media (max-width: 820px) and (max-height: 560px) { .custTab { padding: 5px 10px; font-size: 8px; } .wpnCaption { display: none; } #wpnGrid { grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); } }
+/* ---- End-of-run SURVIVAL REPORT ---- */
+#gameOverScreen { z-index: 20; padding: 12px; box-sizing: border-box; }
+.resHeader { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.resTitleBox h1 { margin: 2px 0; } .resDied { font-size: 9px; letter-spacing: 3px; color: #ff5a4f; } .resTitleBox .subtitle { margin: 2px 0 0; }
+.resGrade { display: flex; flex-direction: column; align-items: center; justify-content: center; width: 78px; height: 78px; background: #14171b; border: 4px solid var(--g, #888); box-shadow: 0 0 14px var(--g, #888); animation: resGradeIn 0.6s cubic-bezier(0.2, 1.4, 0.4, 1) 0.4s backwards; }
+.resGrade i { font-style: normal; font-size: 7px; letter-spacing: 2px; color: var(--g, #888); } .resGrade b { font-size: 38px; font-weight: normal; color: var(--g, #888); line-height: 1; margin-top: 4px; }
+.resGrade-S { --g: #f5c542; } .resGrade-A { --g: #4fcf70; } .resGrade-B { --g: #5ec8ff; } .resGrade-C { --g: #c4ccd4; } .resGrade-D { --g: #ff5a4f; }
+.resBanner { display: none; margin-bottom: 8px; padding: 6px 12px; font-size: 8px; line-height: 1.6; color: #fff; background: rgba(245, 197, 66, 0.12); border: 3px solid #f5c542; } .resBanner.show { display: block; animation: resIn 0.4s ease-out; }
+.resNew { display: inline-block; padding: 2px 6px; font-size: 7px; letter-spacing: 1px; font-weight: normal; color: #14171b; background: #f5c542; animation: resBlink 1.2s ease-in-out 3; }
+.resNew { text-shadow: none; }
+.resBody { gap: 8px; } .resSec .runXpLine { font-size: 8px; } .resSec .runXpTitle { font-size: 12px; } .resSec .runXpUp { margin-top: 8px; font-size: 10px; }
+.resSec { opacity: 0; animation: resIn 0.45s ease-out forwards; animation-delay: calc(var(--i, 0) * 110ms); }
+.resWk, .resFactors { margin-top: 6px; } .resWkRow, .resFactor { display: grid; grid-template-columns: 110px minmax(0, 1fr) 54px; gap: 8px; align-items: center; padding: 2px 0; font-size: 8px; } .resWkRow b, .resFactor b { text-align: right; color: #fff; font-weight: normal; } .resWkRow .xpBar, .resFactor .xpBar { margin-top: 0; }
+.resRec { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 4px 0; font-size: 8px; border-bottom: 1px solid rgba(255,255,255,0.06); } .resRec em { font-style: normal; color: #f5c542; font-size: 10px; } .resRec i { font-style: normal; color: var(--px-dim); font-size: 7px; }
+.resSub { margin: 8px 0 4px; font-size: 7px; letter-spacing: 2px; color: #5ec8ff; }
+.resObj { padding: 6px 8px; margin-bottom: 5px; background: #14171b; border: 2px solid var(--px-ink); font-size: 8px; line-height: 1.5; } .resObjNew { border-color: #f5c542; background: rgba(245, 197, 66, 0.07); }
+.resObjTop { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; } .resObjName { color: #fff; font-weight: normal; font-size: 9px; } .resObjDesc { color: var(--px-dim); } .resObjRw { margin-top: 3px; color: #cfd3d8; font-size: 7px; }
+.resBar { display: grid; grid-template-columns: minmax(0, 1fr) 110px; gap: 8px; align-items: center; margin-top: 3px; } .resBar .xpBar { margin-top: 0; } .resBar b { text-align: right; color: #fff; font-weight: normal; }
+.resTier { margin-left: auto; font-size: 6px; letter-spacing: 1px; color: var(--px-dim); } .resTier-gold { color: #f5c542; } .resTier-platinum { color: #7fe3ff; } .resTier-silver { color: #c4ccd4; } .resTier-bronze { color: #c98a4b; }
+.resCosGrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+.resCos { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 8px; text-align: center; font-size: 8px; background: #14171b; border: 3px solid var(--rar, var(--px-ink)); animation: resPopIn 0.5s ease-out backwards; } .resCos b { color: #fff; font-weight: normal; } .resCosCat { color: var(--px-dim); font-size: 7px; } .resCos em { font-style: normal; color: #cfd3d8; font-size: 7px; line-height: 1.4; min-height: 2.8em; }
+.resCosArt { width: 96px; height: 72px; image-rendering: pixelated; background: #0e1013; border: 2px solid var(--px-ink); }
+.resXpLevels { display: flex; align-items: center; gap: 12px; margin-top: 8px; } .resXpBarWrap { flex: 1 1 auto; min-width: 0; }
+.runXpUp.resPop { animation: resPopIn 0.6s ease-out; } .resRewards { margin-top: 6px; } .resRewards .lvRw { font-size: 8px; color: #cfd3d8; margin-top: 2px; }
+.lvPulse { animation: resPulse 0.6s ease-out; }
+.resFooter { flex-wrap: wrap; justify-content: center; gap: 8px; } .resFooter .bigButton { min-width: 150px; margin: 0; }
+@keyframes resIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+@keyframes resPopIn { from { opacity: 0; transform: scale(0.85); } to { opacity: 1; transform: none; } }
+@keyframes resGradeIn { from { opacity: 0; transform: scale(2); } to { opacity: 1; transform: none; } }
+@keyframes resBlink { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
+@keyframes resPulse { 0% { transform: scale(1); } 40% { transform: scale(1.35); box-shadow: 0 0 16px #f5c542; } 100% { transform: scale(1); } }
+@media (prefers-reduced-motion: reduce) { .resSec, .resGrade, .resCos, .resBanner.show, .resNew, .lvPulse, .runXpUp.resPop { animation: none; opacity: 1; } }
+@media (max-width: 720px) { .resGrade { width: 56px; height: 56px; } .resGrade b { font-size: 26px; } .resWkRow, .resFactor { grid-template-columns: 90px minmax(0, 1fr) 46px; } .resBar { grid-template-columns: minmax(0, 1fr) 80px; } .resFooter .bigButton { min-width: 0; flex: 1 1 42%; padding-left: 8px; padding-right: 8px; } }
+@media (max-height: 560px) { .resSec .runXpLine { display: flex; } .runXp { margin: 0; } }
+@media (max-height: 560px) { .resGrade { width: 48px; height: 48px; } .resGrade i { display: none; } .resGrade b { font-size: 24px; margin: 0; } .resTitleBox .subtitle { display: none; } .resFooter .bigButton { padding-top: 8px; padding-bottom: 8px; } }
 /* ---- Player level / XP ---- */
 .lvBadge { display: inline-flex; flex-direction: column; align-items: center; justify-content: center; flex: 0 0 auto; min-width: 38px; height: 38px; padding: 0 4px; box-sizing: border-box; background: #14171b; border: 3px solid var(--lvc, #8a8f96); color: #fff; line-height: 1; }
 .lvBadge i { font-style: normal; font-size: 6px; letter-spacing: 1px; color: var(--lvc, #8a8f96); } .lvBadge b { font-size: 14px; font-weight: normal; margin-top: 2px; }
@@ -2128,7 +2163,7 @@ const EMBEDDED_ASSETS = {
     <!-- ===================== Start overlay (home page) ===================== -->
     <div id="startScreen" class="overlay homePage">
       <!-- Version: major.minor.patch. The patch digit goes 0-9 and rolls into the minor number (v3.88.9 -> v3.89.0); the minor number is two digits and rolls into the major number (v3.99.9 -> v4.00.0). Bumped by 1 on every change. -->
-      <div id="versionTag" class="versionTag">v3.93.2</div>
+      <div id="versionTag" class="versionTag">v3.93.3</div>
       <div id="homeSidebar" class="homeSidebar">
         <div class="homeSidebarTitle">Your Stats</div>
         <div id="homeLevel" class="homeLevel"></div>
@@ -2220,13 +2255,19 @@ const EMBEDDED_ASSETS = {
 
     <!-- ===================== Game over overlay ===================== -->
     <div id="gameOverScreen" class="overlay hidden">
-      <div class="overlayBox">
-        <h1 class="deathTitle">YOU DIED</h1>
-        <p id="finalStats" class="subtitle">Survived 0:00 — 0 kills</p>
-        <div id="runXp" class="runXp"></div>
-        <button id="restartBtn" class="bigButton">Restart</button>
-        <button id="changeCityBtn" class="smallLinkButton">Change City</button>
-        <button id="mainMenuBtn" class="smallLinkButton">Main Menu</button>
+      <div class="shopPanel achPanel resPanel" role="dialog" aria-labelledby="resTitle">
+        <div class="shopHeader resHeader">
+          <div class="resTitleBox"><div class="resDied">YOU DIED</div><h1 id="resTitle">SURVIVAL REPORT</h1><p id="finalStats" class="subtitle">Survived 0:00 — 0 kills</p></div>
+          <div id="resRating" class="resRating"></div>
+        </div>
+        <div id="resBanner" class="resBanner"></div>
+        <div id="resBody" class="shopList resBody"></div>
+        <div class="shopFooter resFooter">
+          <button id="restartBtn" class="bigButton">PLAY AGAIN</button>
+          <button id="changeCityBtn" class="bigButton">CHANGE CITY</button>
+          <button id="customizeResultsBtn" class="bigButton">CUSTOMIZATION</button>
+          <button id="mainMenuBtn" class="bigButton">MAIN MENU</button>
+        </div>
       </div>
     </div>
 
@@ -7014,7 +7055,8 @@ function achDefaultLife() {
 function achNewRun() {
   return {
     diff: null, hardest: false, city: null, cityNew: false, time: 0,
-    xpRun: 0, xpCombat: 0, xpAcc: 0, xpId: 0, xpBest0: -1, xpM: [], xpSrc: {},   // XP earned in this run + its once-per-run milestones (saved with the run, so Continue cannot repeat them)
+    xpRun: 0, xpCombat: 0, xpAcc: 0, xpId: 0, xpBest0: -1, xpM: [], xpSrc: {}, xpRw: [],
+    kbt: {}, wk: {}, healed: 0, streakMax: 0, base: null,   // end-of-run report: kills by zombie type / by weapon, health restored, best streak, and the baseline taken at the start of the run   // XP earned in this run + its once-per-run milestones (saved with the run, so Continue cannot repeat them)
     kills: 0, meleeKills: 0, pistolKills: 0, noDmgKills: 0, lowHpKills: 0, hardKills: 0,
     usedNonMelee: false, usedNonPistol: false, hardPlus: false,   // hardPlus: Hard or Nightmare
     shots: 0, damageDealt: 0, distM: 0,   // run-only numbers shown on the Statistics screen
@@ -7197,6 +7239,9 @@ class AchievementSystem {
     L.kills++; run.kills++; run.noDmgKills++;
     const id = srcId || 'unknown';
     L.weaponKills[id] = (L.weaponKills[id] || 0) + 1;
+    if (run.noDmgKills > (run.streakMax || 0)) run.streakMax = run.noDmgKills;                                   // report: best kill streak of this run
+    const tid = zombie && zombie.type && zombie.type.id; if (tid) run.kbt[tid] = (run.kbt[tid] || 0) + 1;     // report: kills by zombie type
+    run.wk[id] = (run.wk[id] || 0) + 1;                                                                           // report: kills by weapon in this run
     const cfg = CONFIG.WEAPONS[id];
     const melee = !!(cfg && cfg.melee);
     if (melee) run.meleeKills++;
@@ -7234,7 +7279,7 @@ class AchievementSystem {
     const t = this.run.time;
     if (z._achT0 === undefined) z._achT0 = t;
     const dealt = Math.min(amount, Math.max(0, z.health)); // damage that actually landed (not the overkill)
-    this.life.damageDealt += dealt; this.run.damageDealt += dealt;
+    this.life.damageDealt += dealt; this.run.damageDealt += dealt; this._best('runDamage', this.run.damageDealt);   // (record: most damage dealt in one run)
     // rolling damage dealt over the last few seconds (4 one-second slots)
     const sec = Math.floor(t), slots = this.run.burst, i = sec & 3;
     if (!slots[i] || slots[i][0] !== sec) slots[i] = [sec, 0];
@@ -7267,6 +7312,7 @@ class AchievementSystem {
   }
   playerHealed(amount) {
     if (!this.active || !(amount > 0)) return;
+    this.run.healed = (this.run.healed || 0) + amount; this._dirty = true;   // health restored this run (report)
     if (this.run.wasLow && !this.life.secondWind) { this.life.secondWind = 1; this._dirty = true; this._eval('heal'); }
   }
   purchase(kind, price, info) {
@@ -9307,6 +9353,11 @@ class Game {
       this._leaveWorld3d();
       if (this.onChangeCityRequested) this.onChangeCityRequested();
     });
+    document.getElementById('customizeResultsBtn').addEventListener('click', () => {   // the results stay underneath; Esc / Close returns to them
+      Sound.uiClick();
+      const r = RunReport.report, first = r && r.cos && r.cos[0];
+      this.openCustomization(first ? (first.kind === 'acc' ? 'char' : 'wpn') : 'char', first ? first.id : undefined);
+    });
     document.getElementById('mainMenuBtn').addEventListener('click', () => {
       Sound.uiClick();
       this._leaveWorld3d();
@@ -9451,6 +9502,7 @@ class Game {
     ACH.startRun({ difficulty: CONFIG.activeDifficulty, city: this._achCityKey() }); // fresh run stats (lifetime stats / unlocks are kept)
     CHAL.refresh(); CHAL.runStarted();   // a new day's challenges start between runs, never during one
     XP.runStarted(!!ACH._resuming);      // player XP: run state (a resumed run keeps its own milestones)
+    RunReport.runStarted();              // end-of-run report: baseline of the lifetime numbers (a resumed run restores its own)
     if (!ACH._resuming) {                // challenge rewards you claimed are paid into the cash of a NEW run (Continue keeps its own cash)
       const bonus = CHAL.takeBonus(CHAL.bring); CHAL.bring = 0;   // only the amount chosen on the Bring Cash screen (Restart / no choice = none; the rest stays banked)
       if (bonus > 0) { this.player.money += bonus; ACH._enqueue({ tier: 'gold', icon: '$', header: 'CHALLENGE REWARDS', name: '+$' + bonus + ' starting cash', desc: 'The banked cash you chose to bring.' }); }
@@ -10591,13 +10643,14 @@ class Game {
     this.state = 'gameover';
     this.shop.forceClose();
     const xpResult = XP.runEnded(); // player XP: end-of-run bonuses (before the achievement system stores the new best)
-    ACH.runEnded(); // achievements: final bests are stored; lifetime progress is kept
+    ACH.runEnded(); // achievements: final bests are stored; lifetime progress is kept (saved BEFORE the report is shown)
+    let report = null; try { report = RunReport.build(xpResult, this.testModeRun); } catch (err) { console.warn('[report]', err); }   // read-only: it never awards anything
     CHAL.runEnded(); // challenges: save, and start the next day's set if the day changed during the run
     SavedRun.clear(); // the run is over — nothing left to continue
     document.getElementById('finalStats').textContent =
       `Survived ${Utils.formatTime(this.survivalTime)} — ${this.player.kills} kills` +
       (this.testModeRun ? ' (Test Mode — not counted toward your stats)' : '');
-    document.getElementById('runXp').innerHTML = XP.runResultHtml(xpResult);
+    RunReport.show(report);
     document.getElementById('gameOverScreen').classList.remove('hidden');
     Sound.gameOver();
 
@@ -14111,6 +14164,7 @@ class XpSystem {
     for (let L = from + 1; L <= to; L++) rewards.push(...this._grantReward(L));   // every level passed gets its reward, exactly once
     this.s.history.unshift({ t: Date.now(), a: 0, k: 'level', s: 'Level up: ' + from + ' to ' + to, r: 0, n: 0 });
     if (this.s.history.length > XP_CONFIG.historyMax) this.s.history.length = XP_CONFIG.historyMax;
+    if (ACH.run && Array.isArray(ACH.run.xpRw)) ACH.run.xpRw.push(...rewards);   // shown on the results screen
     this._banner({ from, to, amt, label, rewards });
   }
   _grantReward(L) {
@@ -14166,6 +14220,9 @@ class XpSystem {
   // Called when the run ends. Returns the results for the end-of-run screen.
   runEnded() {
     const run = ACH.run; if (!run) return null;
+    this._quiet = true; try { return this._runEnded(run); } finally { this._quiet = false; }
+  }
+  _runEnded(run) {
     if (this.active) {
       const prevBest = run.xpBest0 >= 0 ? run.xpBest0 : (ACH.life.best.runTime || 0);
       if (run.time >= XP_CONFIG.runDone.minSeconds && this._once('end')) this.award(XP_CONFIG.runDone.xp, 'survival', 'Completed a run');
@@ -14211,7 +14268,7 @@ class XpSystem {
   announceWelcome() { if (this._welcome) { const w = this._welcome; this._welcome = null; this._banner({ from: 1, to: w.level, amt: this.s.total, label: 'Credit for your existing progress', rewards: w.rewards, welcome: true }); } }
 
   // ---- level-up banner (small, top centre, never longer than a few seconds) ----
-  _banner(info) { this._q.push(info); if (!this._busy) this._nextBanner(); this._ui = 1; }
+  _banner(info) { if (this._quiet) return; this._q.push(info); if (!this._busy) this._nextBanner(); this._ui = 1; }   // _quiet: the end-of-run XP is shown on the results screen
   _nextBanner() {
     const el = document.getElementById('levelUpBanner'); const info = this._q.shift();
     if (!el || !info) { this._busy = false; return; }
@@ -14258,6 +14315,175 @@ class XpSystem {
 }
 const XP = new XpSystem();
 XP.renderAll(); setTimeout(() => XP.announceWelcome(), 1500);
+  </script>
+  <script>
+/**
+ * report.js — the end-of-run SURVIVAL REPORT.
+ *
+ *  It only READS what the game already tracks (ACH.run / ACH.life, XP, CHAL, ACCESSORIES, COSMETICS) and compares it with a small baseline taken when the run started (saved inside the
+ *  run, so Save & Quit / Continue keeps it). Nothing here awards anything: XP, achievements, challenge progress and unlocks were all paid by their own systems while the run
+ *  happened, so showing, re-showing or re-opening this screen can never duplicate a reward. The report is built once per run (cached by run id).
+ *  Not tracked by the game, so not shown: score, accuracy, headshots (the game has none), and nothing like a victory screen exists: a run ends when the peanut dies.
+ *
+ *  RUN RATING (D, C, B, A, S) is a transparent 0-100 score: survival time (up to 40: 20 min), kills (up to 30: 300 kills), best kill streak without damage (up to 15: 50 kills),
+ *    objectives finished in the run (up to 15: 4 per achievement, 5 per daily challenge, 8 per mission), times a small difficulty factor (0.9 / 1.0 / 1.1 / 1.2).
+ *    S >= 85, A >= 68, B >= 48, C >= 28, otherwise D. Test Mode runs are not rated.
+ */
+const RPT_RATING = { time: { max: 40, at: 1200 }, kills: { max: 30, at: 300 }, streak: { max: 15, at: 50 }, obj: { max: 15, ach: 4, daily: 5, mission: 8 }, grades: [['S', 85], ['A', 68], ['B', 48], ['C', 28]] };
+const RPT_REC = [   // personal records the game really tracks: label, lifetime best key, this run's value
+  { key: 'runTime', label: 'LONGEST SURVIVAL', val: (r) => r.time, fmt: (v) => Utils.formatTime(v) },
+  { key: 'runKills', label: 'MOST ZOMBIES KILLED IN A RUN', val: (r) => r.kills, fmt: (v) => xpN(v) },
+  { key: 'noDmgKills', label: 'HIGHEST KILL STREAK', val: (r) => r.streakMax || 0, fmt: (v) => xpN(v) },
+  { key: 'runDamage', label: 'MOST DAMAGE DEALT IN A RUN', val: (r) => r.damageDealt, fmt: (v) => xpN(v) },
+];
+class RunReportSystem {
+  constructor() {
+    this.report = null; this._id = null; this._timer = null;
+    document.getElementById('resBody').addEventListener('click', (e) => {
+      const t = e.target.closest('[data-act]'); if (!t) return; const a = t.dataset.act;
+      if (a === 'resEquip') { Sound.uiClick(); game.openCustomization(t.dataset.kind === 'acc' ? 'char' : 'wpn', t.dataset.id); }
+      else if (a === 'resChal') { Sound.uiClick(); game.chalMenu.open(); }
+    });
+  }
+  // ---- baseline (taken when the run starts, saved with the run) ----
+  snapshot() {
+    const L = ACH.life, b = L.best || {}, base = { t: Date.now(), xp: XP.s.total, rec: { runTime: b.runTime || 0, runKills: b.runKills || 0, noDmgKills: b.noDmgKills || 0, runDamage: b.runDamage || 0 }, achDone: Object.keys(ACH.unlocked), achVal: {}, daily: {}, mis: {}, acc: Object.keys(ACCESSORIES.unlocked), skins: Object.keys(COSMETICS.unlocked) };
+    for (const d of ACH.defs) if (!ACH.unlocked[d.id]) base.achVal[d.id] = Math.round(ACH.status(d).val * 100) / 100;
+    for (const c of CHAL.state.daily) base.daily[CHAL.state.dayKey + ':' + c.def] = [c.prog, c.done];
+    for (const m of CHAL_MISSIONS) { const it = CHAL.state.missions[m.id]; base.mis[m.id] = it ? [it.prog, it.done] : [0, false]; }
+    return base;
+  }
+  runStarted() { const run = ACH.run; if (run && !run.base) run.base = this.snapshot(); }
+
+  // ---- build (read-only) ----
+  build(xpRes, testMode) {
+    const run = ACH.run, L = ACH.life, id = run.xpId || 0;
+    if (this.report && this._id === id && id) return this.report;   // one report per run
+    const base = run.base && typeof run.base === 'object' ? run.base : null, r = { test: !!testMode, noBase: !base, time: run.time, kills: run.kills, kbt: Object.assign({}, run.kbt || {}), wk: Object.assign({}, run.wk || {}), damageDealt: Math.round(run.damageDealt), damageTaken: Math.round(run.damageTaken),
+      healed: Math.round(run.healed || 0), distM: Math.round(run.distM), streakMax: run.streakMax || 0, deaths: L.deaths, diff: run.diff, city: run.city };
+    // XP (paid by the XP system during the run; this only shows it)
+    const xp = { earned: run.xpRun || 0, src: Object.assign({}, run.xpSrc || {}), rewards: (run.xpRw || []).slice() };
+    const startTotal = base ? base.xp : XP.s.total - xp.earned, l0 = xpLevelOf(startTotal), l1 = XP.level(), pct = (t, l) => Math.floor(100 * (t - xpStart(l)) / (xpStart(l + 1) - xpStart(l)));
+    xp.l0 = l0; xp.l1 = l1; xp.p0 = pct(startTotal, l0); xp.p1 = XP.info().pct; xp.total = XP.s.total; xp.active = !testMode;
+    r.xp = xp;
+    r.ach = { unlocked: [], progressed: [], almost: [] }; r.chal = { dailyDone: [], dailyProg: [], misDone: [], misProg: [] }; r.cos = []; r.records = []; r.rating = null;
+    if (!testMode && base) {
+      // achievements
+      const done0 = new Set(base.achDone || []);
+      const t0 = (v0, t) => (t > 0 ? Math.min(1, v0 / t) : 0);
+      for (const d of ACH.defs) {
+        const st = ACH.status(d), hide = d.secret && !st.done, row = { id: d.id, name: hide ? '???' : d.name, desc: hide ? 'A secret achievement.' : d.desc, tier: d.tier, frac: st.frac, val: st.val, target: st.target, rewards: this._achRewards(d) };
+        if (st.done && !done0.has(d.id)) r.ach.unlocked.push(row);
+        else if (!st.done) { const v0 = (base.achVal || {})[d.id] || 0; if (st.val > v0 + 1e-9) r.ach.progressed.push(Object.assign({ from: t0(v0, st.target) }, row)); }
+      }
+      r.ach.progressed.sort((a, b) => (b.frac - b.from) - (a.frac - a.from) || b.frac - a.frac); r.ach.progressed = r.ach.progressed.slice(0, 5);   // biggest gain first
+      const shown = new Set(r.ach.progressed.map((x) => x.id));
+      r.ach.almost = ACH.defs.filter((d) => !d.secret && !ACH.unlocked[d.id] && !shown.has(d.id)).map((d) => ({ d, st: ACH.status(d) })).filter((x) => x.st.frac >= 0.7).sort((a, b) => b.st.frac - a.st.frac).slice(0, 4).map((x) => ({ id: x.d.id, name: x.d.name, desc: x.d.desc, tier: x.d.tier, frac: x.st.frac, val: x.st.val, target: x.st.target, rewards: this._achRewards(x.d) }));
+      // challenges + missions
+      CHAL.state.daily.forEach((c) => {
+        const d = chalDefById.get(c.def), b0 = base.daily[CHAL.state.dayKey + ':' + c.def] || [0, false]; if (!d) return;
+        const row = { name: d.name(c.target), tier: c.tier, fmt: d.fmt, prog: Math.min(c.prog, c.target), target: c.target, from: Math.min(b0[0], c.target), reward: '$' + c.reward + ' + ' + (XP_CONFIG.chal[c.tier] || 30) + ' XP' };
+        if (c.done && !b0[1]) r.chal.dailyDone.push(row); else if (!c.done && c.prog > b0[0] + 1e-9) r.chal.dailyProg.push(row);
+      });
+      for (const m of CHAL_MISSIONS) {
+        const it = CHAL.state.missions[m.id] || { prog: 0, done: false }, b0 = base.mis[m.id] || [0, false];
+        const row = { name: m.name, desc: m.desc, fmt: m.fmt, prog: Math.min(it.prog, m.target), target: m.target, from: Math.min(b0[0], m.target), reward: CHAL.rewardText(m.reward) + ' + ' + (m.xp || XP_CONFIG.mission) + ' XP' };
+        if (it.done && !b0[1]) r.chal.misDone.push(row); else if (!it.done && it.prog > b0[0] + 1e-9) r.chal.misProg.push(row);
+      }
+      r.chal.misProg = r.chal.misProg.sort((a, b) => b.prog / b.target - a.prog / a.target).slice(0, 5);
+      // cosmetics unlocked during the run
+      const acc0 = new Set(base.acc || []), sk0 = new Set(base.skins || []);
+      for (const d of ACCESSORIES.defs) if (ACCESSORIES.unlocked[d.id] && !acc0.has(d.id)) r.cos.push({ kind: 'acc', id: d.id, name: d.name, cat: (ACC_CATS.find((c) => c.id === d.cat) || { name: d.cat }).name, rarity: ACCESSORIES.rarityInfo(d), how: this._accHow(d) });
+      for (const d of COSMETICS.defs) if (COSMETICS.unlocked[d.id] && !sk0.has(d.id)) r.cos.push({ kind: 'skin', id: d.id, name: d.name, cat: (CONFIG.WEAPONS[d.weapon] ? CONFIG.WEAPONS[d.weapon].name : d.weapon) + ' skin', rarity: COSMETICS.rarityInfo(d), how: this._skinHow(d) });
+      // personal records (only values the game tracks), against the bests from BEFORE this run
+      for (const rec of RPT_REC) { const v = rec.val(r), prev = base.rec[rec.key] || 0; if (v > 0 && v > prev) r.records.push({ label: rec.label, value: rec.fmt(v), prev: prev > 0 ? rec.fmt(prev) : null }); }
+      r.rating = this.rate(r);
+    }
+    this.report = r; this._id = id; return r;
+  }
+  _achRewards(d) {
+    const out = ['+' + (XP_CONFIG.ach[d.tier] || 25) + ' XP'], aid = ACC_ACH_REWARDS[d.id]; if (aid && ACCESSORIES.byId.get(aid)) out.push(ACCESSORIES.byId.get(aid).name + ' accessory');
+    const sk = COSMETICS.defs.find((s) => s.req && s.req.type === 'ach' && s.req.id === d.id); if (sk) out.push(sk.name + ' weapon skin'); return out;
+  }
+  _accHow(d) {
+    const by = ACCESSORIES.by[d.id] || ''; if (by.startsWith('ach:')) { const a = ACH.byId.get(by.slice(4)); return 'Achievement: ' + (a ? a.name : by.slice(4)); }
+    if (by === 'level') return 'Player level reward'; if (by === 'mission') return 'Mission reward'; if (by === 'milestone') return d.reqText || 'Milestone'; return d.reqText || 'Unlocked';
+  }
+  _skinHow(d) { const a = d.req && d.req.type === 'ach' ? ACH.byId.get(d.req.id) : null; return a ? 'Achievement: ' + a.name : d.reqText || 'Unlocked'; }
+  rate(r) {
+    const R = RPT_RATING, f = [], add = (label, v, max) => { const p = Math.round(Math.min(max, v) * 10) / 10; f.push({ label, pts: p, max }); return p; };
+    const t = add('Survival time', R.time.max * r.time / R.time.at, R.time.max), k = add('Zombies killed', R.kills.max * r.kills / R.kills.at, R.kills.max), s = add('Kill streak', R.streak.max * r.streakMax / R.streak.at, R.streak.max);
+    const o = add('Objectives completed', R.obj.ach * r.ach.unlocked.length + R.obj.daily * r.chal.dailyDone.length + R.obj.mission * r.chal.misDone.length, R.obj.max);
+    const keys = Object.keys(CONFIG.DIFFICULTY_LEVELS).sort((a, b) => { const A = CONFIG.DIFFICULTY_LEVELS[a], B = CONFIG.DIFFICULTY_LEVELS[b]; return A.zombieHealthMult * A.zombieDamageMult - B.zombieHealthMult * B.zombieDamageMult; });
+    const mult = keys.length > 1 && keys.includes(r.diff) ? 0.9 + 0.1 * keys.indexOf(r.diff) : 1;
+    const pts = Math.min(100, Math.round((t + k + s + o) * mult * 10) / 10), grade = (R.grades.find(([g, min]) => pts >= min) || ['D'])[0];
+    return { grade, pts, mult, factors: f };
+  }
+
+  // ---- show ----
+  show(rep) {
+    const r = rep || this.report; clearTimeout(this._timer);
+    const bodyEl = document.getElementById('resBody'), rt = document.getElementById('resRating'), bn = document.getElementById('resBanner');
+    if (!r) { bodyEl.innerHTML = ''; rt.innerHTML = ''; bn.innerHTML = ''; return; }
+    const sec = (title, inner, wide, i) => `<div class="stCard resSec${wide ? ' stWide' : ''}" style="--i:${i}"><div class="stTitle">${title}</div>${inner}</div>`, row = (a, b) => `<div class="stRow"><span>${a}</span><b>${b}</b></div>`;
+    let n = 0, html = '';
+    if (r.test) html += `<div class="stCard stWide resSec" style="--i:0"><div class="stTitle">TEST MODE</div><div class="stNote">This run used Test Mode cheats, so nothing was counted: no XP, records, objectives or rating.</div></div>`;
+    // combat
+    const kt = (id) => xpN(r.kbt[id] || 0), wk = Object.entries(r.wk).sort((a, b) => b[1] - a[1]), wname = (id) => (CONFIG.WEAPONS[id] ? CONFIG.WEAPONS[id].name : id);
+    html += '<div class="stGrid">' + sec('COMBAT', row('Zombies killed', xpN(r.kills)) + row('Walkers', kt('walker')) + row('Fast zombies (runners)', kt('runner')) + row('Brute zombies', kt('brute')) + row('Bosses defeated', kt('boss')) + row('Total damage dealt', xpN(r.damageDealt)) +
+      row('Most-used weapon', wk.length ? wname(wk[0][0]) + ' (' + xpN(wk[0][1]) + ')' : '-') + (wk.length ? '<div class="resWk">' + wk.map(([id, v]) => `<div class="resWkRow"><span>${wname(id)}</span><div class="xpBar"><i style="width:${Math.round(100 * v / wk[0][1])}%"></i></div><b>${xpN(v)}</b></div>`).join('') + '</div>' : ''), 0, n++) +
+      sec('SURVIVAL', row('Survival time', Utils.formatTime(r.time)) + row('Damage taken', xpN(r.damageTaken)) + row('Health restored', xpN(r.healed)) + row('Distance travelled', r.distM >= 1000 ? (r.distM / 1000).toFixed(2) + ' km' : xpN(r.distM) + ' m') + row('Deaths (lifetime)', xpN(r.deaths)), 0, n++) + '</div>';
+    // performance + rating
+    let perf = row('Highest kill streak', xpN(r.streakMax)) + row('New personal records', r.test || r.noBase ? '-' : r.records.length);
+    if (r.rating) perf += `<div class="resFactors">${r.rating.factors.map((f) => `<div class="resFactor"><span>${f.label}</span><div class="xpBar"><i style="width:${Math.round(100 * f.pts / f.max)}%"></i></div><b>${f.pts}/${f.max}</b></div>`).join('')}<div class="stNote">Run rating: ${r.rating.pts} / 100${r.rating.mult !== 1 ? ' (difficulty x' + r.rating.mult.toFixed(1) + ')' : ''}. S 85, A 68, B 48, C 28.</div></div>`;
+    html += sec('PERFORMANCE', perf, 1, n++);
+    // records
+    const banner = document.getElementById('resBanner');
+    if (r.records.length) { html += sec('NEW PERSONAL RECORDS', r.records.map((x) => `<div class="resRec"><b class="resNew">NEW RECORD</b><span>${x.label}</span><em>${x.value}${x.prev ? ' <i>(was ' + x.prev + ')</i>' : ''}</em></div>`).join(''), 1, n++); banner.innerHTML = `<span class="resNew">NEW RECORD!</span> ${r.records.map((x) => x.label + ': ' + x.value).join(' &middot; ')}`; banner.className = 'resBanner show'; }
+    else { banner.innerHTML = ''; banner.className = 'resBanner'; }
+    // XP
+    if (r.xp.active) html += sec('EXPERIENCE', this._xpHtml(r.xp), 1, n++);
+    // cosmetics
+    if (r.cos.length) html += sec('NEW COSMETICS UNLOCKED', '<div class="resCosGrid">' + r.cos.map((c) => `<div class="resCos" style="--rar:${c.rarity.color}"><canvas class="resCosArt" width="96" height="72" data-kind="${c.kind}" data-id="${c.id}"></canvas><b>${c.name}</b><span class="accRar" style="--rar:${c.rarity.color}">${c.rarity.name.toUpperCase()}</span><span class="resCosCat">${c.cat}</span><em>${c.how}</em><button class="shopWpn" data-act="resEquip" data-kind="${c.kind}" data-id="${c.id}">EQUIP IN CUSTOMIZATION</button></div>`).join('') + '</div>', 1, n++);
+    // achievements
+    const A = r.ach, achRow = (a, tag) => `<div class="resObj${tag ? ' resObjNew' : ''}"><div class="resObjTop">${tag ? '<b class="resNew">UNLOCKED</b>' : ''}<b class="resObjName">${a.name}</b><span class="resTier resTier-${a.tier}">${a.tier.toUpperCase()}</span></div><div class="resObjDesc">${a.desc}</div><div class="resBar"><div class="xpBar"><i style="width:${Math.round(100 * a.frac)}%"></i></div><b>${tag ? 'DONE' : Math.floor(a.val) + ' / ' + Math.floor(a.target)}</b></div><div class="resObjRw">Reward: ${a.rewards.join(' + ')}</div></div>`;
+    if (!r.test && !r.noBase) {
+      const parts = (A.unlocked.length ? '<div class="resSub">UNLOCKED THIS RUN</div>' + A.unlocked.map((a) => achRow(a, true)).join('') : '') + (A.progressed.length ? '<div class="resSub">PROGRESSED</div>' + A.progressed.map((a) => achRow(a, false)).join('') : '') + (A.almost.length ? '<div class="resSub">ALMOST THERE</div>' + A.almost.map((a) => achRow(a, false)).join('') : '');
+      html += sec('ACHIEVEMENTS', parts || '<div class="stNote">No achievement progress this run.</div>', 1, n++);
+      const C = r.chal, objRow = (o, tag) => `<div class="resObj${tag ? ' resObjNew' : ''}"><div class="resObjTop">${tag ? '<b class="resNew">COMPLETED</b>' : ''}<b class="resObjName">${o.name}</b></div>${o.desc ? `<div class="resObjDesc">${o.desc}</div>` : ''}<div class="resBar"><div class="xpBar"><i style="width:${Math.round(100 * o.prog / o.target)}%"></i></div><b>${chalFmt(o.fmt, o.prog)} / ${chalFmt(o.fmt, o.target)}</b></div><div class="resObjRw">Reward: ${o.reward}${tag ? ' (claim it in Challenges)' : ''}</div></div>`;
+      const cp = (C.dailyDone.length ? '<div class="resSub">DAILY CHALLENGES COMPLETED</div>' + C.dailyDone.map((o) => objRow(o, true)).join('') : '') + (C.dailyProg.length ? '<div class="resSub">DAILY CHALLENGES PROGRESSED</div>' + C.dailyProg.map((o) => objRow(o, false)).join('') : '') +
+        (C.misDone.length ? '<div class="resSub">MISSIONS COMPLETED</div>' + C.misDone.map((o) => objRow(o, true)).join('') : '') + (C.misProg.length ? '<div class="resSub">MISSIONS PROGRESSED</div>' + C.misProg.map((o) => objRow(o, false)).join('') : '');
+      html += sec('CHALLENGES AND MISSIONS', (cp || '<div class="stNote">No challenge or mission progress this run.</div>') + '<div class="accBtns"><button class="shopWpn" data-act="resChal">OPEN CHALLENGES</button></div>', 1, n++);
+    } else if (r.noBase && !r.test) html += sec('PROGRESS', '<div class="stNote">This run was continued from an older save, so there is no starting point to compare progress and records against.</div>', 1, n++);
+    bodyEl.innerHTML = html; bodyEl.scrollTop = 0;
+    // rating badge in the header
+    rt.innerHTML = r.rating ? `<div class="resGrade resGrade-${r.rating.grade}" title="${r.rating.pts} / 100"><i>RATING</i><b>${r.rating.grade}</b></div>` : '';
+    for (const cv of bodyEl.querySelectorAll('canvas.resCosArt')) { const d = cv.dataset.kind === 'acc' ? ACCESSORIES.byId.get(cv.dataset.id) : COSMETICS.byId.get(cv.dataset.id); if (!d) continue; if (cv.dataset.kind === 'acc') ACCESSORIES.drawIcon(cv, d, 'open'); else game.accMenu._drawWeaponArt(cv, d, 'open'); }
+    if (r.xp.active) this._animateXp(r.xp);
+  }
+  _xpHtml(x) {
+    const names = { combat: 'Zombie kills and streaks', survival: 'Survival', ach: 'Achievements', chal: 'Challenges and missions', other: 'Milestones and bonuses' };
+    const lines = Object.keys(names).filter((k) => x.src[k] > 0).map((k) => `<div class="runXpLine"><span>${names[k]}</span><b>+${xpN(x.src[k])}</b></div>`).join('');
+    const up = x.l1 > x.l0, rw = up && x.rewards.length ? '<div class="resRewards"><div class="resSub">LEVEL REWARDS</div>' + x.rewards.map((t) => `<div class="lvRw">${t}</div>`).join('') + '</div>' : '';
+    return `<div class="runXpTitle">+${xpN(x.earned)} XP THIS RUN</div>${lines}<div class="resXpLevels"><span class="lvBadge lvTier-${xpTier(x.l0)}" id="resXpBadge"><i>LV</i><b id="resXpLevel">${x.l0}</b></span><div class="resXpBarWrap"><div class="xpBar"><i id="resXpFill" style="width:${x.p0}%"></i></div>` +
+      `<div class="xpNums"><span>LEVEL ${x.l0}${up ? ' &#9654; ' + x.l1 : ''}</span><span>${xpN(x.total)} XP total</span></div></div></div>${up ? `<div class="runXpUp" id="resXpUp" style="opacity:0">LEVEL UP! ${x.l0} &#9654; ${x.l1}</div>` : ''}${rw}`;
+  }
+  _animateXp(x) {
+    const fill = document.getElementById('resXpFill'), lvEl = document.getElementById('resXpLevel'), up = document.getElementById('resXpUp'), badge = document.getElementById('resXpBadge'); if (!fill) return;
+    const steps = []; for (let l = x.l0; l <= x.l1; l++) steps.push([l === x.l0 ? x.p0 : 0, l === x.l1 ? x.p1 : 100, l]);
+    const keep = steps.length > 8 ? [steps[0], ...steps.slice(-6)] : steps;   // a huge jump: show the first and the last levels
+    const reduce = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (reduce) { fill.style.width = x.p1 + '%'; lvEl.textContent = x.l1; if (up) up.style.opacity = 1; return; }
+    let i = 0; const go = () => {
+      if (i >= keep.length || !document.body.contains(fill)) { if (up) { up.style.opacity = 1; up.classList.add('resPop'); } return; }
+      const [a, b, l] = keep[i++]; fill.style.transition = 'none'; fill.style.width = a + '%'; lvEl.textContent = l; void fill.offsetWidth;
+      fill.style.transition = 'width 0.9s ease-out'; fill.style.width = b + '%';
+      this._timer = setTimeout(() => { if (i < keep.length) { badge.classList.remove('lvPulse'); void badge.offsetWidth; badge.classList.add('lvPulse'); } go(); }, 1000);
+    };
+    this._timer = setTimeout(go, 700);
+  }
+}
+const RunReport = new RunReportSystem();
   </script>
   <script>
 /**
