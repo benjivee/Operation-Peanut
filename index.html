@@ -2229,7 +2229,7 @@ const EMBEDDED_ASSETS = {
     <!-- ===================== Start overlay (home page) ===================== -->
     <div id="startScreen" class="overlay homePage">
       <!-- Version: major.minor.patch. The patch digit goes 0-9 and rolls into the minor number (v3.88.9 -> v3.89.0); the minor number is two digits and rolls into the major number (v3.99.9 -> v4.00.0). Bumped by 1 on every change. -->
-      <div id="versionTag" class="versionTag">v3.93.4</div>
+      <div id="versionTag" class="versionTag">v3.93.5</div>
       <div id="homeSidebar" class="homeSidebar">
         <div class="homeSidebarTitle">Your Stats</div>
         <div id="homeLevel" class="homeLevel"></div>
@@ -2268,6 +2268,8 @@ const EMBEDDED_ASSETS = {
           <label class="testToggle"><span>Zombies</span><input type="checkbox" id="tmZombies" checked><i></i></label>
           <label class="testToggle"><span>Fast Shop (every 15s)</span><input type="checkbox" id="tmFastShop"><i></i></label>
           <label class="testToggle"><span>Shop Cash ($3000 start)</span><input type="checkbox" id="tmShopCash"><i></i></label>
+          <label class="testToggle"><span>Zombie AI Debug (F9)</span><input type="checkbox" id="aiDebugToggle"><i></i></label>
+          <label class="testToggle"><span>Zombie Personality</span><select id="tmAiForce" style="font:inherit;font-size:11px;padding:6px;background:#14171b;color:#fff;border:3px solid #000"><option value="mixed">Mixed (normal)</option><option value="hunter">Hunters only</option><option value="predictor">Predictors only</option><option value="flanker">Flankers only</option><option value="wanderer">Wanderers only</option></select></label>
         </div>
         <button id="backFromTestModeBtn" class="bigButton">Back</button>
       </div>
@@ -4812,8 +4814,9 @@ const TEST_MODE = {
   zombies: true, // false = no zombies spawn at all (including the boss)
   fastShop: false, // shop opens every SHOP_CONFIG.testIntervalSeconds instead of every 2 minutes (see shop.js)
   shopCash: false, // start the run with SHOP_CONFIG.testStartMoney
+  aiForce: 'mixed', // zombie AI testing: 'mixed' = normal, or force every new zombie to one personality (hunter | predictor | flanker | wanderer)
   isActive() {
-    return this.invincible || this.allWeapons || this.unlimitedAmmoGas || this.unlimitedStamina || !this.zombies || this.fastShop || this.shopCash;
+    return this.invincible || this.allWeapons || this.unlimitedAmmoGas || this.unlimitedStamina || !this.zombies || this.fastShop || this.shopCash || this.aiForce !== 'mixed';
   },
 };
 
@@ -6041,9 +6044,13 @@ class Zombie extends Entity {
     this.isMoving = false;
     this.animFrame = 0;
     this.animTimer = 0;
+
+    // Pac-Man-style AI (zombieAI.js): a personality + state machine that decides WHERE this zombie goes. Movement, paths, collision and attacks below stay as they were.
+    this.brain = typeof ZombieBrain !== 'undefined' ? new ZombieBrain(this) : null;
+    this.pathGoalX = 0; this.pathGoalY = 0;
   }
 
-  update(dt, player, obstacles, worldWidth, worldHeight, navGrid) {
+  update(dt, player, obstacles, worldWidth, worldHeight, navGrid, ai) {
     if (this.hitFlashTimer > 0) this.hitFlashTimer -= dt;
     if (this.flinchT > 0) this.flinchT -= dt;
     if (this.attackTimer > 0) this.attackTimer -= dt;
@@ -6064,7 +6071,9 @@ class Zombie extends Entity {
     this.facing = Utils.directionFromVector(player.x - this.x, player.y - this.y, this.facing);
 
     // (+0.5 so a zombie held exactly at touching distance by separateFromPlayer() still counts as touching)
+    const aiOn = !!(ai && ai.enabled && this.brain);
     if (dist <= touchDistance + 0.5) {
+      if (aiOn) this.brain.contact(true, ai);
       this.state = 'attack';
       this.isMoving = false;
       if (this.attackTimer <= 0) {
@@ -6083,47 +6092,54 @@ class Zombie extends Entity {
       // active — see targetX/targetY further down), so this can steer
       // zombies into different lanes without ever stopping one short of
       // actually reaching the player.
-      const chaseTargetX = player.x + this.chaseJitterX;
-      const chaseTargetY = player.y + this.chaseJitterY;
+      // Where this zombie wants to go. With the AI on, its brain picks the destination (the player, a predicted spot, a flank position, a sound, a search point, a
+      // patrol point...) and how fast to walk in its current state; without it, it heads for the player exactly as before.
+      let goal = null;
+      if (aiOn) { this.brain.contact(false, ai); goal = this.brain.step(dt, ai, obstacles, navGrid); this.isMoving = goal.moving; }
+      const gx = goal ? goal.x : player.x, gy = goal ? goal.y : player.y;
+      const jit = !goal || goal.jitter;
+      const chaseTargetX = gx + (jit ? this.chaseJitterX : 0);
+      const chaseTargetY = gy + (jit ? this.chaseJitterY : 0);
 
-      // Phase 5: periodically decide whether a straight line to the
-      // player is clear, or a cached path around an obstacle needs
-      // (re)computing. Deliberately NOT done every frame — line-of-sight
-      // sampling and A* are both too expensive to run for every zombie
-      // on every tick. A couple of recalculations a second (staggered
-      // per-zombie via pathRecalcTimer's randomized start) is more than
-      // responsive enough for a target that itself only moves at normal
-      // speed — see navGrid.js's own header for the full reasoning.
-      if (navGrid && obstacles) {
+      // Periodically decide whether a straight line to the destination is clear, or a cached A* path around an obstacle is needed. Staggered per zombie; with the
+      // AI on, A* calls also share a small per-frame budget (a zombie that misses out keeps its old path and asks again a moment later).
+      if (navGrid && obstacles && (!goal || goal.path)) {
         this.pathRecalcTimer -= dt;
+        if (goal && Math.hypot(gx - this.pathGoalX, gy - this.pathGoalY) > 160 && this.pathRecalcTimer > 0.15) this.pathRecalcTimer = 0.15;   // the destination jumped: re-route soon
         if (this.pathRecalcTimer <= 0) {
-          this.pathRecalcTimer = 0.5 + Math.random() * 0.3;
           if (Utils.hasLineOfSight(this.x, this.y, chaseTargetX, chaseTargetY, obstacles)) {
             this.path = null; // clear line — no detour needed
+            this.pathRecalcTimer = 0.5 + Math.random() * 0.3; this.pathGoalX = gx; this.pathGoalY = gy;
+          } else if (goal && !ai.takePath()) {
+            this.pathRecalcTimer = 0.12;
           } else {
-            this.path = navGrid.findPath(this.x, this.y, chaseTargetX, chaseTargetY); // null if no path found within budget — falls back to direct movement below, same as pre-Phase-5 behavior
+            this.path = navGrid.findPath(this.x, this.y, chaseTargetX, chaseTargetY); // null if no path found within budget — falls back to direct movement below
             this.pathIndex = 0;
+            this.pathRecalcTimer = (goal && !goal.jitter && !this.brain.hunting ? 1.0 : 0.5) + Math.random() * 0.3; this.pathGoalX = gx; this.pathGoalY = gy;
           }
         }
-      }
+      } else if (goal && !goal.path) this.path = null;
 
-      let targetX = player.x;
-      let targetY = player.y;
+      let targetX = gx;
+      let targetY = gy;
       if (this.path && this.path.length > 0) {
         const waypoint = this.path[this.pathIndex];
         targetX = waypoint.x;
         targetY = waypoint.y;
         if (Utils.distance(this.x, this.y, waypoint.x, waypoint.y) < this.radius + 8) {
           this.pathIndex++;
-          if (this.pathIndex >= this.path.length) this.path = null; // reached the end of the detour — resume direct chase next frame
+          if (this.pathIndex >= this.path.length) this.path = null; // reached the end of the detour — resume direct movement next frame
         }
         this.facing = Utils.directionFromVector(targetX - this.x, targetY - this.y, this.facing);
       }
 
       const dir = Utils.directionTo(this.x, this.y, targetX, targetY);
-      const chaseSpeed = this.speed * (this.waterSlow || 1);   // slower while wading through a stream (WaterZones3D)
-      this.x += dir.x * chaseSpeed * dt;
-      this.y += dir.y * chaseSpeed * dt;
+      if (goal && goal.faceMove) this.facing = Utils.directionFromVector(dir.x, dir.y, this.facing);   // not hunting what it can see: face where it is walking
+      const chaseSpeed = this.speed * (this.waterSlow || 1) * (goal ? goal.speed : 1);   // slower while wading through a stream (WaterZones3D)
+      if (!goal || goal.moving) {
+        this.x += dir.x * chaseSpeed * dt;
+        this.y += dir.y * chaseSpeed * dt;
+      }
 
       if (obstacles) {
         for (const obstacle of obstacles) {
@@ -6211,6 +6227,7 @@ class Zombie extends Entity {
   }
 
   takeDamage(amount) {
+    if (this.brain) this.brain.onHurt(); // AI: being shot gives away where the shooter is (roughly)
     ACH.zombieDamaged(this, amount); // achievements: damage dealt / first-hit time
     this.health -= amount;
     this.hitFlashTimer = 0.08;
@@ -6299,6 +6316,584 @@ function createBoss(x, y) {
   return new Zombie(x, y, CONFIG.ZOMBIE_TYPES.boss, diff);
 }
 
+  </script>
+  <script>
+/**
+ * zombieAI.js — Pac-Man-inspired zombie behaviour for Operation Peanut.
+ *
+ *  WHAT IT DOES: every zombie gets a ZombieBrain (z.brain): a personality, an AI state, a target destination and its own decision timer.
+ *  The brain only decides WHERE the zombie wants to go (and how fast it moves in that state); the existing Zombie.update() still does the walking, the A* detours
+ *  (NavGrid.findPath, cached in z.path), building collision, separation, animation, attacks and damage. Nothing about sprites, health, damage or abilities changes.
+ *
+ *  PERSONALITIES (see ZAI_PERS):   hunter (Blinky)  - heads for where the player is, by the shortest reasonable route.
+ *                                  predictor (Pinky) - aims at where the player WILL be (speed + heading, snapped to the street junction ahead; sometimes wrong).
+ *                                  flanker (Inky)    - takes a slot beside / behind / ahead of the player; slots are shared so a group spreads out.
+ *                                  wanderer (Clyde)  - patrols the streets, investigates things, only hunts what it notices, gives up and wanders again.
+ *  STATES:  WANDERING, INVESTIGATING, SEARCHING, HUNTING, ATTACKING, RETURNING.
+ *  SOUND:   ZOMBIE_SOUND.emit(x, y, radiusMetres, kind) from gunshots, explosions, footsteps. Zombies react by distance, loudness and their own hearing.
+ *  STREETS: ZombieStreets reads the real road lines of the MapTiler map (same vector source the road markings use) into a small segment / junction index around the
+ *           player; predictors, flankers and wanderers pick destinations on streets and junctions. No streets available -> they still work on open ground.
+ *  GROUPS:  ZombieAIManager.update() hands out roles (direct / intercept / flank / route) and flank slots every 0.5 s, and shares an APPROXIMATE last-known position.
+ *  COST:    think ticks are staggered and budgeted per frame, far zombies think slowly and never path, A* calls and line-of-sight checks have per-frame budgets,
+ *           zombies that drift far away are quietly recycled so the spawner keeps the crowd near the player.
+ *  TUNING:  everything is in ZAI, ZAI_PERS, ZAI_TYPES and ZAI_DIFF below. Debug overlay: F9, or Test Mode > Zombie AI Debug (never on by default).
+ */
+const ZAI = {
+  speed: { WANDERING: 0.5, INVESTIGATING: 0.8, SEARCHING: 0.7, RETURNING: 0.6, HUNTING: 1, ATTACKING: 1 },   // pace in each state (fraction of the zombie's own speed)
+  closeSenseM: 7,            // a zombie this close notices the player even through a wall
+  nearM: 55, midPx: 1500,    // think-rate tiers: near (full AI), mid (slower), beyond midPx = far (simple, no pathing)
+  recyclePx: 2300,           // non-boss zombies this far from the player (and long past spawning) are removed so the spawner refills near the player
+  leashPx: 1300,             // wander / search destinations stay this close to the player (the nav grid only knows this area)
+  groupRangeM: 70,           // hunting zombies this close to the player take part in group roles
+  coordEvery: 0.5,           // seconds between role / slot hand-outs
+  budget: { think: 8, path: 2, los: 10 },   // per frame
+  sounds: {                  // loudness = how far the sound carries (metres) before zombie hearing and difficulty scale it
+    pistol: 28, smg: 34, rifle: 42, machinegun: 46, shotgun: 58, flamethrower: 24, chainsaw: 38, hammer: 12, rpg: 55, grenade: 8,
+    explosion: 110, run: 14, walk: 5, default: 30,
+  },
+  runEvery: 0.55, walkEvery: 1.1,          // seconds between footstep sounds
+};
+const ZAI_PERS = {   // detect: sight range (m, before type / difficulty), engage: closes in directly inside this distance (m), memory: seconds it keeps chasing without seeing the player, track: lose-range multiplier
+  hunter:    { label: 'HUNTER',    color: '#ff4d4d', detect: 55, engage: 0, memory: 4.5, track: 1.8 },
+  predictor: { label: 'PREDICTOR', color: '#ff8fe0', detect: 50, engage: 6, memory: 3.5, track: 1.7 },
+  flanker:   { label: 'FLANKER',   color: '#35d0ff', detect: 48, engage: 9, memory: 3.5, track: 1.7 },
+  wanderer:  { label: 'WANDERER',  color: '#ffb347', detect: 32, engage: 2, memory: 2.5, track: 1.6 },
+};
+// Which personality each zombie type gets (weights; configurable). Every zombie also rolls its own small traits, so two of the same kind never behave identically.
+const ZAI_TYPES = {
+  walker: { weights: { hunter: 0.58, wanderer: 0.34, flanker: 0.05, predictor: 0.03 }, detect: 1.0, hear: 1.0 },
+  runner: { weights: { predictor: 0.66, flanker: 0.16, hunter: 0.18 }, detect: 1.1, hear: 1.15 },
+  brute:  { weights: { hunter: 0.82, flanker: 0.18 }, detect: 0.9, hear: 0.8, blocker: true },     // blocker: steps into the player's way instead of chasing from behind
+  boss:   { weights: { flanker: 0.6, hunter: 0.4 }, detect: 1.3, hear: 1.3, hybrid: true },       // hybrid: flanks from afar, goes straight for the player up close
+};
+const ZAI_DIFF = {   // intelligence per difficulty (the game's own keys). detect / hear: range multipliers; decision: think-interval multiplier (higher = slower)
+  easy:      { detect: 0.7,  hear: 0.7,  decision: 1.5,  acc: 0.45, maxLead: 8,  mistake: 0.35, flankFrac: 0.10, routeFrac: 0.10, coord: 0.2, alert: 0.5,  search: 6,  memory: 0.7, share: 12, shareErr: 12, junction: 0.10 },
+  normal:    { detect: 1.0,  hear: 1.0,  decision: 1.0,  acc: 0.70, maxLead: 14, mistake: 0.20, flankFrac: 0.25, routeFrac: 0.15, coord: 0.5, alert: 0.8,  search: 10, memory: 1.0, share: 22, shareErr: 7,  junction: 0.35 },
+  hard:      { detect: 1.25, hear: 1.3,  decision: 0.8,  acc: 0.90, maxLead: 20, mistake: 0.10, flankFrac: 0.40, routeFrac: 0.20, coord: 0.8, alert: 0.95, search: 14, memory: 1.3, share: 32, shareErr: 4,  junction: 0.60 },
+  nightmare: { detect: 1.5,  hear: 1.6,  decision: 0.65, acc: 1.00, maxLead: 26, mistake: 0.04, flankFrac: 0.55, routeFrac: 0.25, coord: 1.0, alert: 1.0,  search: 8,  memory: 1.6, share: 45, shareErr: 2,  junction: 0.85 },
+};
+const zaiRand = (a, b) => a + Math.random() * (b - a);
+const zaiAngDiff = (a, b) => Math.atan2(Math.sin(a - b), Math.cos(a - b));
+function zaiPick(weights) {
+  if (typeof TEST_MODE !== 'undefined' && TEST_MODE.aiForce && TEST_MODE.aiForce !== 'mixed') return TEST_MODE.aiForce;   // Test Mode: force one personality
+  let tot = 0; for (const k in weights) tot += weights[k];
+  let r = Math.random() * tot; for (const k in weights) { r -= weights[k]; if (r <= 0) return k; }
+  return 'hunter';
+}
+
+// ---------- sound events ----------
+const ZOMBIE_SOUND = {
+  pending: [], recent: [],
+  // radiusM: how far the sound carries. Same-kind events from the same spot within 0.12 s are merged (an auto weapon is one event per shot, never a flood).
+  emit(x, y, radiusM, kind) {
+    const mgr = window.ZOMBIE_AI; if (!mgr || !mgr.enabled || !(radiusM > 0)) return;
+    const now = mgr.now, last = this.pending[this.pending.length - 1];
+    if (last && last.kind === kind && now - last.t < 0.12 && Math.hypot(last.x - x, last.y - y) < 20) { last.r = Math.max(last.r, radiusM); return; }
+    this.pending.push({ x, y, r: radiusM, kind, t: now });
+  },
+  weapon(id, x, y) { this.emit(x, y, ZAI.sounds[id] || ZAI.sounds.default, 'shot'); },
+};
+
+// ---------- streets ----------
+class ZombieStreets {
+  constructor(mgr) { this.mgr = mgr; this.cell = 400; this.segs = new Map(); this.junc = new Map(); this.nSeg = 0; this.nJunc = 0; this.builtAt = -1e9; this.cx = 0; this.cy = 0; this.interval = 6000; this.done2d = false; this.list = []; this.jl = []; }
+  refresh() {
+    const g = this.mgr.game, p = this.mgr.player, now = performance.now(); if (!p) return;
+    if (g.world3d) {
+      const moved = Math.hypot(p.x - this.cx, p.y - this.cy);
+      if (this.nSeg > 0 ? (now - this.builtAt < this.interval || (moved < 250 && now - this.builtAt < 20000)) : now - this.builtAt < 1500) return;
+      this._build3d(g.world3d, p, now);
+    } else if (!this.done2d && g.roads && g.roads.length) {
+      this.done2d = true; const lines = [];
+      for (const r of g.roads) { if (!r.points || r.points.length < 2) continue; lines.push(r.points.map((q) => (Array.isArray(q) ? { x: q[0], y: q[1] } : { x: q.x, y: q.y }))); }
+      this._ingest(lines, p.x, p.y, 1e9);
+    }
+  }
+  _build3d(w, p, now) {
+    this.builtAt = now; this.cx = p.x; this.cy = p.y;
+    const r = w.renderer, b = w.bridge; if (!r || !r.map || !r.vectorSource || !b || !b.pxPerMeterX) return;
+    const t0 = performance.now(); let fs = [];
+    try { fs = r.map.querySourceFeatures(r.vectorSource, { sourceLayer: 'transportation' }); } catch (e) { return; }
+    const lines = [], seen = new Set(), HM = typeof PropField3D !== 'undefined' ? PropField3D.HALF_M : null;
+    for (const f of fs) {
+      const pr = f.properties || {}, cls = pr.class;
+      if ((HM && !HM[cls]) || cls === 'motorway' || cls === 'track' || pr.brunnel === 'tunnel' || !f.geometry) continue;
+      const g = f.geometry, ls = g.type === 'LineString' ? [g.coordinates] : g.type === 'MultiLineString' ? g.coordinates : [];
+      for (const line of ls) {
+        if (line.length < 2) continue;
+        const a = line[0], z = line[line.length - 1], key = line.length + '|' + a[0].toFixed(6) + ',' + a[1].toFixed(6) + '|' + z[0].toFixed(6) + ',' + z[1].toFixed(6);
+        if (seen.has(key)) continue; seen.add(key);
+        lines.push(line.map(([lo, la]) => b.latLngToGamePx(la, lo)));
+      }
+    }
+    this._ingest(lines, p.x, p.y, 2800);
+    const cost = performance.now() - t0; this.interval = cost > 12 ? 14000 : cost > 6 ? 9000 : 6000;   // an unexpectedly slow query is repeated less often
+  }
+  _ingest(lines, px, py, radius) {
+    const cell = this.cell, segs = new Map(), nodes = new Map(); let n = 0;
+    const put = (map, k, v) => { let a = map.get(k); if (!a) map.set(k, a = []); a.push(v); };
+    for (const pts of lines) {
+      let near = radius > 1e8; if (!near) for (const q of pts) if (Math.abs(q.x - px) < radius && Math.abs(q.y - py) < radius) { near = true; break; }
+      if (!near) continue;
+      for (let i = 0; i < pts.length; i++) {
+        const q = pts[i], nk = Math.round(q.x / 10) + ',' + Math.round(q.y / 10);
+        let nd = nodes.get(nk); if (!nd) nodes.set(nk, nd = { x: 0, y: 0, c: 0, arms: [] });
+        nd.x += q.x; nd.y += q.y; nd.c++;
+        for (const step of [-1, 1]) {
+          const j = i + step; if (j < 0 || j >= pts.length) continue;
+          const o = pts[j], L = Math.hypot(o.x - q.x, o.y - q.y); if (L < 4) continue;
+          const ang = Math.atan2(o.y - q.y, o.x - q.x); if (!nd.arms.some((a) => Math.abs(zaiAngDiff(a, ang)) < 0.45)) nd.arms.push(ang);
+          if (step === 1) {   // each segment is stored once
+            const s = { ax: q.x, ay: q.y, bx: o.x, by: o.y }; n++;
+            const x0 = Math.floor(Math.min(q.x, o.x) / cell), x1 = Math.floor(Math.max(q.x, o.x) / cell), y0 = Math.floor(Math.min(q.y, o.y) / cell), y1 = Math.floor(Math.max(q.y, o.y) / cell);
+            for (let cx = x0; cx <= x1; cx++) for (let cy = y0; cy <= y1; cy++) put(segs, cx + ',' + cy, s);
+          }
+        }
+      }
+    }
+    const junc = new Map(); let nj = 0;
+    for (const nd of nodes.values()) if (nd.arms.length >= 3) { const j = { x: nd.x / nd.c, y: nd.y / nd.c, arms: nd.arms.length }; put(junc, Math.floor(j.x / cell) + ',' + Math.floor(j.y / cell), j); nj++; }
+    this.segs = segs; this.junc = junc; this.nSeg = n; this.nJunc = nj;
+  }
+  // The closest point on any street within maxD px of (x, y), or null.
+  nearest(x, y, maxD) {
+    if (!this.nSeg) return null;
+    const c = this.cell, x0 = Math.floor((x - maxD) / c), x1 = Math.floor((x + maxD) / c), y0 = Math.floor((y - maxD) / c), y1 = Math.floor((y + maxD) / c);
+    let best = null, bd = maxD;
+    for (let cx = x0; cx <= x1; cx++) for (let cy = y0; cy <= y1; cy++) {
+      const a = this.segs.get(cx + ',' + cy); if (!a) continue;
+      for (const s of a) {
+        const dx = s.bx - s.ax, dy = s.by - s.ay, L2 = dx * dx + dy * dy || 1; let t = ((x - s.ax) * dx + (y - s.ay) * dy) / L2; t = t < 0 ? 0 : t > 1 ? 1 : t;
+        const qx = s.ax + dx * t, qy = s.ay + dy * t, d = Math.hypot(qx - x, qy - y);
+        if (d < bd) { bd = d; best = { x: qx, y: qy, d }; }
+      }
+    }
+    return best;
+  }
+  // A junction ahead of (x, y) in direction (dx, dy): between minD and maxD px away, within maxAng of that heading. Picks the best aligned / closest to the middle distance.
+  junctionAhead(x, y, dx, dy, minD, maxD, maxAng) {
+    if (!this.nJunc) return null;
+    const c = this.cell, ha = Math.atan2(dy, dx), mid = (minD + maxD) / 2; let best = null, bs = 1e9;
+    for (let cx = Math.floor((x - maxD) / c); cx <= Math.floor((x + maxD) / c); cx++) for (let cy = Math.floor((y - maxD) / c); cy <= Math.floor((y + maxD) / c); cy++) {
+      const a = this.junc.get(cx + ',' + cy); if (!a) continue;
+      for (const j of a) {
+        const d = Math.hypot(j.x - x, j.y - y); if (d < minD || d > maxD) continue;
+        const ang = Math.abs(zaiAngDiff(Math.atan2(j.y - y, j.x - x), ha)); if (ang > maxAng) continue;
+        const s = ang * 2 + Math.abs(d - mid) / maxD - j.arms * 0.05 + Math.random() * 0.25;
+        if (s < bs) { bs = s; best = j; }
+      }
+    }
+    return best;
+  }
+  junctionNear(x, y, r) {
+    if (!this.nJunc) return null; const c = this.cell; let best = null, bd = r;
+    for (let cx = Math.floor((x - r) / c); cx <= Math.floor((x + r) / c); cx++) for (let cy = Math.floor((y - r) / c); cy <= Math.floor((y + r) / c); cy++) {
+      const a = this.junc.get(cx + ',' + cy); if (!a) continue;
+      for (const j of a) { const d = Math.hypot(j.x - x, j.y - y); if (d < bd) { bd = d; best = j; } }
+    }
+    return best;
+  }
+  // A random point on a street between minD and maxD px from (x, y).
+  randomNear(x, y, minD, maxD) {
+    if (!this.nSeg) return null;
+    for (let k = 0; k < 6; k++) {
+      const a = Math.random() * Math.PI * 2, d = zaiRand(minD, maxD), q = this.nearest(x + Math.cos(a) * d, y + Math.sin(a) * d, 160);
+      if (q) { const dd = Math.hypot(q.x - x, q.y - y); if (dd >= minD * 0.7 && dd <= maxD * 1.3) return q; }
+    }
+    return null;
+  }
+  segsNear(x, y, r) {   // debug drawing
+    const out = [], c = this.cell;
+    for (let cx = Math.floor((x - r) / c); cx <= Math.floor((x + r) / c); cx++) for (let cy = Math.floor((y - r) / c); cy <= Math.floor((y + r) / c); cy++) { const a = this.segs.get(cx + ',' + cy); if (a) for (const s of a) if (!s._f) { s._f = 1; out.push(s); } }
+    for (const s of out) s._f = 0; return out;
+  }
+  junctionsNear(x, y, r) { const out = [], c = this.cell; for (let cx = Math.floor((x - r) / c); cx <= Math.floor((x + r) / c); cx++) for (let cy = Math.floor((y - r) / c); cy <= Math.floor((y + r) / c); cy++) { const a = this.junc.get(cx + ',' + cy); if (a) out.push(...a); } return out; }
+}
+
+// ---------- one zombie's brain ----------
+let ZAI_ID = 0;
+class ZombieBrain {
+  constructor(z) {
+    this.z = z; this.id = ++ZAI_ID; this.profile = ZAI_TYPES[z.type.id] || ZAI_TYPES.walker;
+    this.personality = zaiPick(this.profile.weights);
+    this.state = 'WANDERING'; this.inited = false; this.age = 0;
+    this.t = { detect: zaiRand(0.85, 1.2), hear: zaiRand(0.8, 1.25), react: zaiRand(0.8, 1.25), acc: zaiRand(0.8, 1.1), aggr: zaiRand(0.85, 1.15) };   // individual variation
+    this.obey = Math.random();            // how readily it follows group roles (compared with the difficulty's coordination)
+    this.nextThink = Math.random() * 0.5; this.lastThinkT = 0;
+    this.hasTarget = false; this.tx = 0; this.ty = 0; this.arrived = false; this.waitT = 0;
+    this.known = null; this.lastSeen = -99; this.sees = false; this.sound = null; this.reason = '';
+    this.searchLeft = 0; this.searchCenter = null; this.home = null; this.stateT = 0;
+    this.role = null; this.slot = null; this.slotUntil = 0; this.lastSlot = null; this.mistake = null; this.lastShare = -99;
+    this.losT = -99; this.losV = false; this.tier = 0;
+    this.spx = z.x; this.spy = z.y; this.stuckT = 0; this.stuckCount = 0; this.detX = 0; this.detY = 0; this.detourUntil = 0;
+    this.goal = { x: z.x, y: z.y, speed: 1, moving: true, jitter: false, faceMove: true, path: true };
+  }
+  _init(ai) {
+    const z = this.z, p = ai.player; this.inited = true; this.lastThinkT = ai.now; this.home = { x: z.x, y: z.y };
+    // Hunting types start out roughly aware of the player's area (like a noise carrying over the city), NOT of the exact position: they search near it.
+    if (this.personality !== 'wanderer' && Math.random() < ai.diff.alert) {
+      const e = ai.m(ai.diff.shareErr + 8), a = Math.random() * Math.PI * 2;
+      this.known = { x: p.x + Math.cos(a) * zaiRand(0, e), y: p.y + Math.sin(a) * zaiRand(0, e) }; this.lastSeen = ai.now - 99;
+      this._setState('SEARCHING'); this.searchCenter = { x: this.known.x, y: this.known.y }; this.searchLeft = ai.diff.search * 1.5; this._setTarget(this.known.x, this.known.y);
+    } else this._pickWander(ai);
+  }
+  _setState(s) { if (this.state !== s) { this.state = s; this.stateT = 0; this.arrived = false; } }
+  _setTarget(x, y) { this.tx = x; this.ty = y; this.hasTarget = true; this.arrived = false; }
+  get hunting() { return this.state === 'HUNTING' || this.state === 'ATTACKING'; }
+  basicMode() { return this.personality === 'predictor' ? 'intercept' : this.personality === 'flanker' ? 'flank' : 'direct'; }
+  mode() { return this.role || this.basicMode(); }
+
+  // Called by Zombie.update() every frame: touching the player = ATTACKING.
+  contact(touching, ai) {
+    if (touching) { if (this.state !== 'ATTACKING') { this._setState('ATTACKING'); this.known = { x: ai.player.x, y: ai.player.y }; this.lastSeen = ai.now; this.sees = true; } }
+    else if (this.state === 'ATTACKING') this._setState('HUNTING');
+  }
+  onHurt() {   // being shot reveals roughly where the shooter is
+    const ai = window.ZOMBIE_AI; if (!ai || !ai.player || this.hunting) return;
+    this.alertTo(ai.player.x, ai.player.y, 'hurt', ai.m(3), ai);
+  }
+  alertTo(x, y, why, errPx, ai) {
+    if (this.hunting) return;
+    const a = Math.random() * Math.PI * 2, e = Math.random() * errPx;
+    this.sound = { x: x + Math.cos(a) * e, y: y + Math.sin(a) * e, t: ai.now }; this.reason = why; this.searchCenter = { x, y };
+    this._setState('INVESTIGATING'); this._setTarget(this.sound.x, this.sound.y); this.waitT = 0; this.nextThink = Math.min(this.nextThink, 0.3);
+  }
+  hear(ev, d, range, ai) {
+    if (this.hunting) return;
+    const near = 1 - d / range; if (Math.random() > 0.55 + 0.45 * near) return;                // louder / closer = surer
+    if (this.state === 'INVESTIGATING' && this.sound && this.heardScore >= near) return;      // keep following the stronger sound
+    this.heardScore = near; this.alertTo(ev.x, ev.y, ev.kind, ai.m(1.5) + (d / range) * ai.m(10), ai);
+  }
+
+  step(dt, ai, obstacles, navGrid) {
+    const z = this.z; if (!this.inited) this._init(ai);
+    this.age += dt; this.stateT += dt; this.nextThink -= dt;
+    const dx = ai.player.x - z.x, dy = ai.player.y - z.y, d2 = dx * dx + dy * dy;
+    this.tier = d2 < ai.nearPx2 ? 0 : d2 < ZAI.midPx * ZAI.midPx ? 1 : 2;
+    if (this.nextThink <= 0 && ai.takeThink()) this._think(ai, Math.sqrt(d2), navGrid);
+    return this._act(dt, ai, d2, obstacles, navGrid);
+  }
+
+  _think(ai, d, navGrid) {
+    const z = this.z, p = ai.player, D = ai.diff, now = ai.now, P = ZAI_PERS[this.personality];
+    const elapsed = Math.max(0, now - this.lastThinkT); this.lastThinkT = now; ai.stats.think++;
+    const detectR = ai.m(P.detect * this.profile.detect * this.t.detect) * D.detect, trackR = detectR * P.track, hunting = this.hunting;
+    // --- senses ---
+    let sees = false;
+    if (d <= detectR && this.tier < 2) sees = d <= ai.m(ZAI.closeSenseM) || ai.los(this);
+    this.sees = sees; this.detectR = detectR;
+    if (sees) { this.known = { x: p.x, y: p.y }; this.lastSeen = now; if (!hunting) this._startHunt(ai); }
+    else if (hunting && this.state !== 'ATTACKING' && (now - this.lastSeen > P.memory * D.memory || d > trackR)) this._lose(ai);
+    // --- per state ---
+    switch (this.state) {
+      case 'HUNTING': case 'ATTACKING': this._huntTarget(ai, d, navGrid); break;
+      case 'INVESTIGATING':
+        if (this.arrived || this.stateT > 22) { this.searchLeft = D.search * 0.55; this._setState('SEARCHING'); this.waitT = zaiRand(0.8, 1.6); this._nextSearchPoint(ai, navGrid); }
+        break;
+      case 'SEARCHING':
+        this.searchLeft -= elapsed;
+        if (this.searchLeft <= 0) this._toReturning(ai);
+        else if (this.arrived || !this.hasTarget) { this.waitT = zaiRand(0.8, 2.2); this._nextSearchPoint(ai, navGrid); }
+        break;
+      case 'RETURNING': if (this.arrived || this.stateT > 16 || !this.hasTarget) { this._setState('WANDERING'); this._pickWander(ai, navGrid); } break;
+      default: // WANDERING
+        if (this.arrived || !this.hasTarget || Math.random() < 0.06 * elapsed) { if (this.arrived) this.waitT = zaiRand(1, 4); this._pickWander(ai, navGrid); }
+    }
+    // --- when to think next ---
+    const hot = this.state === 'HUNTING' || this.state === 'ATTACKING';
+    let iv = hot ? (this.tier === 0 ? (d < ai.m(12) ? 0.09 : 0.18) : this.tier === 1 ? 0.4 : 0.9) : (this.tier === 0 ? 0.35 : this.tier === 1 ? 0.6 : 1.0);
+    this.nextThink = iv * D.decision * this.t.react * zaiRand(0.85, 1.15);
+  }
+
+  _startHunt(ai) {
+    this._setState('HUNTING'); this.role = null; this.mistake = null; this.slot = null;
+    if (ai.now - this.lastShare > 2) { this.lastShare = ai.now; ai.share(this); }
+  }
+  _lose(ai) {
+    const D = ai.diff; this._setState('SEARCHING'); this.role = null; this.slot = null;
+    this.searchCenter = this.known ? { x: this.known.x, y: this.known.y } : { x: this.z.x, y: this.z.y };
+    this.searchLeft = D.search * zaiRand(0.8, 1.2); this._setTarget(this.searchCenter.x, this.searchCenter.y); this.waitT = 0;
+  }
+  _toReturning(ai) {
+    const h = this.home, p = ai.player;
+    if (!h || Math.hypot(h.x - p.x, h.y - p.y) > ZAI.leashPx) this.home = { x: this.z.x, y: this.z.y };   // its old patch is out of reach: patrol where it is
+    this._setState('RETURNING'); this._setTarget(this.home.x, this.home.y); this.waitT = 0;
+  }
+  _nextSearchPoint(ai, navGrid) {
+    const c = this.searchCenter || { x: this.z.x, y: this.z.y }, R = ai.m(14);
+    let q = ai.streets.randomNear(c.x, c.y, ai.m(2), R);
+    if (!q) { const a = Math.random() * Math.PI * 2, r = zaiRand(ai.m(3), R); q = { x: c.x + Math.cos(a) * r, y: c.y + Math.sin(a) * r }; }
+    const w = ai.walkable(q.x, q.y, this.z.x, this.z.y); this._setTarget(w.x, w.y);
+  }
+  _pickWander(ai, navGrid) {
+    const z = this.z, p = ai.player; this.hasTarget = false; this.arrived = false;
+    // something interesting nearby (an item on the ground, a place a sound came from) is sometimes worth a look
+    if (Math.random() < 0.12) {
+      const poi = ai.interest(z);
+      if (poi) { this._setState('INVESTIGATING'); this.reason = 'poi'; this.sound = { x: poi.x, y: poi.y, t: ai.now }; this.searchCenter = { x: poi.x, y: poi.y }; this._setTarget(poi.x, poi.y); return; }
+    }
+    this._setState('WANDERING');
+    if (!this.home || Math.hypot(this.home.x - p.x, this.home.y - p.y) > ZAI.leashPx) this.home = { x: z.x, y: z.y };
+    const from = Math.random() < 0.65 ? this.home : z, rr = ai.m(zaiRand(10, 40));
+    let q = ai.streets.randomNear(from.x, from.y, ai.m(6), rr);
+    if (!q) { const a = Math.random() * Math.PI * 2; q = { x: from.x + Math.cos(a) * rr, y: from.y + Math.sin(a) * rr }; }
+    if (Math.hypot(q.x - p.x, q.y - p.y) > ZAI.leashPx) { const a = Math.atan2(p.y - z.y, p.x - z.x) + zaiRand(-1, 1); q = { x: z.x + Math.cos(a) * ai.m(25), y: z.y + Math.sin(a) * ai.m(25) }; }
+    const w = ai.walkable(q.x, q.y, z.x, z.y); this._setTarget(w.x, w.y);
+  }
+
+  // ---- where a HUNTING zombie wants to go ----
+  _huntTarget(ai, d, navGrid) {
+    const z = this.z, p = ai.player, D = ai.diff, P = ZAI_PERS[this.personality];
+    this.jitter = false;
+    if (!this.sees && this.state !== 'ATTACKING' && this.known) { this._setTarget(this.known.x, this.known.y); return; }   // no eyes on the player: go where it was last seen
+    let mode = this.mode();
+    if (this.profile.hybrid && d < ai.m(14)) mode = 'direct';
+    if (d <= ai.m(P.engage)) mode = 'direct';
+    let tx = p.x, ty = p.y;
+    if (mode === 'direct') {
+      if (this.profile.blocker && d < ai.m(32) && ai.pspeed > 40) { const lead = Math.min(ai.m(4), d * 0.5); tx = p.x + ai.pdir.x * lead; ty = p.y + ai.pdir.y * lead; }   // brute: stand in the way
+      else this.jitter = d > ai.m(8);
+    } else if (mode === 'intercept') [tx, ty] = this._predict(ai, d);
+    else if (mode === 'flank') [tx, ty] = this._flank(ai, d);
+    else if (mode === 'route') [tx, ty] = this._route(ai, d);
+    if (mode !== 'direct' || tx !== p.x) { const w = ai.walkable(tx, ty, p.x, p.y); tx = w.x; ty = w.y; }
+    this._setTarget(tx, ty);
+  }
+  _predict(ai, d) {
+    const p = ai.player, D = ai.diff, z = this.z;
+    if (ai.pspeed < 25) return [p.x, p.y];                                   // standing still: nothing to predict
+    if (this.mistake && ai.turnT > this.mistake.t) this.mistake = null;       // it changed direction: the old guess is void
+    if (!this.mistake || ai.now > this.mistake.until) this.mistake = { t: ai.now, until: ai.now + zaiRand(1.5, 3), wrong: Math.random() < D.mistake, rot: zaiRand(-1.05, 1.05), scale: zaiRand(0.3, 1.6) };
+    const tm = Math.min(4, Math.max(0.4, d / Math.max(z.speed, 40))) * D.acc * this.t.acc;
+    let lead = Math.min(ai.pspeed * tm, ai.m(D.maxLead)), dx = ai.pdir.x, dy = ai.pdir.y;
+    if (ai.now - ai.turnT < 0.8) lead *= 0.5;                                 // just turned: be careful with the guess
+    if (this.mistake.wrong) { const c = Math.cos(this.mistake.rot), s = Math.sin(this.mistake.rot); [dx, dy] = [dx * c - dy * s, dx * s + dy * c]; lead *= this.mistake.scale; }
+    let tx = p.x + dx * lead, ty = p.y + dy * lead;
+    if (!this.mistake.wrong && Math.random() < D.junction) {                   // intercept at the intersection the player is heading for
+      const j = ai.streets.junctionAhead(p.x, p.y, dx, dy, lead * 0.45, lead * 1.5 + ai.m(6), 0.7); if (j) { tx = j.x; ty = j.y; }
+    }
+    return [tx, ty];
+  }
+  _flank(ai, d) {
+    const p = ai.player, z = this.z, D = ai.diff;
+    if (this.slot === null || ai.now > this.slotUntil) this._pickSlot(ai);
+    const ang = ai.pheading + this.slot * Math.PI / 4, ring = ai.m(8 + (this.id % 3));
+    let tx = p.x + Math.cos(ang) * ring, ty = p.y + Math.sin(ang) * ring;
+    if (this.slot >= -1 && this.slot <= 1 && ai.pspeed > 40) {                // cut-off: a junction on the way the player is running
+      const j = ai.streets.junctionAhead(p.x, p.y, ai.pdir.x, ai.pdir.y, ai.m(8), ai.m(24), 0.8); if (j) { tx = j.x; ty = j.y; }
+    } else if (Math.random() < 0.7) { const s = ai.streets.nearest(tx, ty, ai.m(7)); if (s && Math.hypot(s.x - p.x, s.y - p.y) > ai.m(3)) { tx = s.x; ty = s.y; } }
+    return [tx, ty];
+  }
+  _pickSlot(ai) {
+    const p = ai.player, z = this.z, bearing = Math.atan2(z.y - p.y, z.x - p.x), cand = [2, -2, 4, 3, -3, 1, -1, 0];
+    const ahead = Math.abs(zaiAngDiff(bearing, ai.pheading)) < 1.2;
+    let best = 2, bs = 1e9;
+    for (const s of cand) {
+      const a = ai.pheading + s * Math.PI / 4, k = ((s % 8) + 8) % 8;
+      let cost = Math.abs(zaiAngDiff(a, bearing)) / Math.PI * 2 + ai.slotUse[k] * 1.6 + (s === this.lastSlot ? 1.3 : 0) + Math.random();
+      if (Math.abs(s) <= 1 && !ahead) cost += 1.2;                          // front slots only for zombies that are already in front
+      if (cost < bs) { bs = cost; best = s; }
+    }
+    this.lastSlot = this.slot; this.slot = best; this.slotUntil = ai.now + zaiRand(2.5, 4.5); ai.slotUse[((best % 8) + 8) % 8]++;
+  }
+  _route(ai, d) {
+    const p = ai.player, j = ai.streets.junctionAhead(p.x, p.y, ai.pdir.x, ai.pdir.y, ai.m(6), ai.m(26), 1.4) || ai.streets.junctionNear(p.x, p.y, ai.m(20));
+    return j ? [j.x, j.y] : this._predict(ai, d);
+  }
+
+  // ---- moving: returns the goal the Zombie walks toward this frame ----
+  _act(dt, ai, d2, obstacles, navGrid) {
+    const z = this.z, g = this.goal, hot = this.hunting;
+    g.moving = true; g.jitter = hot && this.jitter && this.sees; g.path = this.tier < 2; g.faceMove = !(hot && this.sees);
+    if (!hot && this.waitT > 0) { this.waitT -= dt; g.moving = false; g.x = z.x; g.y = z.y; g.speed = 0; this.spx = z.x; this.spy = z.y; this.stuckT = 0; return g; }
+    if (!this.hasTarget) { if (hot) { g.x = ai.player.x; g.y = ai.player.y; } else { g.moving = false; g.x = z.x; g.y = z.y; this.nextThink = Math.min(this.nextThink, 0.1); } }
+    else { g.x = this.tx; g.y = this.ty; }
+    g.speed = ZAI.speed[this.state] * (this.state === 'HUNTING' && !this.sees ? 0.95 : 1);
+    const tdx = g.x - z.x, tdy = g.y - z.y, tdist2 = tdx * tdx + tdy * tdy;
+    if (!hot && this.hasTarget && !this.arrived) { const R = ai.m(2.2) + z.radius; if (tdist2 < R * R) { this.arrived = true; this.nextThink = Math.min(this.nextThink, 0.05); } }
+    if (this.detourUntil > ai.now) { g.x = this.detX; g.y = this.detY; g.jitter = false; g.faceMove = true; }
+    // stuck against a wall / car / another zombie? (not while crowding the player)
+    this.stuckT += dt;
+    if (this.stuckT >= 0.8) {
+      const moved = Math.hypot(z.x - this.spx, z.y - this.spy), want = z.speed * g.speed * 0.8 * 0.3;
+      if (g.moving && moved < want && tdist2 > ai.m(3) * ai.m(3) && !(hot && d2 < ai.m(4) * ai.m(4))) this._unstick(ai, obstacles, navGrid); else if (moved >= want) this.stuckCount = 0;
+      this.spx = z.x; this.spy = z.y; this.stuckT = 0;
+    }
+    return g;
+  }
+  _unstick(ai, obstacles, navGrid) {
+    const z = this.z; this.stuckCount++; ai.stats.unstick++; z.path = null; z.pathRecalcTimer = 0;
+    if (!this.hunting && this.stuckCount % 3 === 0) { this.hasTarget = false; this.arrived = true; this.nextThink = 0; return; }   // give up on this destination
+    const base = Math.atan2(this.ty - z.y, this.tx - z.x);
+    for (let k = 0; k < 6; k++) {
+      const a = base + (k % 2 ? 1 : -1) * (1.0 + k * 0.45) + zaiRand(-0.2, 0.2), r = ai.m(5), x = z.x + Math.cos(a) * r, y = z.y + Math.sin(a) * r;
+      if (navGrid) { const c = navGrid.worldToCell(x, y); if (navGrid.isBlockedCell(c.col, c.row)) continue; }
+      if (obstacles && !Utils.hasLineOfSight(z.x, z.y, x, y, obstacles)) continue;
+      this.detX = x; this.detY = y; this.detourUntil = ai.now + 0.9; return;
+    }
+  }
+}
+
+// ---------- the manager: one per game ----------
+class ZombieAIManager {
+  constructor(game) {
+    this.game = game; this.enabled = true; this.debug = false; this.now = 0; this.ppm = 9; this.nearPx2 = 0;
+    this.streets = new ZombieStreets(this); this.player = null; this.zombies = [];
+    this.pvel = { x: 0, y: 0 }; this.pspeed = 0; this.pdir = { x: 1, y: 0 }; this.pheading = 0; this.turnT = -99; this.prev = null; this.hist = [];
+    this.stepT = 0; this.walkT = 0; this.slotUse = new Int8Array(8); this.coordT = 0;
+    this.diffKey = 'normal'; this.diff = ZAI_DIFF.normal; this.bud = { think: 0, path: 0, los: 0 };
+    this.stats = { think: 0, path: 0, los: 0, unstick: 0, recycled: 0, rate: { think: 0, path: 0, los: 0 }, t: 0 };
+    this._w = { x: 0, y: 0 }; this.mem = [];   // mem: recent sound spots wanderers may check out
+  }
+  m(v) { return v * this.ppm; }
+  setDebug(on) { this.debug = !!on; const c = document.getElementById('aiDebugToggle'); if (c) c.checked = this.debug; }
+  takeThink() { if (this.bud.think > 0) { this.bud.think--; return true; } return false; }
+  takePath() { if (this.bud.path > 0) { this.bud.path--; this.stats.path++; return true; } return false; }
+  // Can this zombie see the player? Line-of-sight is cached for 0.25 s per zombie and limited per frame.
+  los(b) {
+    if (this.now - b.losT < 0.25) return b.losV;
+    if (this.bud.los <= 0) return b.losV;
+    this.bud.los--; this.stats.los++; b.losT = this.now;
+    b.losV = Utils.hasLineOfSight(b.z.x, b.z.y, this.player.x, this.player.y, this.game.obstacles || null);
+    return b.losV;
+  }
+  // The nearest walkable spot to (x, y): if that cell is blocked, back off toward (fx, fy), then fall back to the nearest open nav cell.
+  walkable(x, y, fx, fy) {
+    const ng = this.game.navGrid, o = this._w; o.x = x; o.y = y; if (!ng) return o;
+    let c = ng.worldToCell(x, y);
+    if (!ng.isBlockedCell(c.col, c.row)) return o;
+    for (let k = 1; k <= 8; k++) { const t = k / 8, qx = x + (fx - x) * t, qy = y + (fy - y) * t; c = ng.worldToCell(qx, qy); if (!ng.isBlockedCell(c.col, c.row)) { o.x = qx; o.y = qy; return o; } }
+    c = ng._nearestOpenCell(c.col, c.row); const q = ng.cellCenter(c.col, c.row); o.x = q.x; o.y = q.y; return o;
+  }
+  interest(z) {   // an item lying around, or a place a sound recently came from
+    const g = this.game; let best = null, bd = this.m(45);
+    for (const pk of g.pickups || []) { if (pk.alive === false) continue; const d = Math.hypot(pk.x - z.x, pk.y - z.y); if (d < bd && Math.random() < 0.5) { bd = d; best = pk; } }
+    if (!best && this.mem.length) best = this.mem[Math.floor(Math.random() * this.mem.length)];
+    return best ? { x: best.x, y: best.y } : null;
+  }
+  // A zombie that has just spotted the player tells nearby zombies roughly where: they go and look (INVESTIGATING), they do not learn the exact position.
+  share(b) {
+    const D = this.diff, R = this.m(D.share), z = b.z, p = this.player; if (!b.known) return;
+    for (const o of this.zombies) {
+      if (o === z || !o.brain || o.alive === false || o.brain.hunting) continue;
+      if (Math.random() > 0.35 + 0.65 * D.coord) continue;
+      const d = Math.hypot(o.x - z.x, o.y - z.y); if (d > R) continue;
+      o.brain.alertTo(b.known.x, b.known.y, 'shared', this.m(D.shareErr) + d * 0.1, this);
+    }
+  }
+  update(dt, game) {
+    if (!this.enabled) return;
+    const p = game.player; this.player = p; this.zombies = game.zombies; this.ppm = game._pxPerMeter() || 9; this.now += dt; this.nearPx2 = this.m(ZAI.nearM) ** 2;
+    const key = CONFIG.activeDifficulty; if (key !== this.diffKey) { this.diffKey = key; this.diff = ZAI_DIFF[key] || ZAI_DIFF.normal; }
+    this.bud.think = ZAI.budget.think; this.bud.path = ZAI.budget.path; this.bud.los = ZAI.budget.los;
+    this.stats.t += dt; if (this.stats.t >= 1) { const s = this.stats; s.rate = { think: s.think, path: s.path, los: s.los }; s.think = s.path = s.los = 0; s.t = 0; }
+    // --- what the player is doing (speed, heading, turns) ---
+    if (this.prev && dt > 0) {
+      const a = 1 - Math.exp(-dt * 6), vx = (p.x - this.prev.x) / dt, vy = (p.y - this.prev.y) / dt;
+      if (Math.hypot(vx, vy) < 2000) { this.pvel.x += (vx - this.pvel.x) * a; this.pvel.y += (vy - this.pvel.y) * a; }
+    }
+    this.prev = { x: p.x, y: p.y }; this.pspeed = Math.hypot(this.pvel.x, this.pvel.y);
+    if (this.pspeed > 30) {
+      const h = Math.atan2(this.pvel.y, this.pvel.x); this.pheading = h; this.pdir.x = this.pvel.x / this.pspeed; this.pdir.y = this.pvel.y / this.pspeed;
+      this.hist.push([this.now, h]); while (this.hist.length && this.now - this.hist[0][0] > 0.9) this.hist.shift();
+      if (this.hist.length > 3 && Math.abs(zaiAngDiff(h, this.hist[0][1])) > 0.9) { this.turnT = this.now; this.hist.length = 0; }
+    }
+    // --- the noise the player makes by moving ---
+    if (p.isMoving) {
+      if (p.isSprinting) { this.stepT += dt; if (this.stepT >= ZAI.runEvery) { this.stepT = 0; ZOMBIE_SOUND.emit(p.x, p.y, ZAI.sounds.run, 'run'); } }
+      else { this.walkT += dt; if (this.walkT >= ZAI.walkEvery) { this.walkT = 0; ZOMBIE_SOUND.emit(p.x, p.y, ZAI.sounds.walk, 'walk'); } }
+    }
+    this.streets.refresh();
+    this._hearing();
+    this.coordT -= dt; if (this.coordT <= 0) { this.coordT = ZAI.coordEvery; this._coordinate(); }
+    this._recycle();
+  }
+  _hearing() {
+    const S = ZOMBIE_SOUND, ev = S.pending; if (!ev.length) { this._ageRecent(); return; }
+    for (const e of ev) {
+      S.recent.push(e); if (e.kind === 'shot' || e.kind === 'explosion') { this.mem.push({ x: e.x, y: e.y }); if (this.mem.length > 6) this.mem.shift(); }
+      const R = this.m(e.r);
+      for (const z of this.zombies) {
+        const b = z.brain; if (!b || z.alive === false) continue;
+        const range = R * this.diff.hear * b.profile.hear * b.t.hear, d = Math.hypot(z.x - e.x, z.y - e.y);
+        if (d <= range) b.hear(e, d, range, this);
+      }
+    }
+    ev.length = 0; this._ageRecent();
+  }
+  _ageRecent() { const S = ZOMBIE_SOUND; while (S.recent.length && this.now - S.recent[0].t > 2.5) S.recent.shift(); }
+  // Roles for zombies that are hunting: not everyone takes the same route.
+  _coordinate() {
+    const p = this.player, D = this.diff, R2 = this.m(ZAI.groupRangeM) ** 2, H = [];
+    this.slotUse.fill(0);
+    for (const z of this.zombies) {
+      const b = z.brain; if (!b || z.alive === false || b.state !== 'HUNTING') { if (b) { b.role = null; b.slot = null; } continue; }
+      if ((z.x - p.x) ** 2 + (z.y - p.y) ** 2 > R2) { b.role = null; continue; }
+      H.push(b);
+    }
+    for (const b of H) if (b.slot !== null) this.slotUse[((b.slot % 8) + 8) % 8]++;
+    if (H.length < 2) { for (const b of H) b.role = null; return; }
+    H.sort((a, c) => a.id - c.id);
+    let accF = 0, accR = 0;
+    for (const b of H) {
+      b.role = null; if (b.basicMode() !== 'direct' || b.obey > D.coord) continue;
+      const d = Math.hypot(b.z.x - p.x, b.z.y - p.y); if (d < this.m(14)) continue;      // close ones just attack
+      accF += D.flankFrac; if (accF >= 1) { accF -= 1; b.role = 'flank'; continue; }
+      accR += D.routeFrac; if (accR >= 1) { accR -= 1; b.role = 'route'; }
+    }
+  }
+  _recycle() {
+    const p = this.player, R2 = ZAI.recyclePx ** 2, g = this.game;
+    if (((this.now * 2) | 0) === this._rc) return; this._rc = (this.now * 2) | 0;
+    for (const z of this.zombies) {
+      const b = z.brain; if (!b || z.alive === false || z.type.isBoss || b.age < 10) continue;
+      if ((z.x - p.x) ** 2 + (z.y - p.y) ** 2 > R2) { z.alive = false; this.stats.recycled++; }   // quietly removed (no kill, no drop); the spawner refills near the player
+    }
+  }
+
+  // ---------- debug overlay (F9 / Test Mode > Zombie AI Debug) ----------
+  drawDebug(ctx, cam, view) {
+    if (!this.debug || !this.player) return;
+    const W = view.width, H = view.height, ring = (cx, cy, r, n) => { ctx.beginPath(); for (let i = 0; i <= n; i++) { const a = i / n * Math.PI * 2, s = cam.worldToScreen(cx + Math.cos(a) * r, cy + Math.sin(a) * r, view); i ? ctx.lineTo(s.x, s.y) : ctx.moveTo(s.x, s.y); } ctx.stroke(); };
+    ctx.save(); ctx.font = '9px monospace'; ctx.textAlign = 'center'; ctx.lineWidth = 1; ctx.setLineDash([]);
+    const p = this.player;
+    // streets the AI knows
+    ctx.strokeStyle = 'rgba(80,220,255,0.35)'; ctx.beginPath();
+    for (const s of this.streets.segsNear(p.x, p.y, 1100)) { const a = cam.worldToScreen(s.ax, s.ay, view), b = cam.worldToScreen(s.bx, s.by, view); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); }
+    ctx.stroke(); ctx.fillStyle = 'rgba(255,230,90,0.8)';
+    for (const j of this.streets.junctionsNear(p.x, p.y, 1100)) { const s = cam.worldToScreen(j.x, j.y, view); ctx.fillRect(s.x - 2, s.y - 2, 4, 4); }
+    // sounds that were just heard
+    for (const e of ZOMBIE_SOUND.recent) { const age = this.now - e.t; ctx.strokeStyle = `rgba(255,255,255,${Math.max(0, 0.7 - age / 2.5 * 0.7)})`; ctx.setLineDash([3, 5]); ring(e.x, e.y, this.m(e.r) * Math.min(1, 0.3 + age), 32); }
+    ctx.setLineDash([]);
+    const cnt = {}, st = {};
+    for (const z of this.zombies) {
+      const b = z.brain; if (!b || z.alive === false) continue;
+      cnt[b.personality] = (cnt[b.personality] || 0) + 1; st[b.state] = (st[b.state] || 0) + 1;
+      const s = cam.worldToScreen(z.x, z.y, view); if (s.x < -150 || s.x > W + 150 || s.y < -150 || s.y > H + 150) continue;
+      const col = ZAI_PERS[b.personality].color; ctx.strokeStyle = col; ctx.fillStyle = col;
+      ctx.lineWidth = 2; ring(z.x, z.y, z.radius + 4, 14); ctx.lineWidth = 1;
+      if (b.detectR) { ctx.globalAlpha = 0.45; ctx.setLineDash([6, 6]); ring(z.x, z.y, b.detectR, 28); }                                         // detection radius (dashed)
+      ctx.globalAlpha = 0.3; ctx.setLineDash([2, 5]); ring(z.x, z.y, this.m(ZAI.sounds.pistol) * this.diff.hear * b.profile.hear * b.t.hear, 28);   // hearing radius for a pistol shot (dotted)
+      ctx.setLineDash([]); ctx.globalAlpha = 0.9;
+      if (b.hasTarget || z.path) {
+        ctx.beginPath(); ctx.moveTo(s.x, s.y);
+        if (z.path && z.path.length) for (let i = z.pathIndex; i < z.path.length; i++) { const q = cam.worldToScreen(z.path[i].x, z.path[i].y, view); ctx.lineTo(q.x, q.y); }   // current A* path
+        const t = cam.worldToScreen(b.tx, b.ty, view); ctx.lineTo(t.x, t.y); ctx.stroke();
+        ctx.strokeRect(t.x - 4, t.y - 4, 8, 8);                                                                                                        // destination
+      }
+      ctx.globalAlpha = 1; ctx.fillStyle = 'rgba(0,0,0,0.6)'; const label = `${ZAI_PERS[b.personality].label} · ${b.state}${b.hunting ? ' · ' + b.mode().toUpperCase() : ''}${b.sees ? ' · SEES YOU' : ''}`;
+      const wdt = ctx.measureText(label).width + 6; ctx.fillRect(s.x - wdt / 2, s.y - z.radius - 34, wdt, 12); ctx.fillStyle = b.sees ? '#fff' : col; ctx.fillText(label, s.x, s.y - z.radius - 25);
+    }
+    // legend
+    const lines = [`ZOMBIE AI DEBUG (F9)  ${this.diffKey.toUpperCase()}  streets: ${this.streets.nSeg} seg / ${this.streets.nJunc} junctions`, `per second: ${this.stats.rate.think} thinks  ${this.stats.rate.path} paths  ${this.stats.rate.los} LOS  ${this.stats.unstick} unstuck  ${this.stats.recycled} recycled`,
+      Object.keys(ZAI_PERS).map((k) => `${ZAI_PERS[k].label} ${cnt[k] || 0}`).join('   '), Object.keys(st).map((k) => `${k} ${st[k]}`).join('   ')];
+    const lx = Math.max(8, W / 2 - 260); ctx.textAlign = 'left'; ctx.fillStyle = 'rgba(0,0,0,0.65)'; ctx.fillRect(lx, 6, 520, 14 * lines.length + 6); ctx.font = '10px monospace';
+    lines.forEach((t, i) => { ctx.fillStyle = i === 2 ? '#fff' : '#9fe'; ctx.fillText(t, lx + 4, 20 + i * 14); });
+    let x = 12; ctx.font = '10px monospace'; for (const k of Object.keys(ZAI_PERS)) { ctx.fillStyle = ZAI_PERS[k].color; ctx.fillRect(x, 78 + 14 * 2 - 9, 8, 8); x += 0; }
+    ctx.restore();
+  }
+}
+window.addEventListener('keydown', (e) => { if (e.code === 'F9' && window.ZOMBIE_AI) { e.preventDefault(); window.ZOMBIE_AI.setDebug(!window.ZOMBIE_AI.debug); } });
   </script>
   <script>
 /**
@@ -9319,6 +9914,7 @@ class Game {
     this.camera = new Camera();
     this.hud = new HUD();
     this.spawner = new SpawnSystem();
+    this.zombieAI = window.ZOMBIE_AI = new ZombieAIManager(this);   // Pac-Man-style zombie brains (zombieAI.js)
     this.weaponUnlocks = new WeaponUnlockSystem();
     this.shop = new ShopSystem(this); // upgrade shop every 2 minutes (see shop.js)
     this.achMenu = new AchievementMenu(ACH); // achievements menu (see achievements.js)
@@ -9482,6 +10078,8 @@ class Game {
     bindToggle('tmZombies', 'zombies');
     bindToggle('tmFastShop', 'fastShop');
     bindToggle('tmShopCash', 'shopCash');
+    document.getElementById('aiDebugToggle').addEventListener('change', (e) => { this.zombieAI.setDebug(e.target.checked); Sound.uiClick(); });   // debug overlay only: not a cheat, doesn't count as Test Mode
+    document.getElementById('tmAiForce').addEventListener('change', (e) => { TEST_MODE.aiForce = e.target.value; Sound.uiClick(); refreshTestModeBtn(); });
     testModeBtn.addEventListener('click', () => {
       Sound.uiClick();
       document.getElementById('startScreen').classList.add('hidden');
@@ -9715,6 +10313,7 @@ class Game {
     this._drawGrenades(ctx, view);
     this.fx.draw(ctx, this.camera, view, occ, k, { x: snap.px, y: snap.py }, false);
     this._drawExplosions(ctx, view);
+    this.zombieAI.drawDebug(ctx, this.camera, view);   // dev-only overlay (off unless F9 / Test Mode)
     this._drawFloatingTexts(ctx, view);
     ctx.restore();
     w.drawReadout(ctx); // F3: lat/lng, ground height, active collision (screen space)
@@ -10117,6 +10716,7 @@ class Game {
           this._meleeAttack(weapon);
           ACH.fired(weapon.config);
           Sound.shoot(weapon.config.id);
+          ZOMBIE_SOUND.weapon(weapon.config.id, this.player.x, this.player.y);   // zombies can hear a swing / chainsaw
         } else if (firePressed && weapon.config.fuelTank && weapon.currentAmmo === 0) {
           Sound.emptyClick(); // chainsaw out of gas
         }
@@ -10143,6 +10743,7 @@ class Game {
           ACH.fired(weapon.config);
           this.fx.muzzle(weapon.config, this.player, specs[0]);
           Sound.shoot(weapon.config.id);
+          ZOMBIE_SOUND.weapon(weapon.config.id, this.player.x, this.player.y);   // zombies can hear the shot (louder weapons carry further)
         }
       }
     }
@@ -10154,8 +10755,9 @@ class Game {
     // stays untouched rather than needing a Sound reference threaded
     // into Zombie/Player just for this one event).
     const healthBeforeZombies = this.player.health;
+    this.zombieAI.update(dt, this);   // player tracking, heard sounds, group roles, street index (once per frame)
     for (const zombie of this.zombies) {
-      zombie.update(dt, this.player, this.obstacles, world.width, world.height, this.navGrid);
+      zombie.update(dt, this.player, this.obstacles, world.width, world.height, this.navGrid, this.zombieAI);
     }
     if (this.player.health < healthBeforeZombies) {
       Sound.playerHurt();
@@ -10457,6 +11059,7 @@ class Game {
 
     this._addExplosion(x, y, splashRadius);
     Sound.explosion();
+    ZOMBIE_SOUND.emit(x, y, ZAI.sounds.explosion, 'explosion');   // a very loud sound event at the blast
   }
 
   // Brief red frame around the screen while the peanut is hurt (set by Player.takeDamage only when damage really landed).
@@ -10515,6 +11118,7 @@ class Game {
   // capped at the max distance, same as the user asked for.
   _throwGrenade(weapon) {
     const player = this.player;
+    ZOMBIE_SOUND.emit(player.x, player.y, ZAI.sounds.grenade, 'throw');
     const cursorWorld = this.camera.aimPointAt(this.input.mouseX, this.input.mouseY, this.canvas);
 
     const dx = cursorWorld.x - player.x;
@@ -10760,6 +11364,7 @@ class Game {
     this._drawGrenades(ctx, canvas);
     this.fx.draw(ctx, this.camera, canvas, null, zoom, { x: this.player.x, y: this.player.y }, true);
     this._drawExplosions(ctx, canvas);
+    this.zombieAI.drawDebug(ctx, this.camera, canvas);   // dev-only overlay (off unless F9 / Test Mode)
     this._drawFloatingTexts(ctx, canvas);
     ctx.restore();
     this._drawWeaponPointers(ctx, realCanvas); // screen space: arrows to weapon pickups that are out of sight
