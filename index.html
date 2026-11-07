@@ -2229,7 +2229,7 @@ const EMBEDDED_ASSETS = {
     <!-- ===================== Start overlay (home page) ===================== -->
     <div id="startScreen" class="overlay homePage">
       <!-- Version: major.minor.patch. The patch digit goes 0-9 and rolls into the minor number (v3.88.9 -> v3.89.0); the minor number is two digits and rolls into the major number (v3.99.9 -> v4.00.0). Bumped by 1 on every change. -->
-      <div id="versionTag" class="versionTag">v3.93.5</div>
+      <div id="versionTag" class="versionTag">v3.93.7</div>
       <div id="homeSidebar" class="homeSidebar">
         <div class="homeSidebarTitle">Your Stats</div>
         <div id="homeLevel" class="homeLevel"></div>
@@ -5603,7 +5603,7 @@ class Player extends Entity {
     this.health = CONFIG.PLAYER.startHealth;
     // Shop (see shop.js): cash from kills (separate from ammo etc.) and purchased levels.
     this.money = 0;
-    this.upgrades = { health: 0, stamina: 0 };
+    this.upgrades = { health: 0, stamina: 0, speed: 0 };
     this.maxStamina = CONFIG.PLAYER.maxStamina;
     this.speed = CONFIG.PLAYER.speed;
 
@@ -7195,6 +7195,11 @@ const SHOP_CONFIG = {
       maxLevel: 6, basePrice: 80, priceGrowth: 1.45,
       perLevel: 20,          // +20 max stamina per level (100 -> 220 at max)
     },
+    speed: {
+      name: 'MOVE SPEED', desc: 'Run faster. Walking and sprinting are both quicker.',
+      maxLevel: 5, basePrice: 90, priceGrowth: 1.45,
+      perLevel: 0.06,        // +6% of base movement speed per level (+30% at max)
+    },
   },
 
   // ---- weapon upgrades ----------------------------------------------
@@ -7322,6 +7327,7 @@ class ShopSystem {
     p.maxStamina = CONFIG.PLAYER.maxStamina + (p.upgrades.stamina || 0) * pc.stamina.perLevel;
     p.health = Math.min(p.health, p.maxHealth);
     p.stamina = Math.min(p.stamina, p.maxStamina);
+    p.speed = CONFIG.PLAYER.speed * (1 + (p.upgrades.speed || 0) * pc.speed.perLevel);   // Move Speed upgrade (walk and sprint)
   }
 
   // Fresh run (called from Game.start): timer back to the first interval, shop closed.
@@ -7429,7 +7435,7 @@ class ShopSystem {
     if (!this._spend(price)) return;
     p.upgrades[kind] = lvl + 1;
     ShopSystem.applyPlayerStats(p);
-    ACH.purchase(kind, price, { healthLvl: p.upgrades.health, staminaLvl: p.upgrades.stamina, healthMax: SHOP_CONFIG.player.health.maxLevel, staminaMax: SHOP_CONFIG.player.stamina.maxLevel });
+    ACH.purchase(kind, price, { healthLvl: p.upgrades.health, staminaLvl: p.upgrades.stamina, speedLvl: p.upgrades.speed, healthMax: SHOP_CONFIG.player.health.maxLevel, staminaMax: SHOP_CONFIG.player.stamina.maxLevel, speedMax: SHOP_CONFIG.player.speed.maxLevel });
     if (kind === 'health' && cfg.healOnBuy > 0) p.heal(cfg.healOnBuy);
     this._done(`${cfg.name} UPGRADED TO LV ${lvl + 1}`);
   }
@@ -7474,9 +7480,10 @@ class ShopSystem {
     const cfg = SHOP_CONFIG.player[kind], p = this.game.player;
     const lvl = p.upgrades[kind] || 0;
     const base = kind === 'health' ? CONFIG.PLAYER.maxHealth : CONFIG.PLAYER.maxStamina;
+    const pct = (n) => '+' + Math.round(n * cfg.perLevel * 100) + '%';   // Move Speed is shown as a bonus on top of the normal speed
     return this._item({
       name: cfg.name, desc: cfg.desc, level: lvl, maxLevel: cfg.maxLevel,
-      cur: base + lvl * cfg.perLevel, next: base + (lvl + 1) * cfg.perLevel,
+      cur: kind === 'speed' ? pct(lvl) : base + lvl * cfg.perLevel, next: kind === 'speed' ? pct(lvl + 1) : base + (lvl + 1) * cfg.perLevel,
       price: ShopMath.price(cfg.basePrice, cfg.priceGrowth, lvl),
       act: 'buy-player', attrs: `data-kind="${kind}"`,
     });
@@ -7520,7 +7527,7 @@ class ShopSystem {
     } else {
       pick.classList.add('hidden');
       pick.innerHTML = '';
-      list.innerHTML = this._playerItem(this.tab === 'stamina' ? 'stamina' : 'health');
+      list.innerHTML = this.tab === 'stamina' ? this._playerItem('stamina') + this._playerItem('speed') : this._playerItem('health');   // STAMINA tab: max stamina + move speed
     }
 
     const m = document.getElementById('shopMessage');
@@ -7590,9 +7597,7 @@ function ach(id, cat, tier, name, desc, icon, target, val, ev, fmt, secret) {
 }
 // Proposed achievements that need a mechanic this game does not have. Shown greyed-out under "Coming soon"; never counted or unlockable.
 const ACH_FUTURE = [
-  { id: 'f_old_school',   cat: 'weapon',   name: 'Old-School Combat',  need: 'Needs a knife weapon (the knife was replaced by the hammer).' },
   { id: 'f_ammo_conserv', cat: 'weapon',   name: 'Ammo Conservation',  need: 'Needs bullet hit/miss tracking (not tracked yet).' },
-  { id: 'f_speed_demon',  cat: 'progress', name: 'Speed Demon',        need: 'Needs a movement-speed upgrade (the shop has none).' },
   { id: 'f_iron_peanut',  cat: 'survival', name: 'Iron Peanut',        need: 'Needs a way to finish a run (runs only end by dying).' },
   { id: 'f_perfect_run',  cat: 'challenge',name: 'Perfect Run',        need: 'Needs a way to complete a run (runs only end by dying).' },
   { id: 'f_secret_stash', cat: 'secret',   name: 'Secret Stash',       need: 'Needs a real hidden interaction (none exists).' },
@@ -7644,6 +7649,7 @@ ach('spray_and_pray',   'weapon', 'silver', 'Spray and Pray',   'Kill 100 zombie
 ach('fire_starter',     'weapon', 'silver', 'Fire Starter',     'Kill 100 zombies with the flamethrower.', 'FL', 100, WK('flamethrower'), ['kill']);
 ach('rocket_science',   'weapon', 'silver', 'Rocket Science',   'Kill 50 zombies with the RPG.',         'RP', 50,  WK('rpg'), ['kill']);
 ach('chop_shop',        'weapon', 'silver', 'Chop Shop',        'Kill 100 zombies with the chainsaw.',   'CH', 100, WK('chainsaw'), ['kill']);
+ach('old_school',       'weapon', 'gold',   'Old-School Combat','Kill 250 zombies with the hammer.',     'OS', 250, WK('hammer'), ['kill']);
 ach('hammer_time',      'weapon', 'bronze', 'Hammer Time',      'Kill 50 zombies with the hammer.',      'HM', 50,  WK('hammer'), ['kill']);
 ach('explosive_personality','weapon','silver','Explosive Personality','Kill 50 zombies with grenades.',  'GR', 50,  WK('grenade'), ['kill']);
 ach('jack_of_all_trades','weapon','silver', 'Jack of All Trades','Get at least one kill with five different weapons.', 'J5', 5, (S) => Object.keys(S.life.weaponKills).filter((k) => S.life.weaponKills[k] > 0).length, ['kill']);
@@ -7679,6 +7685,7 @@ ach('walking_armory',   'progress', 'gold',   'Walking Armory',     'Find every 
 ach('big_spender',      'progress', 'silver', 'Big Spender',        'Spend $5,000 in the shop in total.', '$5K', 5000, LIFE('spent'), ['purchase']);
 ach('smart_investment', 'progress', 'silver', 'Smart Investment',   'Buy upgrades from three different categories (health, stamina, or a weapon stat).', 'SI', 3, (S) => S.life.upCats.length, ['purchase']);
 ach('fully_upgraded',   'progress', 'gold',   'Fully Upgraded',     'Max out both max health and max stamina in a single run.', 'MX', 1, (S) => (S.life.best.maxedBoth ? 1 : 0), ['purchase'], 'bool');
+ach('speed_demon',      'progress', 'silver', 'Speed Demon',        'Max out the move speed upgrade in the shop.', 'SD', 1, (S) => ((S.life.best.speedLvl || 0) >= SHOP_CONFIG.player.speed.maxLevel ? 1 : 0), ['purchase'], 'bool');
 ach('prepared_for_anything','progress','bronze','Prepared for Anything','Buy both a health upgrade and a weapon upgrade.', 'PA', 2, (S) => ((S.life.upBought.health || 0) > 0 ? 1 : 0) + ((S.life.upBought.weapon || 0) > 0 ? 1 : 0), ['purchase']);
 ach('shop_regular',     'progress', 'bronze', 'Shop Regular',       'Visit the shop five times.',     'SH', 5, LIFE('shopVisits'), ['shop']);
 
@@ -7998,6 +8005,7 @@ class AchievementSystem {
     if (info) {
       run.healthLvl = info.healthLvl || 0; run.staminaLvl = info.staminaLvl || 0;
       this._best('healthLvl', run.healthLvl);
+      run.speedLvl = info.speedLvl || 0; this._best('speedLvl', run.speedLvl);   // Speed Demon
       if (info.healthMax && run.healthLvl >= info.healthMax && run.staminaLvl >= info.staminaMax) { L.best.maxedBoth = 1; }
     }
     this._dirty = true;
@@ -10550,7 +10558,7 @@ class Game {
     if (pl.weapons.length === 0) pl.weapons = CONFIG.PLAYER.startingWeaponIds.map((id) => new Weapon(CONFIG.WEAPONS[id]));
     pl.weaponIndex = Utils.clamp(p.weaponIndex, 0, pl.weapons.length - 1);
     pl.money = Math.max(0, p.money || 0);
-    pl.upgrades = Object.assign({ health: 0, stamina: 0 }, p.upgrades || {});
+    pl.upgrades = Object.assign({ health: 0, stamina: 0, speed: 0 }, p.upgrades || {});
     ShopSystem.applyPlayerStats(pl); // real max health / stamina from the purchased levels (also clamps the restored values)
 
     this.survivalTime = save.survivalTime;
@@ -18091,3 +18099,4 @@ class MapTilerGameWorld {
   </script>
 </body>
 </html>
+  
