@@ -2229,7 +2229,7 @@ const EMBEDDED_ASSETS = {
     <!-- ===================== Start overlay (home page) ===================== -->
     <div id="startScreen" class="overlay homePage">
       <!-- Version: major.minor.patch. The patch digit goes 0-9 and rolls into the minor number (v3.88.9 -> v3.89.0); the minor number is two digits and rolls into the major number (v3.99.9 -> v4.00.0). Bumped by 1 on every change. -->
-      <div id="versionTag" class="versionTag">v3.93.7</div>
+      <div id="versionTag" class="versionTag">v3.93.9</div>
       <div id="homeSidebar" class="homeSidebar">
         <div class="homeSidebarTitle">Your Stats</div>
         <div id="homeLevel" class="homeLevel"></div>
@@ -2269,6 +2269,7 @@ const EMBEDDED_ASSETS = {
           <label class="testToggle"><span>Fast Shop (every 15s)</span><input type="checkbox" id="tmFastShop"><i></i></label>
           <label class="testToggle"><span>Shop Cash ($3000 start)</span><input type="checkbox" id="tmShopCash"><i></i></label>
           <label class="testToggle"><span>Zombie AI Debug (F9)</span><input type="checkbox" id="aiDebugToggle"><i></i></label>
+          <label class="testToggle"><span>Zombie Director Debug (F10)</span><input type="checkbox" id="zdDebugToggle"><i></i></label>
           <label class="testToggle"><span>Zombie Personality</span><select id="tmAiForce" style="font:inherit;font-size:11px;padding:6px;background:#14171b;color:#fff;border:3px solid #000"><option value="mixed">Mixed (normal)</option><option value="hunter">Hunters only</option><option value="predictor">Predictors only</option><option value="flanker">Flankers only</option><option value="wanderer">Wanderers only</option></select></label>
         </div>
         <button id="backFromTestModeBtn" class="bigButton">Back</button>
@@ -5813,6 +5814,7 @@ class Player extends Entity {
   takeDamage(amount) {
     if (TEST_MODE.invincible) return; // Test Mode: Invincibility
     if (this.invulnTimer > 0) return;
+    if (CONFIG.activeDifficulty === 'nightmare' && amount > 0) amount = this.maxHealth;   // Nightmare: one hit of any kind is fatal
     this.health = Utils.clamp(this.health - amount, 0, this.maxHealth);
     this.invulnTimer = 0.4;
     this.hurtTimer = 0.28; this.hurtAmount = amount;   // visual feedback only (see Game._updateHurtFx)
@@ -6530,6 +6532,11 @@ class ZombieBrain {
   }
   _init(ai) {
     const z = this.z, p = ai.player; this.inited = true; this.lastThinkT = ai.now; this.home = { x: z.x, y: z.y };
+    // Zombies created by the director arrive with an intent: 'wander' (patrol until something is noticed), 'investigate' (go look at a noise) or 'encounter' (the normal start below).
+    if (this.preset) {
+      if (this.pendingMode === 'wander') { this._pickWander(ai); return; }
+      if (this.pendingMode === 'investigate' && this.noise) { this.alertTo(this.noise.x, this.noise.y, 'noise', ai.m(8), ai); return; }
+    }
     // Hunting types start out roughly aware of the player's area (like a noise carrying over the city), NOT of the exact position: they search near it.
     if (this.personality !== 'wanderer' && Math.random() < ai.diff.alert) {
       const e = ai.m(ai.diff.shareErr + 8), a = Math.random() * Math.PI * 2;
@@ -6811,6 +6818,7 @@ class ZombieAIManager {
   _hearing() {
     const S = ZOMBIE_SOUND, ev = S.pending; if (!ev.length) { this._ageRecent(); return; }
     for (const e of ev) {
+      if (window.ZOMBIE_DIRECTOR) window.ZOMBIE_DIRECTOR.onSound(e);   // the director turns loud noise into zombies that come to investigate
       S.recent.push(e); if (e.kind === 'shot' || e.kind === 'explosion') { this.mem.push({ x: e.x, y: e.y }); if (this.mem.length > 6) this.mem.shift(); }
       const R = this.m(e.r);
       for (const z of this.zombies) {
@@ -6916,6 +6924,8 @@ class SpawnSystem {
     this.elapsed = 0;
     this.nextBossAt = CONFIG.SPAWN.firstBossSeconds;
     this.bossJustSpawned = false;
+    // The dynamic zombie director (zombieDirector.js) does the ordinary spawning; this class keeps the boss schedule, the population ceiling and the old timer fallback.
+    if (typeof ZombieDirector !== 'undefined') { if (!this.director) this.director = new ZombieDirector(this); this.director.reset(); }
   }
 
   // True once (then resets) after a boss has just been spawned, so Game
@@ -6938,8 +6948,10 @@ class SpawnSystem {
     return Math.min(CONFIG.SPAWN.maxAliveCap, Math.round(ramped));
   }
 
-  update(dt, { player, camera, canvas, zombies, worldWidth, worldHeight, obstacles }) {
+  update(dt, ctx) {
+    const { player, camera, canvas, zombies, worldWidth, worldHeight, obstacles } = ctx;
     this.elapsed += dt;
+    if (this.director) this.director.lastCtx = ctx;
     if (!TEST_MODE.zombies) return; // Test Mode: Zombies off — nothing spawns, boss included
     this.timer -= dt;
 
@@ -6953,6 +6965,8 @@ class SpawnSystem {
         this.bossJustSpawned = true;
       }
     }
+
+    if (this.director && this.director.enabled) { this.director.update(dt, ctx); return; }   // the director decides when, what and where
 
     if (this.timer <= 0 && zombies.length < this.currentMaxAlive()) {
       this._spawnOne(player, camera, canvas, zombies, worldWidth, worldHeight, obstacles);
@@ -6993,6 +7007,387 @@ class SpawnSystem {
   }
 }
 
+  </script>
+  <script>
+/**
+ * zombieDirector.js — the dynamic zombie director.
+ *
+ *  It does NOT replace SpawnSystem: SpawnSystem still owns the run timer, the boss schedule, the Test Mode "Zombies off" switch, the population ceiling
+ *  (SpawnSystem.currentMaxAlive) and the save fields. When the director is on, SpawnSystem.update() hands the ordinary spawning to ZombieDirector.update();
+ *  switch it off (debug panel) and the old timer-based spawning runs exactly as before. New zombies are ordinary Zombie objects, so they get a ZombieBrain
+ *  (personality, senses, hearing) from the AI system and follow the same detection / investigation / search rules as every other zombie.
+ *
+ *  HOW IT DECIDES (every ZD.tickEvery seconds, never per frame):
+ *    1. MEASURE the situation: zombies near the player (weighted by type and by whether they are on the player's trail), player health, damage just taken,
+ *       recent gunfire, and whether the player is surrounded / overwhelmed.
+ *    2. MOOD: a rhythm of BUILD (small encounters, tension rising) -> PEAK (one major encounter) -> RELAX (breathing room) -> sometimes QUIET (almost nothing),
+ *       with randomised lengths. A player who is overwhelmed gets relief (RELAX early); one who is cruising gets a slightly shorter build.
+ *    3. ENCOUNTER: pick a type from ZD_ENCOUNTERS (weights depend on the difficulty stage), size it to the population room left under the caps, find places for it.
+ *    4. PLACES (_findAnchors): street points, junctions and open ground around the player, rejected if inside / next to buildings or cars, wedged against walls,
+ *       too close, inside the camera footprint (unless hidden behind a building) or unreachable (A* check). Hidden spots are preferred, directions rotate,
+ *       and new groups keep their distance from recent ones.
+ *    5. SOUND: gunfire / explosions build "noise heat" (ZOMBIE_SOUND events). When it is high enough a few zombies are scheduled to appear a few seconds later,
+ *       out of sight, and are told to INVESTIGATE the noise. They do not appear next to the player and do not know where the player is.
+ *  TUNING: ZD, ZD_ENCOUNTERS and ZD_DIFF below. Debug panel: F10 or Test Mode > Zombie Director Debug (off by default; has live sliders + force buttons).
+ */
+const ZD = {
+  tickEvery: 0.5,                 // seconds between director decisions
+  nearM: 55,                      // "nearby" = within this many metres of the player
+  stageSeconds: 150, maxStage: 8, // one difficulty stage per this many (difficulty-scaled) seconds survived
+  limits: { maxNearby: 18, maxEncounter: 12, maxSpecial: 4, groupSpacingM: 45, maxAttractedAlive: 8 },
+  spawn: { visibleMarginPx: [80, 380], hiddenMinPx: 420, hiddenFrac: 0.8, maxPx: 1400, attempts: 12 },   // distances from the player; maxPx stays inside the nav-grid window
+  fill: { BUILD: [0.35, 0.8], PEAK: 1.0, RELAX: 0.2, QUIET: 0.06 },   // fraction of the population ceiling the director tries to keep alive in each mood
+  floorPop: { BUILD: 4, PEAK: 0, RELAX: 3, QUIET: 1 },                // lone wanderers keep the streets from feeling empty
+  build: [30, 60], relax: [18, 40], quiet: [35, 70], quietChance: 0.22, peakMax: 70,   // seconds
+  startDelay: 4,                  // first encounter this many seconds into a run
+  attract: { threshold: 1.6, cooldown: 10, delay: [2.5, 6], caps: { shot: 3, explosion: 8, throw: 1 }, heatDecay: 0.15 },
+};
+// Encounter types. size = zombies per group (before the stage / difficulty scaling), groups = how many separate groups, mix = relative chance of each type for the
+// ordinary members, fixed = guaranteed members (min..max), pers = personality weights for the AI (null = the zombie's normal roll), modes = how the zombies start
+// out (wander: patrol until they notice something, encounter: approximately aware of the player's area), cooldown = seconds before the next encounter.
+const ZD_ENCOUNTERS = {
+  small:  { label: 'SMALL GROUP', minStage: 0, weight: () => 50, major: false, groups: [1, 1], size: [2, 4], mix: { walker: 0.85, runner: 0.15 }, cluster: 70, modes: { wander: 0.45, encounter: 0.55 }, pers: null, cooldown: [9, 16] },
+  large:  { label: 'LARGE GROUP', minStage: 1, weight: (s) => 10 + 4 * s, major: true, groups: [1, 2], size: [4, 6], mix: { walker: 0.7, runner: 0.3 }, cluster: 110, modes: { encounter: 1 }, pers: null, cooldown: [22, 36] },
+  ambush: { label: 'AMBUSH', minStage: 1, weight: (s) => 8 + 3 * s, major: true, groups: [2, 3], size: [2, 3], mix: { walker: 0.6, runner: 0.4 }, cluster: 50, hidden: true, stagger: [0.8, 1.8], modes: { encounter: 1 }, pers: { flanker: 0.45, predictor: 0.3, hunter: 0.25 }, cooldown: [25, 40] },
+  heavy:  { label: 'HEAVY', minStage: 2, weight: (s) => 5 + 3 * (s - 2), major: true, groups: [1, 1], size: [2, 4], fixed: { brute: [1, 2] }, mix: { walker: 0.8, runner: 0.2 }, cluster: 90, modes: { encounter: 1 }, pers: { hunter: 0.8, flanker: 0.2 }, cooldown: [30, 50] },
+  special: { label: 'SPECIAL', minStage: 3, weight: (s) => 1.5 + 0.8 * (s - 3), major: true, cooldown: [40, 60], variants: [
+    { id: 'RUNNER PACK', weight: 1, groups: [1, 1], size: [6, 9], mix: { runner: 1 }, cluster: 120, modes: { encounter: 1 }, pers: { predictor: 0.5, flanker: 0.3, hunter: 0.2 } },
+    { id: 'BRUTE WALL', weight: 1, groups: [1, 1], size: [3, 5], fixed: { brute: [2, 3] }, mix: { runner: 0.5, walker: 0.5 }, cluster: 110, modes: { encounter: 1 }, pers: { hunter: 0.7, flanker: 0.3 } },
+    { id: 'BOSS HUNT', weight: 0.5, minStage: 5, boss: true, groups: [1, 1], size: [0, 2], fixed: { boss: [1, 1], brute: [1, 2] }, mix: { walker: 1 }, cluster: 120, modes: { encounter: 1 }, pers: null },
+  ] },
+};
+const ZD_DIFF = {   // follows the game's own difficulty; size: group size, cd: time between encounters (higher = longer), relax: breathing-room length, fill: how full the director keeps the map, stage: how fast the stages come, heat: noise needed to attract zombies
+  easy:      { size: 0.8,  cd: 1.3,  relax: 1.3,  fill: 0.8,  stage: 0.75, heat: 1.4 },
+  normal:    { size: 1.0,  cd: 1.0,  relax: 1.0,  fill: 1.0,  stage: 1.0,  heat: 1.0 },
+  hard:      { size: 1.15, cd: 0.8,  relax: 0.8,  fill: 1.1,  stage: 1.25, heat: 0.8 },
+  nightmare: { size: 1.3,  cd: 0.65, relax: 0.65, fill: 1.2,  stage: 1.5,  heat: 0.6 },
+};
+const zdRand = (a, b) => a + Math.random() * (b - a);
+const zdInt = (a, b) => Math.floor(zdRand(a, b + 1));
+function zdPickKey(w) { let t = 0; for (const k in w) t += w[k]; let r = Math.random() * t; for (const k in w) { r -= w[k]; if (r <= 0) return k; } return Object.keys(w)[0]; }
+function createZombieType(typeId, x, y) {   // like createZombie(), but for a chosen type (the boss uses createBoss)
+  if (typeId === 'boss') return createBoss(x, y);
+  return new Zombie(x, y, CONFIG.ZOMBIE_TYPES[typeId], CONFIG.DIFFICULTY_LEVELS[CONFIG.activeDifficulty]);
+}
+
+class ZombieDirector {
+  constructor(spawner) {
+    this.spawner = spawner; this.enabled = true; this.debug = false; this.tune = { capMult: 1, tempo: 1, maxNearby: ZD.limits.maxNearby, paused: false };
+    window.ZOMBIE_DIRECTOR = this; this.panel = null; this.reset();
+  }
+  reset() {
+    this.t = 0; this.acc = 0; this.mood = 'BUILD'; this.moodT = ZD.startDelay + zdRand(...ZD.build); this.cool = ZD.startDelay; this.peakStart = 0; this.peakThreat = 0; this.quietNext = false;
+    this.stage = 0; this.pending = []; this.sectorUse = new Float32Array(8); this.anchors = []; this.heat = 0; this.attractCd = 0; this.lastSound = null; this.combat = 0;
+    this.m = { active: 0, nearby: 0, close: 0, threat: 0, intensity: 0, overwhelmed: false, surrounded: false, health: 1, special: 0, attractedAlive: 0, room: 0, target: 0 };
+    this.last = { type: '-', at: null, hidden: false, street: false, dist: 0, t: -1, n: 0 };
+    this.stats = { encounters: {}, spawned: 0, attracted: 0, rejected: 0, reliefs: 0, dropped: 0 }; this.log = []; this.lastCtx = null; this._hp = null;
+  }
+  setDebug(on) { this.debug = !!on; const c = document.getElementById('zdDebugToggle'); if (c) c.checked = this.debug; this._panel(on); }
+
+  // ---------------------------------------------------------------- per frame
+  update(dt, ctx) {
+    this.lastCtx = ctx;
+    if (this.tune.paused) return;
+    this.t += dt; this.acc += dt;
+    for (let i = this.pending.length - 1; i >= 0; i--) { const p = this.pending[i]; if (this.t >= p.due) { this.pending.splice(i, 1); this._runPending(p, ctx); } }   // staggered / delayed spawns
+    if (this.acc < ZD.tickEvery) return;
+    const step = this.acc; this.acc = 0; this._tick(step, ctx);
+  }
+
+  _diff() { return ZD_DIFF[CONFIG.activeDifficulty] || ZD_DIFF.normal; }
+  _cap() { return Math.max(4, Math.round(this.spawner.currentMaxAlive() * this.tune.capMult)); }
+
+  _tick(dt, ctx) {
+    const g = window.game, p = ctx.player, D = this._diff();
+    this.stage = Math.min(ZD.maxStage, Math.floor(this.spawner.elapsed * D.stage / ZD.stageSeconds));   // by time survived (also right after Continue)
+    this._measure(ctx, dt);
+    const m = this.m, cap = this._cap();
+    this.heat *= Math.exp(-dt * ZD.attract.heatDecay); this.combat *= Math.exp(-dt * 0.2); this.attractCd -= dt; this.cool -= dt * this.tune.tempo; this.moodT -= dt * this.tune.tempo;
+    // --- relief: a player who is being overrun gets breathing room right away ---
+    if (m.overwhelmed && (this.mood === 'BUILD' || this.mood === 'PEAK')) { this._setMood('RELAX'); this.stats.reliefs++; this._note('relief: player overwhelmed'); }
+    // --- mood machine ---
+    if (this.mood === 'BUILD') {
+      if (this.moodT <= 0) {
+        if (Math.random() < 0.2) { this.moodT = zdRand(10, 20); this.cool = Math.min(this.cool, 1); this._note('false alarm: more small groups'); }   // sometimes the big one doesn't come yet
+        else { this._setMood('PEAK'); this._spawnMajor(ctx); }
+      } else if (this.cool <= 0) this._spawnSmallOrAmbient(ctx, cap);
+    } else if (this.mood === 'PEAK') {
+      const age = this.t - this.peakStart;
+      if (age > 12 && m.threat < this.peakThreat * 0.25) this._setMood('RELAX');
+      else if (age > ZD.peakMax) this._setMood('RELAX');
+      else if (age > 14 && this.cool <= 0 && !m.overwhelmed && m.threat < this.peakThreat * 0.5) this._spawnSmallOrAmbient(ctx, cap);   // reinforcements only if the player is coping
+    } else {   // RELAX / QUIET
+      if (this.moodT <= 0) { if (this.mood === 'RELAX' && Math.random() < ZD.quietChance) this._setMood('QUIET'); else this._setMood('BUILD'); }
+      else this._trickle(ctx, cap);
+    }
+    // --- sound: attracted zombies ---
+    this._attractCheck(ctx, cap);
+    if (this.debug) this._panelUpdate();
+  }
+
+  _setMood(mood) {
+    const D = this._diff(), prev = this.mood; this.mood = mood;
+    if (mood === 'BUILD') { const f = this.m.health > 0.8 && !this.m.surrounded ? 0.85 : 1; this.moodT = zdRand(...ZD.build) * f / (1 + 0.1 * this.stage); this.cool = Math.max(this.cool, 2); }
+    else if (mood === 'PEAK') { this.peakStart = this.t; this.peakThreat = 1; this.moodT = 1e9; }
+    else if (mood === 'RELAX') { this.moodT = zdRand(...ZD.relax) * D.relax; this.cool = Math.max(this.cool, 6); }
+    else if (mood === 'QUIET') { this.moodT = zdRand(...ZD.quiet) * D.relax; this.cool = 1e9; }
+    if (prev !== mood) this._note('mood ' + prev + ' > ' + mood);
+  }
+  _note(s) { this.log.push(s); if (this.log.length > 6) this.log.shift(); }
+
+  // ---------------------------------------------------------------- the situation
+  _measure(ctx, dt) {
+    const p = ctx.player, zs = ctx.zombies, ppm = (window.game._pxPerMeter && window.game._pxPerMeter()) || 9, nearPx = ZD.nearM * ppm, closePx = 12 * ppm, quadPx = 25 * ppm;
+    const m = this.m; let nearby = 0, close = 0, threat = 0, special = 0, attr = 0; const quad = [0, 0, 0, 0];
+    for (const z of zs) {
+      if (z.alive === false) continue;
+      if (z.type.isBoss || z.type.id === 'brute') special++;
+      if (z.brain && z.brain.attracted) attr++;
+      const dx = z.x - p.x, dy = z.y - p.y, d2 = dx * dx + dy * dy; if (d2 > nearPx * nearPx) continue;
+      nearby++; const w = z.type.isBoss ? 8 : z.type.id === 'brute' ? 3 : z.type.id === 'runner' ? 1.2 : 1, b = z.brain, hot = !b || b.hunting || b.state === 'SEARCHING' ? 1 : 0.4;
+      threat += w * hot; if (d2 < closePx * closePx) close++;
+      if (d2 < quadPx * quadPx) quad[(dx >= 0 ? 1 : 0) + (dy >= 0 ? 2 : 0)]++;
+    }
+    const hp = p.health / Math.max(1, p.maxHealth || 100), hurt = this._hp !== null && hp < this._hp - 0.001 ? (this._hp - hp) : 0; this._hp = hp; this.combat += hurt * 4;
+    const cap = this._cap(), capacity = Math.max(6, cap * 0.6);
+    m.active = zs.length; m.nearby = nearby; m.close = close; m.threat = threat; m.special = special; m.health = hp; m.attractedAlive = attr;
+    m.intensity = Math.min(1.5, threat / capacity);
+    m.surrounded = quad.filter((n) => n > 0).length >= 3 && close >= 4;
+    m.overwhelmed = (close >= 6 && hp < 0.7) || (hp < 0.3 && close >= 3) || threat > capacity * 1.15 || m.surrounded && hp < 0.6;
+  }
+
+  _room(cap) { return Math.max(0, Math.min(cap - this.m.active, this.tune.maxNearby - this.m.nearby)); }
+  _fillTarget(cap) {
+    const D = this._diff(), f = ZD.fill[this.mood]; const base = Array.isArray(f) ? f[0] + (f[1] - f[0]) * Math.max(0, Math.min(1, 1 - this.moodT / 45)) : f;
+    return Math.round(cap * Math.min(1, base * D.fill));
+  }
+
+  // ---------------------------------------------------------------- spawning decisions
+  _spawnSmallOrAmbient(ctx, cap) {
+    const room = this._room(cap), target = this._fillTarget(cap); this.m.target = target;
+    if (this.m.active >= target || room < 2) { this.cool = 3; return; }
+    const kind = this.mood === 'BUILD' && this.stage >= 1 && Math.random() < 0.05 + 0.02 * this.stage ? 'ambush' : 'small';   // an occasional unexpected ambush
+    this._spawnEncounter(kind, ctx, cap);
+  }
+  _spawnMajor(ctx) {
+    const cap = this._cap(), kinds = Object.keys(ZD_ENCOUNTERS).filter((k) => ZD_ENCOUNTERS[k].major && this.stage >= ZD_ENCOUNTERS[k].minStage);
+    const w = {}; for (const k of kinds) w[k] = ZD_ENCOUNTERS[k].weight(this.stage);
+    if (!kinds.length) { this._spawnEncounter('small', ctx, cap); this._setMood('RELAX'); return; }
+    const k = zdPickKey(w); const n = this._spawnEncounter(k, ctx, cap);
+    if (!n) { this._setMood('BUILD'); this.moodT = zdRand(8, 15); }
+  }
+  _trickle(ctx, cap) {   // lone wanderers (RELAX / QUIET): keeps a few zombies around so the city is never empty
+    if (this.cool > 0) return;
+    const floor = ZD.floorPop[this.mood] || 0, near = this._popNear(ctx);
+    this.cool = zdRand(6, 12);
+    if (near >= floor || this.m.active >= this._cap() || this._room(this._cap()) < 1) return;
+    this._spawnEncounter('small', ctx, cap, { size: 1, trickle: true });
+  }
+  _popNear(ctx) { let n = 0; const p = ctx.player, R2 = 1500 * 1500; for (const z of ctx.zombies) if (z.alive !== false && (z.x - p.x) ** 2 + (z.y - p.y) ** 2 < R2) n++; return n; }
+
+  // ---------------------------------------------------------------- encounters
+  force(kind, ctx) {
+    ctx = ctx || this.lastCtx; if (!ctx) return 0;
+    const g = window.game; ctx = Object.assign({}, ctx, { player: g.player, zombies: g.zombies, camera: g.camera });   // always the live run, even right after a restart
+    if (kind === 'attract') { const p = ctx.player; this._scheduleAttract(p.x, p.y, 58, 4, 'shot', 0.2); return 1; }
+    return this._spawnEncounter(kind, ctx, 999, { forced: true });
+  }
+  _spawnEncounter(kind, ctx, cap, opt) {
+    opt = opt || {}; const E0 = ZD_ENCOUNTERS[kind]; if (!E0) return 0;
+    const D = this._diff(), p = ctx.player;
+    let E = E0;
+    const elapsed = this.spawner.elapsed;
+    if (kind === 'special') { const vs = E0.variants.filter((v) => !v.minStage || this.stage >= v.minStage || opt.forced); const w = {}; vs.forEach((v, i) => w[i] = v.weight); E = Object.assign({ label: E0.label, cooldown: E0.cooldown }, vs[+zdPickKey(w)]); }
+    if (opt.trickle) E = Object.assign({}, E, { modes: { wander: 1 } });   // lone wanderers just patrol until they notice something
+    const room = opt.forced ? ZD.limits.maxEncounter : Math.min(this._room(cap), ZD.limits.maxEncounter);
+    if (room < 1) return 0;
+    // --- how many, of what ---
+    const scale = (1 + 0.07 * this.stage) * D.size, groupsN = zdInt(...E.groups), plan = [];
+    let specialLeft = ZD.limits.maxSpecial - this.m.special, bossAlive = ctx.zombies.some((z) => z.alive !== false && z.type.isBoss), total = 0;
+    for (let gi = 0; gi < groupsN; gi++) {
+      const grp = [];
+      if (E.fixed) for (const id in E.fixed) {
+        let n = zdInt(...E.fixed[id]);
+        if (id === 'boss' && (bossAlive || (elapsed < 600 && !opt.forced))) n = 0;                    // never two bosses; none early on
+        if ((id === 'brute' || id === 'boss') && !opt.forced) n = Math.max(0, Math.min(n, specialLeft));  // special-zombie cap
+        for (let i = 0; i < n; i++) { grp.push(id); specialLeft--; if (id === 'boss') bossAlive = true; }
+      }
+      const sz = opt.size || Math.max(E.size[0] > 0 ? 1 : 0, Math.round(zdRand(...E.size) * scale));
+      for (let i = 0; i < sz; i++) grp.push(zdPickKey(E.mix && this._gateMix(E.mix)));
+      plan.push(grp); total += grp.length;
+    }
+    // trim to the room we have
+    for (let guard = 0; total > room && guard < 80; guard++) { const big = plan.reduce((a, b) => (b.length > a.length ? b : a)); const i = big.findIndex((id) => id !== 'boss' && id !== 'brute'); if (i < 0) break; big.splice(i, 1); total--; }
+    if (total < 1) return 0;
+    // --- where ---
+    const anchors = this._findAnchors(ctx, plan.length, { hidden: !!E.hidden, forced: opt.forced });
+    if (!anchors.length) { this.stats.rejected++; this.cool = 4; return 0; }
+    plan.forEach((grp, gi) => {
+      const a = anchors[gi % anchors.length], delay = E.stagger && gi > 0 ? gi * zdRand(...E.stagger) : 0;
+      if (delay > 0) this.pending.push({ due: this.t + delay, kind: 'group', grp, anchor: a, E, label: E.id || E.label });
+      else this._placeGroup(ctx, grp, a, E, E.id || E.label);
+    });
+    this.cool = zdRand(...E.cooldown) * D.cd / (1 + 0.04 * this.stage);
+    if (!E0.major && this.m.target) this.cool *= Math.max(0.45, Math.min(1, (this.m.active + total) / this.m.target));   // a half-empty map is refilled sooner than a nearly full one
+    this.cool = Math.max(4, this.cool);
+    const a0 = anchors[0]; this.last = { type: E.id || E.label, at: { x: a0.x, y: a0.y }, hidden: a0.hidden, street: a0.street, dist: Math.round(Math.hypot(a0.x - p.x, a0.y - p.y) / 9), t: this.t, n: total };
+    this.stats.encounters[E.id || E.label] = (this.stats.encounters[E.id || E.label] || 0) + 1; this._note((E.id || E.label) + ' x' + total + (a0.hidden ? ' (hidden)' : ''));
+    if (this.mood === 'PEAK') this.peakThreat = Math.max(1, total * 1.2);
+    return total;
+  }
+  _gateMix(mix) {   // brutes / runners only appear in ordinary groups once the stage allows (the old random pool had them from second zero)
+    const out = {}; for (const k in mix) { if (k === 'runner' && this.stage < 1 && Math.random() < 0.6) continue; if (k === 'brute' && this.stage < 2) continue; out[k] = mix[k]; } return Object.keys(out).length ? out : { walker: 1 };
+  }
+  _runPending(q, ctx) {
+    if (q.kind === 'group') {
+      const a = this._recheck(ctx, q.anchor); if (!a) { this.stats.dropped++; return; }
+      this._placeGroup(ctx, q.grp, a, q.E, q.label);
+    } else if (q.kind === 'attract') this._runAttract(q, ctx);
+  }
+  _recheck(ctx, a) {   // a delayed group must still be out of sight when it appears
+    const p = ctx.player, obs = this._obs(); if (!obs) return a;
+    if (Math.hypot(a.x - p.x, a.y - p.y) < ZD.spawn.hiddenMinPx * 0.8) return null;
+    if (a.hidden && Utils.hasLineOfSight(a.x, a.y, p.x, p.y, obs) && Math.hypot(a.x - p.x, a.y - p.y) < this._visMin(ctx)) return null;
+    return a;
+  }
+
+  // ---------------------------------------------------------------- places
+  _obs() { const g = window.game; return g.obstacles || null; }
+  _visMin(ctx) { const c = ctx.canvas, half = Math.hypot(c.width / 2, c.height / 2); return half + ZD.spawn.visibleMarginPx[0]; }
+  _valid(ctx, x, y, minD, obs, ng) {
+    const p = ctx.player; if (x < 40 || y < 40 || x > ctx.worldWidth - 40 || y > ctx.worldHeight - 40) return false;
+    if (Math.hypot(x - p.x, y - p.y) < minD) return false;
+    if (obs && obs.some((o) => Utils.resolveCircleRect(x, y, 30, o))) return false;                    // inside / touching a building, car or prop
+    if (ng) { const c = ng.worldToCell(x, y); if (ng.isBlockedCell(c.col, c.row)) return false; let open = 0; for (let dc = -1; dc <= 1; dc++) for (let dr = -1; dr <= 1; dr++) if ((dc || dr) && !ng.isBlockedCell(c.col + dc, c.row + dr)) open++; if (open < 6) return false; }   // wedged against a wall
+    return true;
+  }
+  _findAnchors(ctx, count, opt) {
+    const p = ctx.player, g = window.game, obs = this._obs(), ng = g.navGrid, ai = window.ZOMBIE_AI, S = ZD.spawn, ppm = g._pxPerMeter() || 9;
+    const half = Math.hypot(ctx.canvas.width / 2, ctx.canvas.height / 2), visMin = half + S.visibleMarginPx[0], visMax = half + S.visibleMarginPx[1];
+    const maxD = Math.min(S.maxPx, visMax), hidMin = Math.min(maxD * 0.85, Math.max(S.hiddenMinPx, half * S.hiddenFrac)), spacing = ZD.limits.groupSpacingM * ppm;
+    this.anchors = this.anchors.filter((a) => this.t - a.t < 25);
+    const out = [], used = new Set();
+    for (let n = 0; n < count; n++) {
+      const cands = [];
+      for (let k = 0; k < S.attempts; k++) {
+        const w = []; for (let i = 0; i < 8; i++) w.push(used.has(i) ? 0.05 : 1 / (1 + this.sectorUse[i] * 1.2)); let r = Math.random() * w.reduce((a, b) => a + b, 0), sec = 0; for (; sec < 7; sec++) { r -= w[sec]; if (r <= 0) break; }
+        const ang = (sec + 0.5) * Math.PI / 4 + zdRand(-0.35, 0.35), d = zdRand(Math.min(hidMin, visMin), maxD), roll = Math.random();
+        let x = p.x + Math.cos(ang) * d, y = p.y + Math.sin(ang) * d, street = false, junction = false;
+        if (ai && ai.streets.nSeg && roll < 0.7) {
+          if (roll < 0.15) { const j = ai.streets.junctionNear(x, y, 220); if (j) { x = j.x; y = j.y; street = junction = true; } }
+          else { const s = ai.streets.nearest(x, y, 180); if (s) { x = s.x + zdRand(-14, 14); y = s.y + zdRand(-14, 14); street = true; } }
+        }
+        const dd = Math.hypot(x - p.x, y - p.y); if (dd > maxD + 80 || !this._valid(ctx, x, y, Math.min(hidMin, visMin) * 0.9, obs, ng)) continue;
+        if (this.anchors.some((a) => Math.hypot(a.x - x, a.y - y) < spacing) || out.some((a) => Math.hypot(a.x - x, a.y - y) < spacing * 0.5)) continue;
+        const clear = obs ? Utils.hasLineOfSight(x, y, p.x, p.y, obs) : true, hidden = !clear;
+        if (clear && dd < visMin) continue;                       // in plain view and too close
+        if (hidden && dd < Math.min(hidMin, visMin) * 0.9) continue;
+        if (opt.hidden && !hidden && !opt.forced) continue;       // ambushes come from behind cover
+        const sector = Math.floor(((Math.atan2(y - p.y, x - p.x) + Math.PI * 2) % (Math.PI * 2)) / (Math.PI / 4)) % 8;
+        const score = (hidden ? 2 : 0) + (street ? 1 : 0) + (junction ? 0.5 : 0) + 1 / (1 + this.sectorUse[sector]) + Math.random() * 0.8;
+        cands.push({ x, y, hidden, street, junction, sector, score, t: this.t });
+      }
+      cands.sort((a, b) => b.score - a.score);
+      let pick = null, tests = 0;
+      for (const c of cands) {                                   // reachability: a clear line, or an A* route (max 2 route searches per group)
+        if (!c.hidden) { pick = c; break; }
+        if (!ng || tests >= 2) { if (!ng) { pick = c; break; } continue; }
+        tests++; const path = ng.findPath(c.x, c.y, p.x, p.y); if (path && path.length) { pick = c; break; }
+      }
+      if (!pick) { const v = cands.find((c) => !c.hidden); if (v) pick = v; }
+      if (!pick) continue;
+      out.push(pick); used.add(pick.sector); this.sectorUse[pick.sector] += 1; this.anchors.push(pick);
+    }
+    for (let i = 0; i < 8; i++) this.sectorUse[i] *= 0.92;       // directions are forgotten slowly, so the director rotates around the player
+    return out;
+  }
+  _placeGroup(ctx, grp, a, E, label) {
+    const p = ctx.player, obs = this._obs(), ng = window.game.navGrid, placed = [], R = E.cluster || 70; let n = 0;
+    for (const id of grp) {
+      const t = CONFIG.ZOMBIE_TYPES[id]; if (!t) continue;
+      let pos = null;
+      for (let k = 0; k < 8 && !pos; k++) {
+        const ang = Math.random() * Math.PI * 2, d = k === 0 && n === 0 ? 0 : zdRand(20, R) * (1 + k * 0.1), x = a.x + Math.cos(ang) * d, y = a.y + Math.sin(ang) * d;
+        if (!this._valid(ctx, x, y, this._minHere(ctx, a), obs, ng)) continue;
+        if (placed.some((q) => Math.hypot(q.x - x, q.y - y) < 26)) continue;
+        pos = { x, y };
+      }
+      if (!pos) continue;
+      placed.push(pos); const z = createZombieType(id, pos.x, pos.y);
+      if (E.pers && z.brain && id !== 'boss') z.brain.personality = zdPickKey(E.pers);
+      if (z.brain) { z.brain.spawnTag = label; z.brain.preset = true; z.brain.pendingMode = zdPickKey(E.modes || { encounter: 1 }); }
+      ctx.zombies.push(z); n++; this.stats.spawned++;
+      if (id === 'boss') this.spawner.bossJustSpawned = true;      // shows the existing "A BOSS HAS APPEARED" banner
+    }
+    return n;
+  }
+  _minHere(ctx, a) { return Math.max(200, Math.hypot(a.x - ctx.player.x, a.y - ctx.player.y) * 0.6); }
+
+  // ---------------------------------------------------------------- sound
+  onSound(ev) {
+    if (!this.enabled) return;
+    const w = ev.kind === 'shot' ? 1 : ev.kind === 'explosion' ? 3 : ev.kind === 'throw' ? 0.2 : 0; if (!w) return;
+    this.heat += (ev.r / 28) * w * 0.9; this.combat += 0.2; this.lastSound = { x: ev.x, y: ev.y, r: ev.r, kind: ev.kind, t: this.t };
+  }
+  _attractCheck(ctx, cap) {
+    const D = this._diff(), th = ZD.attract.threshold * D.heat, A = ZD.attract, s = this.lastSound;
+    if (!s || this.heat < th || this.attractCd > 0 || this.m.overwhelmed || this.m.health < 0.3) return;
+    if (this.m.attractedAlive >= ZD.limits.maxAttractedAlive || this.m.active >= cap || this._room(cap) < 1) return;
+    const count = Math.max(1, Math.min(A.caps[s.kind] || 3, Math.round(this.heat * 0.7)));
+    this._scheduleAttract(s.x, s.y, s.r, count, s.kind, zdRand(...A.delay)); this.heat = 0; this.attractCd = A.cooldown * D.cd;
+  }
+  _scheduleAttract(x, y, r, count, kind, delay) { this.pending.push({ due: this.t + delay, kind: 'attract', x, y, r, count, sk: kind }); this._note('noise (' + kind + ') will draw ' + count); }
+  _runAttract(q, ctx) {   // zombies that "heard it": they appear out of sight, within earshot of the noise, and go to investigate it
+    const p = ctx.player, cap = this._cap(), ai = window.ZOMBIE_AI; const count = Math.min(q.count, Math.max(0, this._room(cap)));
+    if (count < 1) return;
+    const anchors = this._findAnchors(ctx, Math.min(count, 2), { hidden: false });   // out of sight when possible (scored), never in plain view
+    if (!anchors.length) { this.stats.dropped++; return; }
+    let made = 0;
+    for (let i = 0; i < count; i++) {
+      const a = anchors[i % anchors.length], id = zdPickKey(this._gateMix({ walker: 0.8, runner: 0.2 })); let pos = null;
+      for (let k = 0; k < 6 && !pos; k++) { const q = { x: a.x + zdRand(-70, 70) * (1 + k * 0.2), y: a.y + zdRand(-70, 70) * (1 + k * 0.2) }; if (this._valid(ctx, q.x, q.y, 250, this._obs(), window.game.navGrid)) pos = q; }
+      if (!pos) continue;
+      const z = createZombieType(id, pos.x, pos.y);
+      if (z.brain) { z.brain.spawnTag = 'NOISE'; z.brain.preset = true; z.brain.pendingMode = 'investigate'; z.brain.noise = { x: q.x, y: q.y }; z.brain.attracted = true; }
+      ctx.zombies.push(z); made++; this.stats.spawned++; this.stats.attracted++;
+    }
+    if (made) { this.last = { type: 'NOISE x' + made, at: { x: anchors[0].x, y: anchors[0].y }, hidden: anchors[0].hidden, street: anchors[0].street, dist: Math.round(Math.hypot(anchors[0].x - p.x, anchors[0].y - p.y) / 9), t: this.t, n: made }; }
+  }
+
+  // ---------------------------------------------------------------- debug: panel + overlay
+  _panel(on) {
+    if (!on) { if (this.panel) this.panel.style.display = 'none'; return; }
+    if (!this.panel) {
+      const d = document.createElement('div'); d.id = 'zdPanel';
+      d.style.cssText = 'position:fixed;left:8px;top:140px;z-index:60;width:250px;padding:8px;background:rgba(10,12,14,0.88);border:2px solid #2ecc71;color:#cfe;font:10px/1.5 monospace;pointer-events:auto;';
+      d.innerHTML = '<div style="color:#2ecc71;font-weight:bold">ZOMBIE DIRECTOR (F10)</div><pre id="zdInfo" style="margin:4px 0;white-space:pre-wrap"></pre>' +
+        '<div>Force: <button data-f="small">small</button> <button data-f="large">large</button> <button data-f="ambush">ambush</button> <button data-f="heavy">heavy</button> <button data-f="special">special</button> <button data-f="attract">noise</button></div>' +
+        '<div>Mood: <button data-m="BUILD">build</button> <button data-m="PEAK">peak</button> <button data-m="RELAX">relax</button> <button data-m="QUIET">quiet</button></div>' +
+        '<div>Max active x <input data-k="capMult" type="number" step="0.25" min="0.25" max="3" value="1" style="width:46px"> Tempo x <input data-k="tempo" type="number" step="0.25" min="0.25" max="4" value="1" style="width:46px"></div>' +
+        '<div>Max nearby <input data-k="maxNearby" type="number" step="1" min="2" max="60" value="' + this.tune.maxNearby + '" style="width:46px"> <label><input data-k="paused" type="checkbox"> pause</label> <label><input data-k="off" type="checkbox"> old spawner</label></div>';
+      for (const ev of ['keydown', 'keyup', 'mousedown', 'mouseup', 'click', 'wheel', 'contextmenu']) d.addEventListener(ev, (e) => e.stopPropagation());
+      d.addEventListener('click', (e) => { const b = e.target; if (b.dataset.f) { const n = this.force(b.dataset.f); this._note('forced ' + b.dataset.f + ' -> ' + n); } else if (b.dataset.m) { this._setMood(b.dataset.m); this.cool = 0; } });
+      d.addEventListener('change', (e) => { const k = e.target.dataset.k; if (!k) return; if (k === 'paused') this.tune.paused = e.target.checked; else if (k === 'off') this.enabled = !e.target.checked; else this.tune[k] = Math.max(0.1, +e.target.value || 1); });
+      document.body.appendChild(d); this.panel = d;
+    }
+    this.panel.style.display = 'block'; this._panelUpdate();
+  }
+  _panelUpdate() {
+    const el = document.getElementById('zdInfo'); if (!el) return; const m = this.m, L = this.last;
+    el.textContent = `active ${m.active}/${this._cap()}  nearby ${m.nearby}/${this.tune.maxNearby}  close ${m.close}\nintensity ${m.intensity.toFixed(2)}  threat ${m.threat.toFixed(1)}${m.overwhelmed ? '  OVERWHELMED' : ''}${m.surrounded ? ' SURROUNDED' : ''}\nmood ${this.mood} (${this.moodT > 1e8 ? 'until calm' : Math.max(0, this.moodT).toFixed(0) + 's'})  cooldown ${this.cool > 1e8 ? '-' : Math.max(0, this.cool).toFixed(1) + 's'}\nstage ${this.stage}/${ZD.maxStage}  diff ${CONFIG.activeDifficulty}  fill ${m.target}\nlast: ${L.type} x${L.n} ${L.at ? Math.round(L.at.x) + ',' + Math.round(L.at.y) + ' ' + L.dist + 'm ' + (L.hidden ? 'hidden' : 'visible') + (L.street ? ' street' : '') : ''}\nnoise heat ${this.heat.toFixed(1)}  attracted ${this.stats.attracted} (alive ${m.attractedAlive})\nspawned ${this.stats.spawned}  rejected ${this.stats.rejected}  dropped ${this.stats.dropped}  relief ${this.stats.reliefs}\n` + this.log.slice().reverse().join('\n');
+  }
+  drawDebug(ctx, cam, view) {   // spawn rings, recent anchors, pending noise groups
+    if (!this.debug || !window.game || !window.game.player) return;
+    const p = window.game.player, ring = (cx, cy, r) => { ctx.beginPath(); for (let i = 0; i <= 36; i++) { const a = i / 36 * Math.PI * 2, s = cam.worldToScreen(cx + Math.cos(a) * r, cy + Math.sin(a) * r, view); i ? ctx.lineTo(s.x, s.y) : ctx.moveTo(s.x, s.y); } ctx.stroke(); };
+    ctx.save(); ctx.lineWidth = 1.5; ctx.setLineDash([8, 6]); ctx.strokeStyle = 'rgba(46,204,113,0.55)';
+    const c = this.lastCtx && this.lastCtx.canvas; if (c) { const half = Math.hypot(c.width / 2, c.height / 2); ring(p.x, p.y, half + ZD.spawn.visibleMarginPx[0]); ring(p.x, p.y, Math.min(ZD.spawn.maxPx, half + ZD.spawn.visibleMarginPx[1])); ctx.strokeStyle = 'rgba(46,204,113,0.3)'; ring(p.x, p.y, Math.min(ZD.spawn.maxPx * 0.85, Math.max(ZD.spawn.hiddenMinPx, half * ZD.spawn.hiddenFrac))); }
+    ctx.setLineDash([]); ctx.font = '9px monospace'; ctx.textAlign = 'center';
+    for (const a of this.anchors) { const s = cam.worldToScreen(a.x, a.y, view), age = this.t - a.t; ctx.globalAlpha = Math.max(0.15, 1 - age / 25); ctx.strokeStyle = a.hidden ? '#7df' : '#fd6'; ctx.beginPath(); ctx.arc(s.x, s.y, 10, 0, 7); ctx.stroke(); ctx.fillStyle = ctx.strokeStyle; ctx.fillText((a.hidden ? 'hidden' : 'visible') + (a.street ? ' street' : ''), s.x, s.y - 14); }
+    ctx.globalAlpha = 1; for (const q of this.pending) { const pt = q.kind === 'group' ? q.anchor : q; const s = cam.worldToScreen(pt.x, pt.y, view); ctx.strokeStyle = '#f66'; ctx.strokeRect(s.x - 7, s.y - 7, 14, 14); ctx.fillStyle = '#f66'; ctx.fillText((q.kind === 'attract' ? 'noise' : 'ambush') + ' in ' + Math.max(0, q.due - this.t).toFixed(1) + 's', s.x, s.y - 12); }
+    ctx.restore();
+  }
+}
+window.addEventListener('keydown', (e) => { if (e.code === 'F10' && window.ZOMBIE_DIRECTOR) { e.preventDefault(); window.ZOMBIE_DIRECTOR.setDebug(!window.ZOMBIE_DIRECTOR.debug); } });
   </script>
   <script>
 /**
@@ -10087,6 +10482,7 @@ class Game {
     bindToggle('tmFastShop', 'fastShop');
     bindToggle('tmShopCash', 'shopCash');
     document.getElementById('aiDebugToggle').addEventListener('change', (e) => { this.zombieAI.setDebug(e.target.checked); Sound.uiClick(); });   // debug overlay only: not a cheat, doesn't count as Test Mode
+    document.getElementById('zdDebugToggle').addEventListener('change', (e) => { this.spawner.director.setDebug(e.target.checked); Sound.uiClick(); });   // debug panel only: not a cheat
     document.getElementById('tmAiForce').addEventListener('change', (e) => { TEST_MODE.aiForce = e.target.value; Sound.uiClick(); refreshTestModeBtn(); });
     testModeBtn.addEventListener('click', () => {
       Sound.uiClick();
@@ -10322,6 +10718,7 @@ class Game {
     this.fx.draw(ctx, this.camera, view, occ, k, { x: snap.px, y: snap.py }, false);
     this._drawExplosions(ctx, view);
     this.zombieAI.drawDebug(ctx, this.camera, view);   // dev-only overlay (off unless F9 / Test Mode)
+    if (this.spawner.director) this.spawner.director.drawDebug(ctx, this.camera, view);   // dev-only (F10)
     this._drawFloatingTexts(ctx, view);
     ctx.restore();
     w.drawReadout(ctx); // F3: lat/lng, ground height, active collision (screen space)
@@ -11373,6 +11770,7 @@ class Game {
     this.fx.draw(ctx, this.camera, canvas, null, zoom, { x: this.player.x, y: this.player.y }, true);
     this._drawExplosions(ctx, canvas);
     this.zombieAI.drawDebug(ctx, this.camera, canvas);   // dev-only overlay (off unless F9 / Test Mode)
+    if (this.spawner.director) this.spawner.director.drawDebug(ctx, this.camera, canvas);   // dev-only (F10)
     this._drawFloatingTexts(ctx, canvas);
     ctx.restore();
     this._drawWeaponPointers(ctx, realCanvas); // screen space: arrows to weapon pickups that are out of sight
@@ -15026,7 +15424,7 @@ XP.renderAll(); setTimeout(() => XP.announceWelcome(), 1500);
  *    only the ONE equipped badge id is saved.
  *  Adding a title:  one line in PROFILE_TITLES.   Adding a badge:  one line in ProfileSystem._buildBadges().
  */
-const PROFILE_NAME_MIN = 2, PROFILE_NAME_MAX = 16, PROFILE_FEATURED_MAX = 5, PROFILE_DEFAULT_NAME = 'PEANUT';
+const PROFILE_NAME_MIN = 2, PROFILE_NAME_MAX = 16, PROFILE_FEATURED_MAX = 6, PROFILE_DEFAULT_NAME = 'PEANUT';
 const PROFILE_TIER_COLORS = { plain: '#8a8f96', bronze: '#c98a4b', silver: '#c4ccd4', gold: '#f5c542', platinum: '#7fe3ff' };
 const PROFILE_DIR_LABELS = { south: 'S', 'south-east': 'SE', east: 'E', 'north-east': 'NE', north: 'N', 'north-west': 'NW', west: 'W', 'south-west': 'SW' };
 // Milestone titles (in addition to the level-reward titles of XP_REWARDS). ach: an achievement id; mission: a long-term mission id.
@@ -18068,7 +18466,7 @@ class MapTilerGameWorld {
         easy:      { label: 'Easy',      text: 'Fewer, weaker and slower zombies.' },
         normal:    { label: 'Normal',    text: 'The standard challenge.' },
         hard:      { label: 'Hard',      text: 'Tougher, faster zombies in bigger numbers.' },
-        nightmare: { label: 'Nightmare', text: 'Brutal. Zombies hit very hard, swarm you and never let up.' },
+        nightmare: { label: 'Nightmare', text: 'Brutal. One hit and you die. Zombies swarm you and never let up.' },
       },
       label(d) { return (this.INFO[d] || this.INFO.normal).label; },
       apply(d) {
@@ -18099,4 +18497,3 @@ class MapTilerGameWorld {
   </script>
 </body>
 </html>
-  
