@@ -2229,7 +2229,7 @@ const EMBEDDED_ASSETS = {
     <!-- ===================== Start overlay (home page) ===================== -->
     <div id="startScreen" class="overlay homePage">
       <!-- Version: major.minor.patch. The patch digit goes 0-9 and rolls into the minor number (v3.88.9 -> v3.89.0); the minor number is two digits and rolls into the major number (v3.99.9 -> v4.00.0). Bumped by 1 on every change. -->
-      <div id="versionTag" class="versionTag">v3.94.0</div>
+      <div id="versionTag" class="versionTag">v3.94.1</div>
       <div id="homeSidebar" class="homeSidebar">
         <div class="homeSidebarTitle">Your Stats</div>
         <div id="homeLevel" class="homeLevel"></div>
@@ -7416,10 +7416,10 @@ window.addEventListener('keydown', (e) => { if (e.code === 'F10' && window.ZOMBI
  */
 const LOOT = {
   chunkPx: 700, genRadiusPx: 1300, maxContainers: 400, perFrameChunks: 2,
-  density: 0.62, doubleChance: 0.22,             // chance a chunk gets a container / a second one
-  minFromPlayerPx: 260, minSpacingPx: 230, noZombiePx: 70,
+  density: 0.34, doubleChance: 0.08,             // chance a chunk gets a container / a second one
+  minFromPlayerPx: 260, minSpacingPx: 320, noZombiePx: 70,
   searchRangePx: 58, promptRangePx: 120,
-  carShare: 0.30,                                // fraction of the map's parked cars that can be searched
+  carShare: 0.10, carSpacingPx: 380,             // fraction of the map's parked cars that can be searched, and how far apart searchable cars are
   respawnMinDistPx: 700, maxRespawns: 2, respawnQtyMult: 0.6,
   xpByRarity: [3, 6, 12, 25, 60], runXpCap: 300, // XP for the FIRST search of a container in a run
   resistMult: 0.6, resistSecs: 30, speedMult: 1.25, speedSecs: 25, buffCapSecs: 60,
@@ -7683,7 +7683,7 @@ class LootSystem {
     if (obs) for (const o of obs) {
       if (!o.isCar || o.x < x0 || o.x >= x0 + S || o.y < y0 || o.y >= y0 + S) continue;
       const uid = lootHash(Math.round(o.x), Math.round(o.y), this.seed); if ((uid % 1000) / 1000 > this.cfg.carShare) continue;
-      if (this.byId.has('car' + uid) || this.list.some((c) => c.kind === 'car' && Math.hypot(c.x - o.x, c.y - o.y) < 60)) continue;
+      if (this.byId.has('car' + uid) || this.list.some((c) => c.kind === 'car' && Math.hypot(c.x - o.x, c.y - o.y) < this.cfg.carSpacingPx)) continue;   // a row of parked cars gives at most one
       const rar = this._rollRarity(LOOT_CONTAINERS.car, Math.hypot(o.x - this.start.x, o.y - this.start.y), rnd); this._add('car', o.x, o.y, rar, 'car' + uid, Math.max(o.halfWidth || 30, o.halfHeight || 30) + 46);
     }
     const D = this._diff(); if (rnd() > this.cfg.density * (CONFIG.activeDifficulty === 'easy' ? 1.1 : 1)) return;
