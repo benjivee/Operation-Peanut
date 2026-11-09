@@ -2229,7 +2229,7 @@ const EMBEDDED_ASSETS = {
     <!-- ===================== Start overlay (home page) ===================== -->
     <div id="startScreen" class="overlay homePage">
       <!-- Version: major.minor.patch. The patch digit goes 0-9 and rolls into the minor number (v3.88.9 -> v3.89.0); the minor number is two digits and rolls into the major number (v3.99.9 -> v4.00.0). Bumped by 1 on every change. -->
-      <div id="versionTag" class="versionTag">v3.93.9</div>
+      <div id="versionTag" class="versionTag">v3.94.0</div>
       <div id="homeSidebar" class="homeSidebar">
         <div class="homeSidebarTitle">Your Stats</div>
         <div id="homeLevel" class="homeLevel"></div>
@@ -2270,6 +2270,8 @@ const EMBEDDED_ASSETS = {
           <label class="testToggle"><span>Shop Cash ($3000 start)</span><input type="checkbox" id="tmShopCash"><i></i></label>
           <label class="testToggle"><span>Zombie AI Debug (F9)</span><input type="checkbox" id="aiDebugToggle"><i></i></label>
           <label class="testToggle"><span>Zombie Director Debug (F10)</span><input type="checkbox" id="zdDebugToggle"><i></i></label>
+          <label class="testToggle"><span>Loot Test Set (all containers)</span><input type="checkbox" id="tmLootTest"><i></i></label>
+          <label class="testToggle"><span>Loot Debug (F11)</span><input type="checkbox" id="lootDebugToggle"><i></i></label>
           <label class="testToggle"><span>Zombie Personality</span><select id="tmAiForce" style="font:inherit;font-size:11px;padding:6px;background:#14171b;color:#fff;border:3px solid #000"><option value="mixed">Mixed (normal)</option><option value="hunter">Hunters only</option><option value="predictor">Predictors only</option><option value="flanker">Flankers only</option><option value="wanderer">Wanderers only</option></select></label>
         </div>
         <button id="backFromTestModeBtn" class="bigButton">Back</button>
@@ -4815,9 +4817,10 @@ const TEST_MODE = {
   zombies: true, // false = no zombies spawn at all (including the boss)
   fastShop: false, // shop opens every SHOP_CONFIG.testIntervalSeconds instead of every 2 minutes (see shop.js)
   shopCash: false, // start the run with SHOP_CONFIG.testStartMoney
+  lootTest: false, // loot testing: every container type and rarity is placed around the start of the run
   aiForce: 'mixed', // zombie AI testing: 'mixed' = normal, or force every new zombie to one personality (hunter | predictor | flanker | wanderer)
   isActive() {
-    return this.invincible || this.allWeapons || this.unlimitedAmmoGas || this.unlimitedStamina || !this.zombies || this.fastShop || this.shopCash || this.aiForce !== 'mixed';
+    return this.invincible || this.allWeapons || this.unlimitedAmmoGas || this.unlimitedStamina || !this.zombies || this.fastShop || this.shopCash || this.aiForce !== 'mixed' || this.lootTest;
   },
 };
 
@@ -5814,6 +5817,7 @@ class Player extends Entity {
   takeDamage(amount) {
     if (TEST_MODE.invincible) return; // Test Mode: Invincibility
     if (this.invulnTimer > 0) return;
+    if (window.LOOT_SYS && LOOT_SYS.resistActive()) amount *= LOOT.resistMult;   // Body Armor Plate buff (loot.js); Nightmare's one-hit rule below still wins
     if (CONFIG.activeDifficulty === 'nightmare' && amount > 0) amount = this.maxHealth;   // Nightmare: one hit of any kind is fatal
     this.health = Utils.clamp(this.health - amount, 0, this.maxHealth);
     this.invulnTimer = 0.4;
@@ -6819,7 +6823,7 @@ class ZombieAIManager {
     const S = ZOMBIE_SOUND, ev = S.pending; if (!ev.length) { this._ageRecent(); return; }
     for (const e of ev) {
       if (window.ZOMBIE_DIRECTOR) window.ZOMBIE_DIRECTOR.onSound(e);   // the director turns loud noise into zombies that come to investigate
-      S.recent.push(e); if (e.kind === 'shot' || e.kind === 'explosion') { this.mem.push({ x: e.x, y: e.y }); if (this.mem.length > 6) this.mem.shift(); }
+      S.recent.push(e); if (e.kind === 'shot' || e.kind === 'explosion' || e.kind === 'loot') { this.mem.push({ x: e.x, y: e.y }); if (this.mem.length > 6) this.mem.shift(); }
       const R = this.m(e.r);
       for (const z of this.zombies) {
         const b = z.brain; if (!b || z.alive === false) continue;
@@ -7326,7 +7330,7 @@ class ZombieDirector {
   // ---------------------------------------------------------------- sound
   onSound(ev) {
     if (!this.enabled) return;
-    const w = ev.kind === 'shot' ? 1 : ev.kind === 'explosion' ? 3 : ev.kind === 'throw' ? 0.2 : 0; if (!w) return;
+    const w = ev.kind === 'shot' ? 1 : ev.kind === 'explosion' ? 3 : ev.kind === 'throw' ? 0.2 : ev.kind === 'loot' ? 0.6 : 0; if (!w) return;   // a loud container (loot.js) counts as noise too
     this.heat += (ev.r / 28) * w * 0.9; this.combat += 0.2; this.lastSound = { x: ev.x, y: ev.y, r: ev.r, kind: ev.kind, t: this.t };
   }
   _attractCheck(ctx, cap) {
@@ -7388,6 +7392,436 @@ class ZombieDirector {
   }
 }
 window.addEventListener('keydown', (e) => { if (e.code === 'F10' && window.ZOMBIE_DIRECTOR) { e.preventDefault(); window.ZOMBIE_DIRECTOR.setDebug(!window.ZOMBIE_DIRECTOR.debug); } });
+  </script>
+  <script>
+/**
+ * loot.js — loot and scavenging for Operation Peanut.
+ *
+ *  REUSES: ammo goes through Weapon.addReserveAmmo (so the shop's Ammo Reserve upgrade still applies) and Weapon.refuel (gas tanks); health through Player.heal; cash
+ *  through player.money (the shop currency); XP through XP.award; cosmetics through ACCESSORIES._grant; noise through ZOMBIE_SOUND (so the existing zombie AI hears it and the
+ *  zombie director can send more zombies); achievements / stats / daily challenges / missions through ACH.looted() and CHAL.looted() (added next to their siblings).
+ *  NEW (nothing like it existed): the containers themselves, a loot-carry cap per weapon (zombie drops still have none), and two short buffs (damage resistance, move speed).
+ *
+ *  CONTAINERS (LOOT_CONTAINERS): wooden crate, military crate, medical box, ammo box, backpack, abandoned car. A car is a REAL car prop of the map (the solid parked
+ *  cars the MapTiler world already places): a few of them get a glint and can be searched. Everything else is drawn with canvas shapes in the same crate-and-glyph
+ *  style as the existing pickups. ART TO REPLACE LATER (optional): see the list in the final report; nothing is a permanent unrelated placeholder.
+ *  PLACEMENT: the map is cut into LOOT.chunkPx squares. When a square comes within LOOT.genRadiusPx of the player, it is filled ONCE (seeded, remembered in the save):
+ *    street points / junctions / open ground, rejected when inside or touching buildings and cars, wedged, near the player or a zombie, too close to another container,
+ *    or unreachable (clear line or A* route). Valuable kinds are weighted toward places farther from where the run started.
+ *  RARITY: common -> legendary, rolled per container (weights per container type, shifted up with distance from the start) and shown by colour + glow before you open it.
+ *  RESPAWN: an emptied container refills after a long time (per type, per difficulty), only while the player is far away, at most LOOT.maxRespawns times, never as
+ *    legendary, with smaller quantities. XP is paid once per container per run (and capped per run).
+ *  SAVE: container states, remaining items, respawn timers and buffs are in the saved run (SavedRun) as `loot`; older saves simply start with no containers.
+ *  TUNING: LOOT, LOOT_RARITY, LOOT_CONTAINERS, LOOT_ITEMS, LOOT_DIFF below.
+ */
+const LOOT = {
+  chunkPx: 700, genRadiusPx: 1300, maxContainers: 400, perFrameChunks: 2,
+  density: 0.62, doubleChance: 0.22,             // chance a chunk gets a container / a second one
+  minFromPlayerPx: 260, minSpacingPx: 230, noZombiePx: 70,
+  searchRangePx: 58, promptRangePx: 120,
+  carShare: 0.30,                                // fraction of the map's parked cars that can be searched
+  respawnMinDistPx: 700, maxRespawns: 2, respawnQtyMult: 0.6,
+  xpByRarity: [3, 6, 12, 25, 60], runXpCap: 300, // XP for the FIRST search of a container in a run
+  resistMult: 0.6, resistSecs: 30, speedMult: 1.25, speedSecs: 25, buffCapSecs: 60,
+  staminaRestore: 0.6, cardSecs: 7,
+  cashByRarity: [25, 40, 65, 100, 160],
+  qtyByRarity: [1, 1.5, 2.2, 3.2, 5],
+  rarityDistBonus: { perPx: 1 / 6000, max: 1.8 },  // rare+ weights grow with distance from the run's start
+  cosmeticChance: 0.5,                           // legendary container: chance of a rare/epic accessory you do not own yet
+  ammo: {                                         // base amount per roll and the most reserve loot will top a weapon up to (zombie drops are not capped)
+    pistol: { qty: 12, cap: 240 }, shotgun: { qty: 6, cap: 80 }, smg: { qty: 30, cap: 450 }, rifle: { qty: 24, cap: 360 },
+    machinegun: { qty: 45, cap: 600 }, rpg: { qty: 1, cap: 8 }, grenade: { qty: 2, cap: 10 },
+  },
+};
+const LOOT_RARITY = ['common', 'uncommon', 'rare', 'epic', 'legendary'];
+const LOOT_DIFF = {   // quantities, noise carried, and how long respawns take, by the game's difficulty
+  easy: { qty: 1.25, noise: 0.8, respawn: 0.8 }, normal: { qty: 1, noise: 1, respawn: 1 }, hard: { qty: 0.85, noise: 1.15, respawn: 1.2 }, nightmare: { qty: 0.7, noise: 1.3, respawn: 1.5 },
+};
+// weight = how common the container is (before context), rarity = weights of common..legendary, table = what it holds (category weights), noise = chance it makes noise when opened
+// (radius in metres), respawnS = seconds before it can refill, rolls = items inside, danger = how much the farther-from-start bonus applies.
+const LOOT_CONTAINERS = {
+  wooden:   { name: 'Wooden Supply Crate',   glyph: 'W', w: 30, h: 26, searchS: 1.0, weight: 38, rolls: [1, 2], rarity: [62, 28, 8.5, 1.4, 0.1], table: { ammo: 34, medical: 22, survival: 16, cash: 28 }, noise: { chance: 0.10, radiusM: 14 }, respawnS: 900,  danger: 0.3 },
+  military: { name: 'Military Supply Crate', glyph: 'M', w: 34, h: 28, searchS: 2.2, weight: 6,  rolls: [2, 3], rarity: [10, 35, 35, 17, 3],    table: { ammo: 46, medical: 16, survival: 16, cash: 22 }, noise: { chance: 0.55, radiusM: 42 }, respawnS: 2700, danger: 1 },
+  medical:  { name: 'Medical Supply Box',    glyph: '+', w: 28, h: 22, searchS: 1.2, weight: 12, rolls: [1, 2], rarity: [40, 38, 16, 5, 1],     table: { medical: 78, survival: 16, cash: 6 },             noise: { chance: 0.05, radiusM: 10 }, respawnS: 1500, danger: 0.6 },
+  ammo:     { name: 'Ammunition Box',        glyph: 'A', w: 30, h: 20, searchS: 1.1, weight: 14, rolls: [1, 2], rarity: [48, 32, 14, 5, 1],     table: { ammo: 88, cash: 12 },                            noise: { chance: 0.20, radiusM: 22 }, respawnS: 1200, danger: 0.6 },
+  backpack: { name: 'Abandoned Backpack',    glyph: 'B', w: 24, h: 24, searchS: 0.8, weight: 26, rolls: [1, 2], rarity: [55, 30, 11, 3.5, 0.5],  table: { ammo: 22, medical: 20, survival: 26, cash: 32 }, noise: { chance: 0.04, radiusM: 8 },  respawnS: 1200, danger: 0.3 },
+  car:      { name: 'Abandoned Car',         glyph: 'C', w: 0,  h: 0,  searchS: 1.8, weight: 0,  rolls: [1, 2], rarity: [52, 30, 13, 4.5, 0.5],  table: { ammo: 25, medical: 20, survival: 20, cash: 35 }, noise: { chance: 0.22, radiusM: 55 }, respawnS: 1800, danger: 0.5 },   // the 55 m noise is the car alarm
+};
+// Items. cat: ammo | medical | survival | cash. min: the lowest container rarity (0..4) that can hold it. Quantities scale with rarity and difficulty.
+const LOOT_ITEMS = {
+  health_small: { cat: 'medical',  name: 'Small Health Pack', icon: '+',  color: '#2ecc71', min: 0, weight: 10, base: 20, unit: 'HP' },
+  health_large: { cat: 'medical',  name: 'Large Health Pack', icon: '++', color: '#27ae60', min: 1, weight: 8,  base: 40, unit: 'HP' },
+  medkit:       { cat: 'medical',  name: 'Medical Kit',       icon: 'MK', color: '#e74c3c', min: 2, weight: 5,  base: 75, unit: 'HP' },
+  stamina:      { cat: 'survival', name: 'Energy Drink',      icon: 'EN', color: '#f1c40f', min: 0, weight: 10, base: 1 },
+  speed:        { cat: 'survival', name: 'Adrenaline Shot',   icon: 'SP', color: '#3498db', min: 1, weight: 6,  base: 1 },
+  resist:       { cat: 'survival', name: 'Body Armor Plate',  icon: 'AR', color: '#95a5a6', min: 1, weight: 6,  base: 1 },
+  cash:         { cat: 'cash',     name: 'Cash',              icon: '$',  color: '#f5c542', min: 0, weight: 1,  base: 1 },
+  fuel:         { cat: 'ammo',     name: 'Gas Tank',          icon: 'G',  color: '#e67e22', min: 0, weight: 1,  base: 1 },
+  cosmetic:     { cat: 'cosmetic', name: 'Rare Cosmetic',     icon: '?',  color: '#ff9f1c', min: 4, weight: 0,  base: 1 },
+};
+const LOOT_AMMO_NAMES = { pistol: 'Pistol Ammo', shotgun: 'Shotgun Shells', smg: 'SMG Ammo', rifle: 'Rifle Ammo', machinegun: 'Machine Gun Belts', rpg: 'RPG Rockets', grenade: 'Grenades' };
+const LOOT_AMMO_ICONS = { pistol: 'P', shotgun: 'S', smg: 'SM', rifle: 'R', machinegun: 'MG', rpg: 'RK', grenade: 'GR' };
+function lootItemInfo(id) {
+  if (id.startsWith('ammo_')) { const w = id.slice(5); return { cat: 'ammo', name: LOOT_AMMO_NAMES[w] || w, icon: LOOT_AMMO_ICONS[w] || 'A', color: '#f1c40f', weapon: w }; }
+  return LOOT_ITEMS[id] ? Object.assign({ id }, LOOT_ITEMS[id]) : { cat: 'ammo', name: id, icon: '?', color: '#fff' };
+}
+const lootHash = (a, b, c) => { let h = (a * 374761393 + b * 668265263 + c * 2147483647) >>> 0; h = Math.imul(h ^ (h >>> 13), 1274126177) >>> 0; return h ^ (h >>> 16); };
+function lootRng(seed) { let a = seed >>> 0; return () => { a = (a + 0x6D2B79F5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
+function lootPick(w, rnd) { rnd = rnd || Math.random; let t = 0; for (const k in w) t += w[k]; let r = rnd() * t; for (const k in w) { r -= w[k]; if (r <= 0) return k; } return Object.keys(w)[0]; }
+const lootEsc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const lootRarityInfo = (i) => ACC_RARITIES.find((r) => r.id === LOOT_RARITY[i]) || { name: LOOT_RARITY[i], color: '#fff' };
+
+class LootContainer {
+  constructor(id, kind, x, y, rarity) {
+    this.id = id; this.kind = kind; this.x = x; this.y = y; this.rarity = rarity; this.state = 'closed';   // closed | open (empty, waiting to respawn) | partial (items left in it)
+    this.items = null; this.respawnAt = 0; this.respawns = 0; this.qtyMult = 1; this.reach = LOOT.searchRangePx; this.phase = Math.random() * 6.28; this.parts = []; this.openT = 99; this.shake = 0;
+    this.def = LOOT_CONTAINERS[kind];
+  }
+  get radius() { return 14; }
+  get canSearch() { return this.state !== 'open'; }
+  burst(color, n) { for (let i = 0; i < n; i++) this.parts.push({ x: (Math.random() - 0.5) * 20, y: -6, vx: (Math.random() - 0.5) * 70, vy: -50 - Math.random() * 70, life: 0.7 + Math.random() * 0.4, c: color }); this.openT = 0; }
+  update(dt) {
+    this.phase += dt * 3; this.openT += dt; this.shake = Math.max(0, this.shake - dt);
+    for (let i = this.parts.length - 1; i >= 0; i--) { const p = this.parts[i]; p.life -= dt; p.x += p.vx * dt; p.y += p.vy * dt; p.vy += 220 * dt; if (p.life <= 0) this.parts.splice(i, 1); }
+  }
+  draw(ctx, camera, canvas) {
+    const p = camera.worldToScreen(this.x, this.y, canvas); if (p.x < -60 || p.x > canvas.width + 60 || p.y < -60 || p.y > canvas.height + 60) return;
+    const col = lootRarityInfo(this.rarity).color, def = this.def, full = this.canSearch, t = this.phase, searching = LOOT.target === this && LOOT.progress > 0;
+    ctx.save(); camera.applyEntityScale(ctx, p); ctx.translate(p.x + (searching ? Math.sin(t * 9) * 1.4 : 0), p.y - (camera.rig3d ? 10 : 0));
+    if (this.kind === 'car') {   // the car itself is the map's sprite; only a marker hovers over it
+      if (full) { const by = -30 + Math.sin(t) * 3; ctx.globalAlpha = 0.9; ctx.fillStyle = col; ctx.strokeStyle = '#000'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(0, by - 8); ctx.lineTo(7, by); ctx.lineTo(0, by + 8); ctx.lineTo(-7, by); ctx.closePath(); ctx.fill(); ctx.stroke(); ctx.globalAlpha = 1; this._sparkle(ctx, col, by); }
+      this._parts(ctx); ctx.restore(); return;
+    }
+    // rarity glow + sparkle (only while there is something to take)
+    if (full) {
+      const pulse = 0.55 + Math.sin(t) * 0.2, rad = 24 + this.rarity * 4;
+      const g = ctx.createRadialGradient(0, 4, 2, 0, 4, rad); g.addColorStop(0, col + (this.rarity >= 3 ? 'aa' : '77')); g.addColorStop(1, col + '00');
+      ctx.globalAlpha = pulse * (this.rarity === 0 ? 0.6 : 1); ctx.fillStyle = g; ctx.beginPath(); ctx.ellipse(0, 4, rad, rad * 0.6, 0, 0, 7); ctx.fill(); ctx.globalAlpha = 1;
+      if (this.rarity === 4) { ctx.strokeStyle = col; ctx.lineWidth = 2; ctx.globalAlpha = 0.5; for (let i = 0; i < 6; i++) { const a = t * 0.6 + i * Math.PI / 3; ctx.beginPath(); ctx.moveTo(Math.cos(a) * 14, Math.sin(a) * 8); ctx.lineTo(Math.cos(a) * 34, Math.sin(a) * 20); ctx.stroke(); } ctx.globalAlpha = 1; }
+    }
+    ctx.fillStyle = 'rgba(0,0,0,0.35)'; ctx.beginPath(); ctx.ellipse(0, 10, def.w * 0.55, def.h * 0.28, 0, 0, 7); ctx.fill();
+    const open = !full || (this.openT < 0.5), lid = open ? Math.min(1, this.openT / 0.25) : 0, w = def.w, h = def.h;
+    this._body(ctx, w, h, lid, !full);
+    if (full) this._sparkle(ctx, col, -h - 6);
+    this._parts(ctx); ctx.restore();
+  }
+  _sparkle(ctx, col, y) { const k = Math.floor(this.phase * 1.3) % 4; ctx.fillStyle = col; ctx.globalAlpha = 0.5 + 0.5 * Math.sin(this.phase * 2); const ox = [-8, 7, -3, 9][k]; ctx.fillRect(ox - 1, y - 1, 3, 3); ctx.fillRect(ox - 3, y, 7, 1); ctx.fillRect(ox, y - 3, 1, 7); ctx.globalAlpha = 1; }
+  _parts(ctx) { for (const q of this.parts) { ctx.globalAlpha = Math.max(0, q.life); ctx.fillStyle = q.c; ctx.fillRect(q.x, q.y, 3, 3); } ctx.globalAlpha = 1; }
+  _body(ctx, w, h, lid, empty) {
+    const k = this.kind, dim = empty ? 0.55 : 1;
+    ctx.save(); ctx.globalAlpha = dim; ctx.lineWidth = 2; ctx.strokeStyle = '#1a1208';
+    const box = (fill, trim) => { ctx.fillStyle = fill; ctx.beginPath(); ctx.rect(-w / 2, -h / 2, w, h); ctx.fill(); ctx.stroke(); if (trim) { ctx.fillStyle = trim; ctx.fillRect(-w / 2 + 2, -h / 2 + 2, w - 4, 3); } };
+    if (k === 'wooden') { box('#a8763e', '#c9955a'); ctx.strokeStyle = '#6b4620'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(-w / 2, -h / 6); ctx.lineTo(w / 2, -h / 6); ctx.moveTo(-w / 2, h / 6); ctx.lineTo(w / 2, h / 6); ctx.moveTo(-w / 2, -h / 2); ctx.lineTo(w / 2, h / 2); ctx.stroke(); }
+    else if (k === 'military') { box('#566b3a', '#6f8a49'); ctx.fillStyle = '#d9d17a'; ctx.font = "8px 'Press Start 2P', monospace"; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('\u2605', 0, 1); ctx.fillStyle = '#2e3a1d'; ctx.fillRect(-w / 2, -2, 4, 4); ctx.fillRect(w / 2 - 4, -2, 4, 4); }
+    else if (k === 'medical') { box('#e9eef0', '#cfd8dc'); ctx.fillStyle = '#d63031'; ctx.fillRect(-2, -h / 2 + 4, 4, h - 8); ctx.fillRect(-7, -2, 14, 4); }
+    else if (k === 'ammo') { box('#3d4a2c', '#5a6b3f'); ctx.fillStyle = '#f1c40f'; for (let i = -2; i <= 2; i++) ctx.fillRect(i * 5 - 1, -3, 3, 8); ctx.fillStyle = '#2a331d'; ctx.fillRect(-w / 2, -h / 2, w, 3); }
+    else if (k === 'backpack') { ctx.fillStyle = '#7a3b2e'; ctx.beginPath(); ctx.roundRect(-w / 2, -h / 2, w, h, 6); ctx.fill(); ctx.stroke(); ctx.fillStyle = '#5d2b21'; ctx.fillRect(-w / 2 + 3, 1, w - 6, h / 2 - 3); ctx.fillStyle = '#c9a24a'; ctx.fillRect(-2, -3, 4, 5); }
+    // lid pops up when opened
+    if (lid > 0 && k !== 'backpack') { ctx.fillStyle = 'rgba(255,255,255,0.18)'; ctx.fillRect(-w / 2, -h / 2 - 9 * lid, w, 4); }
+    ctx.restore();
+  }
+}
+
+class LootSystem {
+  constructor() { this.cfg = LOOT; this.debug = false; this.card = null; this.reset(null); }
+  reset(game) {
+    this.list = []; this.gen = new Set(); this.seed = (Math.random() * 4e9) >>> 0; this.clock = 0; this.acc = 0; this.target = null; this.progress = 0; this.byId = new Map(); this.nextId = 1;
+    this.xpSet = new Set(); this.xpRun = 0; this.buff = { resist: 0, speed: 0 }; this.start = game && game.player ? { x: game.player.x, y: game.player.y } : { x: 0, y: 0 }; this.chunkQueue = [];
+    this.stats = { opened: 0, items: 0, blocked: 0, noises: 0, generated: 0, rejected: 0 }; this.lastNote = 0; this._hideCard();
+    if (game && typeof TEST_MODE !== 'undefined' && TEST_MODE.lootTest) this._pendingTestSet = true;
+  }
+  drawList() { return this.list; }
+  resistActive() { return this.buff.resist > 0 && CONFIG.activeDifficulty !== 'nightmare'; }
+  _diff() { return LOOT_DIFF[CONFIG.activeDifficulty] || LOOT_DIFF.normal; }
+
+  // ------------------------------------------------------------------ per frame
+  update(dt, game) {
+    this.clock += dt; this.acc += dt; const p = game.player;
+    for (const c of this.list) if ((c.x - p.x) ** 2 + (c.y - p.y) ** 2 < 1600 * 1600 || c.parts.length) c.update(dt);
+    this._tickBuffs(dt, game);
+    if (this._pendingTestSet && game.navGrid) { this._pendingTestSet = false; this.spawnTestSet(game); }
+    if (this.acc >= 0.4) { this.acc = 0; this._ensureChunks(game); this._tickRespawns(game); this._refreshUi(); }
+    this._search(dt, game);
+    if (this.cardT > 0) { this.cardT -= dt; if (this.cardT <= 0) this._hideCard(); }
+  }
+  _nearest(p) {
+    let best = null, bd = 1e18; const R = this.cfg.promptRangePx + 80;
+    for (const c of this.list) { if (!c.canSearch) continue; const dx = c.x - p.x, dy = c.y - p.y; if (dx > 400 || dx < -400 || dy > 400 || dy < -400) continue; const d = Math.hypot(dx, dy) - (c.reach - this.cfg.searchRangePx); if (d < bd && d < R) { bd = d; best = c; } }
+    return best ? { c: best, d: bd } : null;
+  }
+  _search(dt, game) {
+    const p = game.player, n = this._nearest(p), held = game.input && game.input.isDown('KeyE') && p.alive !== false;   // (LOOT_SYS.update only runs while the run is being played)
+    this.near = n ? n.c : null; this.nearInRange = !!(n && n.d <= this.cfg.searchRangePx);
+    if (held && n && n.d <= this.cfg.searchRangePx) {
+      if (this.target !== n.c) { this.target = n.c; this.progress = 0; }
+      this.progress += dt / n.c.def.searchS; n.c.shake = 0.1;
+      if (this.progress >= 1) { const c = n.c; this.target = null; this.progress = 0; this._open(c, game); }
+    } else { this.target = null; this.progress = 0; }
+  }
+  _tickBuffs(dt, game) {
+    const p = game.player, b = this.buff;
+    if (b.resist > 0) b.resist = Math.max(0, b.resist - dt);
+    if (b.speed > 0) b.speed = Math.max(0, b.speed - dt);
+    const base = CONFIG.PLAYER.speed * (1 + ((p.upgrades && p.upgrades.speed) || 0) * SHOP_CONFIG.player.speed.perLevel);
+    p.speed = base * (b.speed > 0 ? this.cfg.speedMult : 1);   // the shop's Move Speed upgrade is kept; the buff multiplies it
+  }
+
+  // ------------------------------------------------------------------ opening
+  _open(c, game) {
+    const p = game.player, def = c.def, first = c.items === null;
+    if (first) c.items = this._rollContents(c, game);
+    const results = [];
+    for (const it of c.items) results.push(this._collect(it, game, c));
+    c.items = c.items.filter((it) => it.qty > 0);     // what could not be carried stays in the container
+    const taken = results.filter((r) => r.got > 0).length;
+    c.state = c.items.length ? 'partial' : 'open';
+    if (c.state === 'open') c.respawnAt = this.clock + def.respawnS * this._diff().respawn * (c.rarity >= 3 ? 1.3 : 1);
+    c.burst(lootRarityInfo(c.rarity).color, 8 + c.rarity * 4);
+    const rar = c.rarity; this.stats.opened++; this.stats.items += taken; this.stats.blocked += results.filter((r) => r.blocked).length;
+    // feedback
+    Sound.pickup(rar >= 2 ? 'weapon' : taken ? 'ammo' : 'health'); game.fx.pulse(c.x, c.y, rar >= 2 ? 'weapon' : 'ammo');
+    game._addFloatingText(c.x, c.y - 24, taken ? `${def.name.toUpperCase()}` : 'NOTHING USEFUL', lootRarityInfo(rar).color);
+    // noise: some containers are loud — the existing sound system carries it to zombies (and the director may send more)
+    let noisy = false; const nz = def.noise;
+    if (first && nz && Math.random() < nz.chance) { noisy = true; this.stats.noises++; ZOMBIE_SOUND.emit(c.x, c.y, nz.radiusM * this._diff().noise, 'loot'); }
+    // XP: once per container per run (never again for respawns), capped per run
+    let xp = 0;
+    if (first && !this.xpSet.has(c.id) && this.xpRun < this.cfg.runXpCap) { this.xpSet.add(c.id); xp = Math.min(this.cfg.xpByRarity[rar], this.cfg.runXpCap - this.xpRun); xp = XP.award(xp, 'other', 'Searched: ' + def.name) || 0; this.xpRun += xp; }
+    // progression
+    if (first) { ACH.looted({ kind: c.kind, rarity: rar, items: taken }); CHAL.looted({ kind: c.kind, items: taken }); } else if (taken) { ACH.looted({ kind: c.kind, rarity: -1, items: taken }); CHAL.looted({ kind: c.kind, items: taken, noOpen: true }); }
+    this._showCard(c, results, noisy, xp);
+  }
+  _collect(it, game, c) {
+    const info = lootItemInfo(it.id), r = { id: it.id, name: info.name, icon: info.icon, color: info.color, rarity: it.rarity, qty: it.qty, got: 0, blocked: '' };
+    const res = this._apply(it, info, game, c); r.got = res.n; r.blocked = res.reason || '';
+    if (res.n > 0) { it.qty = res.left !== undefined ? res.left : 0; if (it.qty > 0) r.blocked = r.blocked || 'PARTLY CARRIED'; }
+    return r;
+  }
+  // Applies one item through the game's existing systems. n = how much was taken; reason = why not (the rest stays in the container); left = remaining quantity.
+  _apply(it, info, game, c) {
+    const p = game.player, q = it.qty;
+    if (info.weapon) {                                                  // ammunition
+      const w = p.weapons.find((x) => x.config.id === info.weapon);
+      if (!w || w.config.melee) return { n: 0, reason: 'NO ' + info.weapon.toUpperCase() };
+      const cap = (this.cfg.ammo[info.weapon] || { cap: 9999 }).cap, room = Math.max(0, cap - w.reserveAmmo);
+      if (room <= 0) return { n: 0, reason: 'AMMO FULL (MAX ' + cap + ')' };
+      const give = Math.min(q, room), added = w.addReserveAmmo(give); if (added <= 0) return { n: 0, reason: 'AMMO FULL' };
+      return { n: added, left: q - give, reason: give < q ? 'AMMO FULL (MAX ' + cap + ')' : '' };
+    }
+    switch (it.id) {
+      case 'fuel': { const w = p.weapons.find((x) => x.config.fuelTank && x.refuel && x.currentAmmo < x.config.magazineSize) || p.weapons.find((x) => x.config.fuelTank); if (!w) return { n: 0, reason: 'NO GAS WEAPON' }; const a = w.refuel(); return a > 0 ? { n: a, left: 0 } : { n: 0, reason: 'GAS TANK FULL' }; }
+      case 'health_small': case 'health_large': case 'medkit': { const h = p.heal(q); if (h > 0) CHAL.healed(h); return h > 0 ? { n: h, left: 0 } : { n: 0, reason: 'HEALTH FULL' }; }
+      case 'stamina': { if (p.stamina >= p.maxStamina - 1) return { n: 0, reason: 'STAMINA FULL' }; p.stamina = Math.min(p.maxStamina, p.stamina + p.maxStamina * this.cfg.staminaRestore); return { n: 1, left: 0 }; }
+      case 'speed': this.buff.speed = Math.min(this.cfg.buffCapSecs, this.buff.speed + this.cfg.speedSecs); return { n: 1, left: 0 };
+      case 'resist': this.buff.resist = Math.min(this.cfg.buffCapSecs, this.buff.resist + this.cfg.resistSecs); return { n: 1, left: 0 };
+      case 'cash': p.money += q; return { n: q, left: 0 };
+      case 'cosmetic': { const d = ACCESSORIES.byId.get(it.acc); if (!d) return { n: 0, reason: 'ALREADY OWNED' }; if (ACCESSORIES.unlocked[d.id]) return { n: 0, reason: 'ALREADY OWNED' }; ACCESSORIES._grant(d, true, { type: 'milestone', text: 'Found in a legendary container' }); return { n: 1, left: 0 }; }
+    }
+    return { n: 0, reason: 'UNKNOWN ITEM' };
+  }
+
+  // ------------------------------------------------------------------ what is inside
+  _rollRarity(def, dist, rnd) {
+    const w = {}, bonus = Math.min(this.cfg.rarityDistBonus.max, 1 + (dist * this.cfg.rarityDistBonus.perPx) * def.danger);
+    def.rarity.forEach((v, i) => { w[i] = v * (i >= 2 ? bonus : 1) * (i === 4 ? 1 : 1); }); return +lootPick(w, rnd);
+  }
+  _ownedAmmo(game) {
+    const out = {}; for (const w of game.player.weapons) { const id = w.config.id; if (this.cfg.ammo[id] && !w.config.melee) out['ammo_' + id] = (id === game.player.currentWeapon.config.id ? 1.6 : 1) * (id === 'rpg' || id === 'grenade' ? 0.35 : 1); else if (w.config.fuelTank) out.fuel = 0.35; }
+    if (!Object.keys(out).length) out.ammo_pistol = 1; return out;
+  }
+  _rollContents(c, game) {
+    const def = c.def, D = this._diff(), rar = c.rarity, items = new Map(), nz = CONFIG.activeDifficulty === 'nightmare';
+    let rolls = Math.round(Math.random() * (def.rolls[1] - def.rolls[0]) + def.rolls[0]) + (rar >= 3 ? 1 : 0) + (rar === 4 ? 1 : 0);
+    const add = (id, qty, rarity, extra) => { const e = items.get(id); if (e) e.qty += qty; else items.set(id, Object.assign({ id, qty, rarity }, extra || {})); };
+    for (let i = 0; i < rolls; i++) {
+      const cat = lootPick(def.table), mult = this.cfg.qtyByRarity[rar] * D.qty * c.qtyMult * (0.8 + Math.random() * 0.4);
+      if (cat === 'ammo') { const pool = this._ownedAmmo(game), id = lootPick(pool), wid = id.slice(5); if (id === 'fuel') add('fuel', 1, rar); else add(id, Math.max(1, Math.round(this.cfg.ammo[wid].qty * mult)), rar); }
+      else if (cat === 'cash') add('cash', Math.max(5, Math.round(this.cfg.cashByRarity[rar] * D.qty * c.qtyMult * (0.8 + Math.random() * 0.4))), rar);
+      else { const pool = {}; for (const id in LOOT_ITEMS) { const it = LOOT_ITEMS[id]; if (it.cat !== cat || it.min > rar || !it.weight) continue; if (id === 'resist' && nz) continue; pool[id] = it.weight * (1 + 0.5 * (rar - it.min)); } if (!Object.keys(pool).length) continue; const id = lootPick(pool); const it = LOOT_ITEMS[id]; add(id, cat === 'medical' ? Math.max(5, Math.round(it.base * (0.8 + rar * 0.1) * Math.min(1.5, D.qty))) : 1, rar); }
+    }
+    if (rar === 4) {   // legendary: a real cosmetic if one is left to find, otherwise a big supply bundle
+      const cand = ACCESSORIES.defs.filter((d) => d.art && !d.fx && !ACCESSORIES.unlocked[d.id] && ['rare', 'epic'].includes((ACCESSORIES.rarityInfo(d) || {}).id));
+      if (cand.length && Math.random() < this.cfg.cosmeticChance) { const d = cand[Math.floor(Math.random() * cand.length)]; items.set('cosmetic', { id: 'cosmetic', qty: 1, rarity: 4, acc: d.id, accName: d.name }); }
+      else add('medkit', Math.round(75 * Math.min(1.5, D.qty)), 4);
+    }
+    return [...items.values()];
+  }
+
+  // ------------------------------------------------------------------ placing containers
+  _obs(game) { return game.obstacles || null; }
+  _ensureChunks(game) {
+    const p = game.player, S = this.cfg.chunkPx, R = this.cfg.genRadiusPx, cx0 = Math.floor((p.x - R) / S), cx1 = Math.floor((p.x + R) / S), cy0 = Math.floor((p.y - R) / S), cy1 = Math.floor((p.y + R) / S);
+    let made = 0;
+    for (let cx = cx0; cx <= cx1 && made < this.cfg.perFrameChunks; cx++) for (let cy = cy0; cy <= cy1 && made < this.cfg.perFrameChunks; cy++) {
+      const key = cx + ',' + cy; if (this.gen.has(key)) continue;
+      const cxp = (cx + 0.5) * S, cyp = (cy + 0.5) * S; if (Math.hypot(cxp - p.x, cyp - p.y) > R + S * 0.5) continue;
+      this.gen.add(key); this._fillChunk(game, cx, cy); made++;
+    }
+    if (this.list.length > this.cfg.maxContainers) this._prune(p);
+  }
+  _prune(p) {   // far, never-opened containers are forgotten (and their chunk can be filled again); opened ones are kept so they cannot be re-looted by walking away
+    const far = this.list.filter((c) => c.state === 'closed' && c.items === null && c.respawns === 0 && Math.hypot(c.x - p.x, c.y - p.y) > 3200).sort((a, b) => Math.hypot(b.x - p.x, b.y - p.y) - Math.hypot(a.x - p.x, a.y - p.y));
+    for (const c of far.slice(0, this.list.length - this.cfg.maxContainers + 20)) { this.list.splice(this.list.indexOf(c), 1); this.byId.delete(c.id); this.gen.delete(Math.floor(c.x / this.cfg.chunkPx) + ',' + Math.floor(c.y / this.cfg.chunkPx)); }
+  }
+  _valid(game, x, y, obs, ng) {
+    const p = game.player, W = CONFIG.WORLD.width, H = CONFIG.WORLD.height;
+    if (x < 60 || y < 60 || x > W - 60 || y > H - 60) return false;
+    if (Math.hypot(x - p.x, y - p.y) < this.cfg.minFromPlayerPx) return false;
+    if (obs && obs.some((o) => Utils.resolveCircleRect(x, y, 28, o))) return false;                       // inside / touching a building, car, tree...
+    if (ng) { const c = ng.worldToCell(x, y); if (ng.isBlockedCell(c.col, c.row)) return false; let open = 0; for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) if ((a || b) && !ng.isBlockedCell(c.col + a, c.row + b)) open++; if (open < 6) return false; }
+    for (const z of game.zombies) if (z.alive !== false && Math.hypot(z.x - x, z.y - y) < this.cfg.noZombiePx) return false;
+    for (const c of this.list) if (Math.hypot(c.x - x, c.y - y) < this.cfg.minSpacingPx) return false;
+    return true;
+  }
+  _reachable(game, x, y, obs, ng) {   // a clear line to the player, or an A* route (one search at most)
+    const p = game.player; if (!obs || Utils.hasLineOfSight(x, y, p.x, p.y, obs)) return true;
+    if (!ng) return true; const path = ng.findPath(x, y, p.x, p.y); return !!(path && path.length);
+  }
+  _fillChunk(game, cx, cy) {
+    const rnd = lootRng(lootHash(this.seed, cx, cy)), S = this.cfg.chunkPx, x0 = cx * S, y0 = cy * S, obs = this._obs(game), ng = game.navGrid, ai = window.ZOMBIE_AI;
+    // parked cars of the real map: some of them can be searched
+    if (obs) for (const o of obs) {
+      if (!o.isCar || o.x < x0 || o.x >= x0 + S || o.y < y0 || o.y >= y0 + S) continue;
+      const uid = lootHash(Math.round(o.x), Math.round(o.y), this.seed); if ((uid % 1000) / 1000 > this.cfg.carShare) continue;
+      if (this.byId.has('car' + uid) || this.list.some((c) => c.kind === 'car' && Math.hypot(c.x - o.x, c.y - o.y) < 60)) continue;
+      const rar = this._rollRarity(LOOT_CONTAINERS.car, Math.hypot(o.x - this.start.x, o.y - this.start.y), rnd); this._add('car', o.x, o.y, rar, 'car' + uid, Math.max(o.halfWidth || 30, o.halfHeight || 30) + 46);
+    }
+    const D = this._diff(); if (rnd() > this.cfg.density * (CONFIG.activeDifficulty === 'easy' ? 1.1 : 1)) return;
+    let want = 1 + (rnd() < this.cfg.doubleChance ? 1 : 0), reach = 0;
+    for (let k = 0; k < 14 && want > 0; k++) {
+      let x = x0 + rnd() * S, y = y0 + rnd() * S, street = false; const roll = rnd();
+      if (ai && ai.streets.nSeg && roll < 0.5) {
+        const s = ai.streets.nearest(x, y, 220); if (s) { const a = rnd() * 6.28, off = 24 + rnd() * 26; x = s.x + Math.cos(a) * off; y = s.y + Math.sin(a) * off; street = true; }
+      }
+      if (x < x0 || y < y0 || x >= x0 + S || y >= y0 + S) continue;
+      if (!this._valid(game, x, y, obs, ng)) continue;
+      const nearBuilding = !!(obs && obs.some((o) => Utils.resolveCircleRect(x, y, 95, o))), open = !nearBuilding && !!(obs && !obs.some((o) => Utils.resolveCircleRect(x, y, 170, o)));
+      const dist = Math.hypot(x - this.start.x, y - this.start.y), far = 1 + Math.min(1, dist / 3500);
+      const w = street ? { wooden: 34, backpack: 30, ammo: 14, medical: 8, military: 2 * far } : nearBuilding ? { wooden: 36, medical: 20, backpack: 22, ammo: 14, military: 3 * far } : open ? { backpack: 26, wooden: 24, ammo: 18, military: 7 * far, medical: 10 } : { wooden: 40, backpack: 25, ammo: 12, medical: 10, military: 2 * far };
+      const kind = lootPick(w, rnd), rar = this._rollRarity(LOOT_CONTAINERS[kind], dist, rnd);
+      if (!this._reachable(game, x, y, obs, ng)) { this.stats.rejected++; continue; }
+      this._add(kind, x, y, rar); want--;
+    }
+  }
+  _add(kind, x, y, rarity, id, reach) {
+    const c = new LootContainer(id || (kind[0] + (this.nextId++)), kind, x, y, rarity); if (reach) c.reach = reach; c.id = id || c.id;
+    if (this.byId.has(c.id)) return null; this.list.push(c); this.byId.set(c.id, c); this.stats.generated++; return c;
+  }
+  _tickRespawns(game) {
+    const p = game.player;
+    for (const c of this.list) {
+      if (c.state !== 'open' || this.clock < c.respawnAt || c.respawns >= this.cfg.maxRespawns) continue;
+      if (Math.hypot(c.x - p.x, c.y - p.y) < this.cfg.respawnMinDistPx) continue;                  // never refills beside / in view of the player
+      if (game.zombies.some((z) => z.alive !== false && Math.hypot(z.x - c.x, z.y - c.y) < 70)) continue;
+      c.respawns++; c.state = 'closed'; c.items = null; c.qtyMult = this.cfg.respawnQtyMult;
+      c.rarity = Math.min(3, this._rollRarity(c.def, Math.hypot(c.x - this.start.x, c.y - this.start.y) * 0.5, null));   // refills are never legendary
+    }
+  }
+  // Test helper: one container of every type and rarity around the player (Test Mode > Loot Test Set, or LOOT.spawnTestSet(game) in the console).
+  spawnTestSet(game) {
+    const p = game.player, kinds = Object.keys(LOOT_CONTAINERS), obs = this._obs(game), ng = game.navGrid; let i = 0, made = 0;
+    for (let ring = 0; ring < 2; ring++) for (let r = 0; r < 5; r++) {
+      const kind = kinds[(i++) % kinds.length], rar = r;
+      for (let k = 0; k < 40; k++) {
+        const a = (i * 0.9 + k * 0.7), d = 150 + ring * 110 + (k % 5) * 18, x = p.x + Math.cos(a) * d, y = p.y + Math.sin(a) * d;
+        if (obs && obs.some((o) => Utils.resolveCircleRect(x, y, 28, o))) continue; if (this.list.some((c) => Math.hypot(c.x - x, c.y - y) < 60)) continue;
+        const c = this._add(kind === 'car' ? 'backpack' : kind, x, y, rar); if (c) made++; break;
+      }
+    }
+    return made;
+  }
+
+  // ------------------------------------------------------------------ save
+  serialize() {
+    const r1 = (n) => Math.round(n * 10) / 10;
+    return { v: 1, seed: this.seed, clock: r1(this.clock), start: this.start, gen: [...this.gen], xp: [...this.xpSet], xpRun: this.xpRun, buff: { resist: r1(this.buff.resist), speed: r1(this.buff.speed) }, n: this.stats.opened,
+      c: this.list.map((c) => [c.id, c.kind, r1(c.x), r1(c.y), c.rarity, c.state, r1(c.respawnAt), c.respawns, c.qtyMult, r1(c.reach), c.items ? c.items.map((i) => [i.id, i.qty, i.rarity, i.acc || 0]) : null]) };
+  }
+  restore(raw, game) {
+    this.reset(game); if (!raw || typeof raw !== 'object') return;
+    const num = (v, d) => (Number.isFinite(v) ? v : d);
+    this.seed = num(raw.seed, this.seed) >>> 0; this.clock = num(raw.clock, 0); if (raw.start && Number.isFinite(raw.start.x)) this.start = { x: raw.start.x, y: raw.start.y };
+    if (Array.isArray(raw.gen)) for (const k of raw.gen.slice(0, 4000)) if (typeof k === 'string') this.gen.add(k);
+    if (Array.isArray(raw.xp)) for (const k of raw.xp.slice(0, 2000)) this.xpSet.add(String(k));
+    this.xpRun = num(raw.xpRun, 0); if (raw.buff) { this.buff.resist = Math.max(0, num(raw.buff.resist, 0)); this.buff.speed = Math.max(0, num(raw.buff.speed, 0)); }
+    if (Array.isArray(raw.c)) for (const r of raw.c.slice(0, 1500)) {
+      if (!Array.isArray(r) || !LOOT_CONTAINERS[r[1]] || !Number.isFinite(r[2]) || !Number.isFinite(r[3])) continue;
+      const c = new LootContainer(String(r[0]), r[1], r[2], r[3], Math.max(0, Math.min(4, r[4] | 0))); c.state = ['closed', 'open', 'partial'].includes(r[5]) ? r[5] : 'closed'; c.respawnAt = num(r[6], 0); c.respawns = r[7] | 0; c.qtyMult = num(r[8], 1); c.reach = num(r[9], LOOT.searchRangePx);
+      c.items = Array.isArray(r[10]) ? r[10].filter((i) => Array.isArray(i) && typeof i[0] === 'string' && i[1] > 0).map((i) => { const o = { id: i[0], qty: i[1], rarity: i[2] | 0 }; if (i[3]) { o.acc = i[3]; } return o; }) : null;
+      if (c.state === 'partial' && (!c.items || !c.items.length)) c.state = 'open';
+      this.list.push(c); this.byId.set(c.id, c);
+    }
+    this.stats.opened = num(raw.n, 0);
+  }
+
+  // ------------------------------------------------------------------ UI
+  _ui() {
+    if (this.dom) return this.dom;
+    const css = document.createElement('style'); css.textContent = `
+      #lootCard{position:fixed;left:12px;bottom:84px;width:min(270px,62vw);z-index:9;display:none;background:rgba(18,21,26,0.92);border:3px solid #000;border-left-width:6px;padding:8px 9px;font-family:'Press Start 2P','Courier New',monospace;color:#e8ecef;pointer-events:none;box-shadow:3px 3px 0 rgba(0,0,0,.5)}
+      #lootCard .lcHead{display:flex;justify-content:space-between;gap:6px;font-size:8px;margin-bottom:7px;line-height:1.5} #lootCard .lcHead i{font-style:normal;font-size:7px}
+      #lootCard .lcRow{display:grid;grid-template-columns:26px minmax(0,1fr) auto;gap:6px;align-items:center;margin:5px 0;font-size:7px;line-height:1.5}
+      #lootCard .lcIcon{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border:2px solid var(--c,#999);color:var(--c,#999);background:#101317;font-size:7px}
+      #lootCard .lcRow b{font-weight:normal;color:#fff} #lootCard .lcRow small{display:block;font-size:6px;color:#9aa4ab} #lootCard .lcBad{color:#ff7b6b!important} #lootCard .lcOk{color:#58d68d!important}
+      #lootCard .lcNote{font-size:6px;line-height:1.7;color:#ffb347;margin-top:6px}
+      #lootBuffs{position:fixed;left:250px;top:22px;z-index:9;display:flex;gap:6px;font-family:'Press Start 2P','Courier New',monospace;pointer-events:none}
+      #lootBuffs span{font-size:7px;padding:5px 6px;background:rgba(18,21,26,.9);border:2px solid #000;border-bottom-width:3px}
+      @media (max-width:700px){#lootBuffs{left:12px;top:132px}}`;
+    document.head.appendChild(css);
+    const card = document.createElement('div'); card.id = 'lootCard'; document.body.appendChild(card);
+    const buffs = document.createElement('div'); buffs.id = 'lootBuffs'; document.body.appendChild(buffs);
+    this.dom = { card, buffs }; return this.dom;
+  }
+  _hideCard() { this.cardT = 0; if (this.dom) this.dom.card.style.display = 'none'; }
+  _showCard(c, results, noisy, xp) {
+    const d = this._ui(), R = lootRarityInfo(c.rarity);
+    const rows = results.map((r) => {
+      const left = c.items.find((i) => i.id === r.id), status = r.got > 0 && !r.blocked ? '<em class="lcOk">TAKEN</em>' : r.got > 0 ? '<em class="lcOk">TAKEN</em>' : '<em class="lcBad">LEFT</em>';
+      const name = r.id === 'cosmetic' && r.accName ? r.accName : r.name, q = r.id === 'cash' ? '$' + r.qty : r.id === 'cosmetic' ? '' : r.id.startsWith('health') || r.id === 'medkit' ? '+' + r.qty + ' HP' : r.id === 'fuel' || r.id === 'stamina' || r.id === 'speed' || r.id === 'resist' ? '' : 'x' + r.qty;
+      return `<div class="lcRow"><span class="lcIcon" style="--c:${r.color}">${lootEsc(r.icon)}</span><span><b>${lootEsc(name)}</b> ${q}${r.blocked ? `<small class="lcBad">${lootEsc(r.blocked)}${left ? ' - STAYS IN THE ' + lootEsc(c.def.name.toUpperCase()) : ''}</small>` : ''}</span>${status}</div>`;
+    }).join('') || '<div class="lcRow"><span></span><span>Empty.</span></div>';
+    d.card.style.borderLeftColor = R.color; d.card.style.display = 'block';
+    d.card.innerHTML = `<div class="lcHead"><b>${lootEsc(c.def.name.toUpperCase())}</b><i style="color:${R.color}">${R.name.toUpperCase()}</i></div>${rows}` + (xp ? `<div class="lcRow"><span class="lcIcon" style="--c:#5ec8ff">XP</span><span><b>+${xp} XP</b> <small>first search</small></span><em class="lcOk">TAKEN</em></div>` : '') +
+      (noisy ? '<div class="lcNote">THE NOISE CARRIES... ZOMBIES MAY COME.</div>' : '') + (c.items.length ? '<div class="lcNote">Come back with space to take the rest. (Hold E)</div>' : '');
+    this.cardT = this.cfg.cardSecs;
+  }
+  _refreshUi() {
+    const d = this._ui(), b = this.buff, parts = [];
+    if (b.speed > 0) parts.push(`<span style="color:#5dade2;border-color:#1b4f72">SPEED ${Math.ceil(b.speed)}s</span>`);
+    if (b.resist > 0) parts.push(`<span style="color:#aab7b8;border-color:#424949">ARMOR ${Math.ceil(b.resist)}s${CONFIG.activeDifficulty === 'nightmare' ? ' (NO EFFECT)' : ''}</span>`);
+    const html = parts.join(''); if (html !== this._buffHtml) { this._buffHtml = html; d.buffs.innerHTML = html; }
+  }
+
+  // ------------------------------------------------------------------ overlay: prompt + progress + debug
+  drawOverlay(ctx, camera, view) {
+    const c = this.near; 
+    if (c && c.canSearch) {
+      const p = camera.worldToScreen(c.x, c.y, view), inRange = this.nearInRange, R = lootRarityInfo(c.rarity), y = p.y - (c.kind === 'car' ? 60 : 44);
+      ctx.save(); ctx.font = "8px 'Press Start 2P', 'Courier New', monospace"; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      const label = inRange ? `[E] SEARCH ${c.def.name.toUpperCase()}` : c.def.name.toUpperCase() + (c.state === 'partial' ? ' (ITEMS LEFT)' : ''), w = ctx.measureText(label).width + 14;
+      ctx.fillStyle = 'rgba(10,12,14,0.82)'; ctx.fillRect(p.x - w / 2, y - 9, w, 18); ctx.strokeStyle = R.color; ctx.lineWidth = 2; ctx.strokeRect(p.x - w / 2, y - 9, w, 18);
+      ctx.fillStyle = inRange ? '#fff' : '#9aa4ab'; ctx.fillText(label, p.x, y + 1);
+      if (this.target === c && this.progress > 0) { ctx.fillStyle = 'rgba(10,12,14,0.9)'; ctx.fillRect(p.x - 34, y + 13, 68, 8); ctx.fillStyle = R.color; ctx.fillRect(p.x - 32, y + 15, 64 * Math.min(1, this.progress), 4); }
+      ctx.restore();
+    }
+    if (this.debug) this._drawDebug(ctx, camera, view);
+  }
+  _drawDebug(ctx, camera, view) {
+    const g = window.game, pl = g.player; ctx.save(); ctx.font = '9px monospace'; ctx.textAlign = 'center';
+    for (const c of this.list) {
+      const p = camera.worldToScreen(c.x, c.y, view); if (p.x < -50 || p.x > view.width + 50 || p.y < -50 || p.y > view.height + 50) continue;
+      const R = lootRarityInfo(c.rarity); ctx.strokeStyle = R.color; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(p.x, p.y, 18, 0, 7); ctx.stroke();
+      ctx.fillStyle = 'rgba(0,0,0,0.65)'; const t = `${c.id} ${c.kind} ${R.name} ${c.state}${c.state === 'open' ? ' respawn ' + Math.max(0, Math.round(c.respawnAt - this.clock)) + 's' : ''}`; const w = ctx.measureText(t).width + 6; ctx.fillRect(p.x - w / 2, p.y + 20, w, 12); ctx.fillStyle = R.color; ctx.fillText(t, p.x, p.y + 29);
+    }
+    ctx.textAlign = 'left'; ctx.fillStyle = 'rgba(0,0,0,0.65)'; ctx.fillRect(8, view.height - 70, 460, 28);
+    ctx.fillStyle = '#9fe'; ctx.fillText(`LOOT  containers ${this.list.length}  chunks ${this.gen.size}  opened ${this.stats.opened}  items ${this.stats.items}  blocked ${this.stats.blocked}  noises ${this.stats.noises}  rejected ${this.stats.rejected}`, 12, view.height - 54);
+    ctx.fillText(`clock ${Math.round(this.clock)}s  seed ${this.seed}  buffs speed ${this.buff.speed.toFixed(0)} resist ${this.buff.resist.toFixed(0)}  xp this run ${this.xpRun}/${this.cfg.runXpCap}`, 12, view.height - 44);
+    ctx.restore();
+  }
+}
+const LOOT_SYS = new LootSystem();
+window.LOOT_SYS = LOOT_SYS;
+window.addEventListener('keydown', (e) => { if (e.code === 'F11' && window.LOOT_SYS) { e.preventDefault(); window.LOOT_SYS.debug = !window.LOOT_SYS.debug; const c = document.getElementById('lootDebugToggle'); if (c) c.checked = window.LOOT_SYS.debug; } });
   </script>
   <script>
 /**
@@ -8081,6 +8515,15 @@ ach('big_spender',      'progress', 'silver', 'Big Spender',        'Spend $5,00
 ach('smart_investment', 'progress', 'silver', 'Smart Investment',   'Buy upgrades from three different categories (health, stamina, or a weapon stat).', 'SI', 3, (S) => S.life.upCats.length, ['purchase']);
 ach('fully_upgraded',   'progress', 'gold',   'Fully Upgraded',     'Max out both max health and max stamina in a single run.', 'MX', 1, (S) => (S.life.best.maxedBoth ? 1 : 0), ['purchase'], 'bool');
 ach('speed_demon',      'progress', 'silver', 'Speed Demon',        'Max out the move speed upgrade in the shop.', 'SD', 1, (S) => ((S.life.best.speedLvl || 0) >= SHOP_CONFIG.player.speed.maxLevel ? 1 : 0), ['purchase'], 'bool');
+ach('scavenger',         'explore',  'bronze',   'Scavenger',          'Search 10 loot containers.',            'SC', 10,  LIFE('containersOpened'), ['loot']);
+ach('seasoned_looter',   'explore',  'silver',   'Seasoned Looter',    'Search 50 loot containers.',            'SL', 50,  LIFE('containersOpened'), ['loot']);
+ach('master_scavenger',  'explore',  'gold',     'Master Scavenger',   'Search 250 loot containers.',           'MS', 250, LIFE('containersOpened'), ['loot']);
+ach('supply_run',        'progress', 'bronze',   'Supply Run',         'Collect 100 loot items.',               'SR', 100, LIFE('lootItems'),        ['loot']);
+ach('military_grade',    'explore',  'silver',   'Military Grade',     'Open 5 military supply crates.',        'MG', 5,   LIFE('lootMilitary'),     ['loot']);
+ach('glove_box_hunter',  'explore',  'bronze',   'Glove Box Hunter',   'Search 10 abandoned cars.',             'GB', 10,  LIFE('lootCar'),          ['loot']);
+ach('lucky_find',        'explore',  'silver',   'Lucky Find',         'Open a Rare or better container.',      'LF', 1,   LIFE('lootRareBoxes'),    ['loot']);
+ach('jackpot',           'explore',  'gold',     'Jackpot',            'Open an Epic or better container.',     'JP', 1,   LIFE('lootEpicBoxes'),    ['loot']);
+ach('legendary_find',    'explore',  'platinum', 'Legendary Find',     'Open a Legendary container.',           'LG', 1,   LIFE('lootLegend'),       ['loot']);
 ach('prepared_for_anything','progress','bronze','Prepared for Anything','Buy both a health upgrade and a weapon upgrade.', 'PA', 2, (S) => ((S.life.upBought.health || 0) > 0 ? 1 : 0) + ((S.life.upBought.weapon || 0) > 0 ? 1 : 0), ['purchase']);
 ach('shop_regular',     'progress', 'bronze', 'Shop Regular',       'Visit the shop five times.',     'SH', 5, LIFE('shopVisits'), ['shop']);
 
@@ -8119,7 +8562,7 @@ function achDefaultLife() {
     kills: 0, shots: 0, fired: 0, distanceM: 0, timeS: 0, runs: 0,
     weaponKills: {}, cityKills: {}, cities: [], days: [], weaponsGot: [], upCats: [], upBought: {},
     purchases: 0, spent: 0, shopVisits: 0, damageTaken: 0,
-    damageDealt: 0, deaths: 0, deathTimeS: 0, cityRuns: {}, bossKills: 0,   // v2 statistics
+    damageDealt: 0, deaths: 0, deathTimeS: 0, cityRuns: {}, bossKills: 0, containersOpened: 0, lootItems: 0, lootMilitary: 0, lootCar: 0, lootRareBoxes: 0, lootEpicBoxes: 0, lootLegend: 0,   // v2 statistics
     quick: 0, closeCall: 0, closeShave: 0, secondWind: 0, crowd: 0, streets: 0, welcomeBack: 0,
     sessions: 0, lastSessionAt: 0, firstSeenAt: 0,
     best: {},
@@ -8389,6 +8832,12 @@ class AchievementSystem {
     if (!this.active || !(amount > 0)) return;
     this.run.healed = (this.run.healed || 0) + amount; this._dirty = true;   // health restored this run (report)
     if (this.run.wasLow && !this.life.secondWind) { this.life.secondWind = 1; this._dirty = true; this._eval('heal'); }
+  }
+  // Loot and scavenging (loot.js): info = { kind: container type, rarity: 0..4 (-1 = returning for items left behind), items: how many items were taken }
+  looted(info) {
+    if (!this.active) return; const L = this.life;
+    if (info.rarity >= 0) { L.containersOpened++; if (info.kind === 'military') L.lootMilitary++; if (info.kind === 'car') L.lootCar++; if (info.rarity >= 2) L.lootRareBoxes++; if (info.rarity >= 3) L.lootEpicBoxes++; if (info.rarity >= 4) L.lootLegend++; }
+    L.lootItems += info.items || 0; this._dirty = true; this._eval('loot');
   }
   purchase(kind, price, info) {
     if (!this.active) return;
@@ -8831,7 +9280,7 @@ class StatsMenu extends PanelMenu {
       row('Longest kill streak (no damage taken)', this._n(L.best.noDmgKills || 0)));
     html += card('PROGRESSION', row('Achievements unlocked', `${c.unlocked} / ${c.total}`) + row('Weapons found on the map', `${got} / ${findable.length}`) + row('Upgrades purchased', this._n(L.purchases)) +
       row('Cash spent in the shop', '$' + this._n(L.spent)) + row('Runs started', this._n(L.runs)) + `<div class="stNote">Runs only end by dying, so there is no "runs completed" stat.</div>`);
-    html += card('EXPLORATION', row('Total distance travelled', this._km(L.distanceM)) + row('Different cities played', this._n(L.cities.length)) + row('Most-played city', topCity));
+    html += card('EXPLORATION', row('Total distance travelled', this._km(L.distanceM)) + row('Different cities played', this._n(L.cities.length)) + row('Most-played city', topCity) + row('Loot containers searched', this._n(L.containersOpened || 0)) + row('Loot items collected', this._n(L.lootItems || 0)));
     html += '</div>';
     // kills per weapon, as bars
     const max = wk.length ? wk[0][1] : 1;
@@ -10481,6 +10930,8 @@ class Game {
     bindToggle('tmZombies', 'zombies');
     bindToggle('tmFastShop', 'fastShop');
     bindToggle('tmShopCash', 'shopCash');
+    bindToggle('tmLootTest', 'lootTest');
+    document.getElementById('lootDebugToggle').addEventListener('change', (e) => { LOOT_SYS.debug = e.target.checked; Sound.uiClick(); });   // debug overlay only: not a cheat
     document.getElementById('aiDebugToggle').addEventListener('change', (e) => { this.zombieAI.setDebug(e.target.checked); Sound.uiClick(); });   // debug overlay only: not a cheat, doesn't count as Test Mode
     document.getElementById('zdDebugToggle').addEventListener('change', (e) => { this.spawner.director.setDebug(e.target.checked); Sound.uiClick(); });   // debug panel only: not a cheat
     document.getElementById('tmAiForce').addEventListener('change', (e) => { TEST_MODE.aiForce = e.target.value; Sound.uiClick(); refreshTestModeBtn(); });
@@ -10530,6 +10981,7 @@ class Game {
     this.grenades = [];
     this.pickups = [];
     this.floatingTexts = [];
+    LOOT_SYS.reset(this);   // new run: fresh loot map
     this.explosions = [];
     this.fx = this.fx || new CombatFX(); this.fx.clear();   // combat feedback effects (muzzle flashes, impacts, hit / death / pickup effects)
     // 3D run: no map-generated / synthetic obstacles and no old extruded-block system —
@@ -10691,7 +11143,7 @@ class Game {
     const player = this.player, px = player.x, py = player.y;
     const pv = w.props ? w.props.visible(snap.px, snap.py) : { decals: [], solid: [] };
     for (const e of pv.decals) occ.draw(ctx, k, occ.infoFor(e.x, e.y, 'prop', e.h / GAME3D.entityScale), (c) => e.draw(c, this.camera, view), { xray: 0 });   // flat ground details under everything
-    const items = [...pv.solid, ...this.pickups, ...this.fx.deaths, ...this.zombies, player].sort((a, b) => (a === player ? snap.py : a.y) - (b === player ? snap.py : b.y));
+    const items = [...pv.solid, ...this.pickups, ...LOOT_SYS.drawList(), ...this.fx.deaths, ...this.zombies, player].sort((a, b) => (a === player ? snap.py : a.y) - (b === player ? snap.py : b.y));
     let obstructors = [];
     for (const e of items) {
       if (e === player) {
@@ -10720,6 +11172,7 @@ class Game {
     this.zombieAI.drawDebug(ctx, this.camera, view);   // dev-only overlay (off unless F9 / Test Mode)
     if (this.spawner.director) this.spawner.director.drawDebug(ctx, this.camera, view);   // dev-only (F10)
     this._drawFloatingTexts(ctx, view);
+    LOOT_SYS.drawOverlay(ctx, this.camera, view);   // search prompt / progress / debug
     ctx.restore();
     w.drawReadout(ctx); // F3: lat/lng, ground height, active collision (screen space)
     this._drawWeaponPointers(ctx, rc); // screen space: arrows to weapon pickups that are out of sight
@@ -10799,6 +11252,7 @@ class Game {
       ach: ACH.serializeRun(), // this run's achievement stats, so Continue picks up exactly where it stopped
       difficulty: CONFIG.activeDifficulty, // a continued run keeps the difficulty it was started with
       zombies: this.zombies.filter((z) => z.alive !== false).map((z) => ({ type: z.type.id, x: r1(z.x), y: r1(z.y), health: z.health })),
+      loot: LOOT_SYS.serialize(),   // containers, remaining items, respawn timers, buffs
       pickups: this.pickups.map((p) => ({ kind: p.kind, x: r1(p.x), y: r1(p.y), v: p.kind === 'weapon' ? p.weaponId : p.amount })),
       spawner: { elapsed: this.spawner.elapsed, timer: this.spawner.timer, nextBossAt: this.spawner.nextBossAt },
       unlocked: [...this.weaponUnlocks.spawned],
@@ -10983,6 +11437,7 @@ class Game {
       if (!CONFIG.PICKUPS[k.kind]) continue;
       this.pickups.push(new Pickup(k.x, k.y, k.kind, k.v));
     }
+    LOOT_SYS.restore(save.loot, this);   // older saves have no loot block: containers just start appearing again
     this.bullets = [];
     this.camera.follow(pl.x, pl.y);
     if (this.world3d) { // the run started at the origin; put the camera, collision and zombie grid where the peanut really is
@@ -11073,6 +11528,7 @@ class Game {
     this.player.handleAim(this.input, this.canvas, this.camera.zoom, this.camera);
     this.player.update(dt);
     this.camera.follow(this.player.x, this.player.y);
+    LOOT_SYS.update(dt, this);   // loot: container placement, searching (hold E), respawns, buffs
 
     // --- Weapon input: reload, switch, shoot ---
     if (this.input.wasPressed('KeyR')) {
@@ -11772,6 +12228,7 @@ class Game {
     this.zombieAI.drawDebug(ctx, this.camera, canvas);   // dev-only overlay (off unless F9 / Test Mode)
     if (this.spawner.director) this.spawner.director.drawDebug(ctx, this.camera, canvas);   // dev-only (F10)
     this._drawFloatingTexts(ctx, canvas);
+    LOOT_SYS.drawOverlay(ctx, this.camera, canvas);   // search prompt / progress / debug
     ctx.restore();
     this._drawWeaponPointers(ctx, realCanvas); // screen space: arrows to weapon pickups that are out of sight
   }
@@ -11851,6 +12308,7 @@ class Game {
     const drawAllInOldOrder = () => {
       for (const o of obstacles) o.draw(ctx, cam, canvas);
       for (const e of this.pickups) e.draw(ctx, cam, canvas);
+      for (const e of LOOT_SYS.drawList()) e.draw(ctx, cam, canvas);
       for (const e of this.zombies) e.draw(ctx, cam, canvas);
       for (const e of this.bullets) e.draw(ctx, cam, canvas);
       player.draw(ctx, cam, canvas);
@@ -11920,6 +12378,7 @@ class Game {
       }
     };
     for (const e of this.pickups) consider(e, 0);
+    for (const e of LOOT_SYS.drawList()) consider(e, 0);
     for (const e of this.zombies) consider(e, e.type && e.type.spriteDisplaySize ? zombieVisualSize(e.type) * 0.35 : 0);
     consider(player, playerFeet);
 
@@ -11933,6 +12392,7 @@ class Game {
       obstacles[i].draw(ctx, cam, canvas);
     }
     for (const e of this.pickups) if (!placed.has(e)) e.draw(ctx, cam, canvas);
+    for (const e of LOOT_SYS.drawList()) if (!placed.has(e)) e.draw(ctx, cam, canvas);
     for (const e of this.zombies) if (!placed.has(e)) e.draw(ctx, cam, canvas);
     for (const e of this.bullets) e.draw(ctx, cam, canvas);
     if (!placed.has(player)) player.draw(ctx, cam, canvas);
@@ -14858,6 +15318,8 @@ chalDef('run_time',     'survival', 'run.time',     'max', 'time', (t) => `Survi
 chalDef('heal',         'survival', 'heal',         'sum', 'int',  (t) => `Restore ${chalN(t)} health using medkits`,               { easy: 50, medium: 100, hard: 200 });
 chalDef('hit_free',     'survival', 'run.hitfree',  'max', 'time', (t) => `Go ${chalT(t)} without taking damage`,                   { easy: 60, medium: 120, hard: 240 });
 chalDef('buy',          'progress', 'purchases',    'sum', 'int',  (t) => `Buy ${chalN(t)} shop upgrade${t === 1 ? '' : 's'}`,      { easy: 1, medium: 3, hard: 5 });
+chalDef('loot_open',   'survival', 'loot.opened',  'sum', 'int',  (t) => `Search ${chalN(t)} loot container${t === 1 ? '' : 's'}`, { easy: 2, medium: 4, hard: 7 });
+chalDef('loot_mil',    'survival', 'loot.military','sum', 'int',  () => 'Open a military supply crate',                           { hard: 1 });
 chalDef('travel',       'explore',  'dist',         'sum', 'm',    (t) => `Travel ${chalN(t)} metres`,                              { easy: 500, medium: 1000, hard: 2500 });
 chalDef('areas',        'explore',  'run.areas',    'max', 'int',  (t) => `Visit ${chalN(t)} different areas of the city in one run`, { easy: 3, medium: 5, hard: 8 });
 chalDef('away',         'explore',  'run.away',     'max', 'm',    (t) => `Get ${chalN(t)} m away from your spawn point`,           { easy: 100, medium: 250, hard: 400 });
@@ -14876,6 +15338,7 @@ const CHAL_MISSIONS = [
   { id: 'm_explo_100',    key: 'kills.explosive',kind: 'sum', fmt: 'int',  name: 'Demolition Crew',     desc: 'Kill 100 zombies with explosives.',             target: 100,   reward: { cash: 450 } },
   { id: 'm_boss_3',       key: 'kills.boss',     kind: 'sum', fmt: 'int',  name: 'Boss Hunter',         desc: 'Defeat 3 boss zombies.',                        target: 3,     reward: { cash: 400, acc: 'pirate_hat' } },
   { id: 'm_run_20',       key: 'run.time',       kind: 'max', fmt: 'time', name: 'Marathon',            desc: 'Survive 20 minutes in a single run.',           target: 1200,  reward: { cash: 400 } },
+  { id: 'm_scav_25',      key: 'loot.opened',    kind: 'sum', fmt: 'int',  name: 'Scavenger Hunt',      desc: 'Search 25 loot containers.',                    target: 25,    reward: { cash: 300 } },
   { id: 'm_buy_20',       key: 'purchases',      kind: 'sum', fmt: 'int',  name: 'Big Spender',         desc: 'Buy 20 shop upgrades.',                         target: 20,    reward: { cash: 300 } },
 ];
 
@@ -15006,6 +15469,11 @@ class ChallengeSystem {
     }
   }
   healed(n) { if (this.active && n > 0) this._add('heal', n); }
+  looted(info) {   // loot.js: containers searched / items taken
+    if (!this.active) return;
+    if (!info.noOpen) { this._add('loot.opened', 1); if (info.kind === 'military') this._add('loot.military', 1); }
+    if (info.items) this._add('loot.items', info.items);
+  }
   tick(dt) {
     if (!this.active) return;
     this._acc += dt; if (this._acc < 0.25) return; this._acc = 0;
@@ -15757,7 +16225,7 @@ class ProfileMenu {
       r('Kills with firearms', profN(S.groups.firearm)) + r('Kills with melee weapons', profN(S.groups.melee)) + r('Kills with explosives', profN(S.groups.explosive)) + r('Kills with fire', profN(S.groups.flame)));
     const surv = this._card('SURVIVAL', r('Total playtime (in runs)', profTime(L.timeS)) + r('Longest survival time', profTime(b.runTime || 0)) + r('Runs played', profN(L.runs)) + r('Total deaths', profN(L.deaths || 0)) +
       r('Best kill streak (no damage)', profN(b.noDmgKills || 0)) + `<div class="stNote">Runs only end by dying, so every finished run is one death.</div>`);
-    const expl = this._card('EXPLORATION', r('Total distance travelled', profKm(L.distanceM)) + r('Cities visited', profN((L.cities || []).length)) + r('Most-played city', top) + r('Most areas explored in one run', profN(b.cellsHood || 0)) + `<div class="stNote">An area is a 250 m x 250 m square of the map.</div>`);
+    const expl = this._card('EXPLORATION', r('Total distance travelled', profKm(L.distanceM)) + r('Cities visited', profN((L.cities || []).length)) + r('Most-played city', top) + r('Most areas explored in one run', profN(b.cellsHood || 0)) + r('Loot containers searched', profN(L.containersOpened || 0)) + r('Loot items collected', profN(L.lootItems || 0)) + `<div class="stNote">An area is a 250 m x 250 m square of the map.</div>`);
     const max = S.wk.length ? S.wk[0][1] : 1;
     const bars = `<div class="stCard stWide"><div class="stTitle">KILLS BY WEAPON</div>` + (S.wk.length ? S.wk.map(([id, n]) => `<div class="stBarRow"><span>${profEsc(wname(id))}</span><div class="achBar"><i style="width:${Math.round((n / max) * 100)}%"></i></div><b>${profN(n)}</b></div>`).join('') : '<div class="stNote">No kills recorded yet.</div>') + `</div>`;
     return `<div class="pfSec"><div class="pfSecTitle">LIFETIME STATISTICS</div><div class="stGrid">${combat}${surv}${expl}</div>${bars}${S.bosses === 0 ? '<div class="stNote">Bosses defeated counts from the moment this profile update was installed.</div>' : ''}</div>`;
