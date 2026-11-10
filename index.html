@@ -2229,7 +2229,7 @@ const EMBEDDED_ASSETS = {
     <!-- ===================== Start overlay (home page) ===================== -->
     <div id="startScreen" class="overlay homePage">
       <!-- Version: major.minor.patch. The patch digit goes 0-9 and rolls into the minor number (v3.88.9 -> v3.89.0); the minor number is two digits and rolls into the major number (v3.99.9 -> v4.00.0). Bumped by 1 on every change. -->
-      <div id="versionTag" class="versionTag">v3.94.1</div>
+      <div id="versionTag" class="versionTag">v3.94.2</div>
       <div id="homeSidebar" class="homeSidebar">
         <div class="homeSidebarTitle">Your Stats</div>
         <div id="homeLevel" class="homeLevel"></div>
@@ -2272,6 +2272,9 @@ const EMBEDDED_ASSETS = {
           <label class="testToggle"><span>Zombie Director Debug (F10)</span><input type="checkbox" id="zdDebugToggle"><i></i></label>
           <label class="testToggle"><span>Loot Test Set (all containers)</span><input type="checkbox" id="tmLootTest"><i></i></label>
           <label class="testToggle"><span>Loot Debug (F11)</span><input type="checkbox" id="lootDebugToggle"><i></i></label>
+          <label class="testToggle"><span>Environment Debug (`)</span><input type="checkbox" id="envDebugToggle"><i></i></label>
+          <label class="testToggle"><span>Time of Day</span><select id="tmEnvTime" style="font:inherit;font-size:11px;padding:6px;background:#14171b;color:#fff;border:3px solid #000"><option value="auto">Auto (cycle)</option><option value="5.8">Dawn</option><option value="9">Morning</option><option value="12.5">Midday</option><option value="15.5">Afternoon</option><option value="18.5">Sunset</option><option value="20.5">Evening</option><option value="23.5">Night</option></select></label>
+          <label class="testToggle"><span>Weather</span><select id="tmEnvWeather" style="font:inherit;font-size:11px;padding:6px;background:#14171b;color:#fff;border:3px solid #000"><option value="auto">Auto (random)</option><option value="clear">Clear</option><option value="cloudy">Cloudy</option><option value="rain">Rain</option><option value="heavy_rain">Heavy rain</option><option value="fog">Fog</option><option value="storm">Storm</option></select></label>
           <label class="testToggle"><span>Zombie Personality</span><select id="tmAiForce" style="font:inherit;font-size:11px;padding:6px;background:#14171b;color:#fff;border:3px solid #000"><option value="mixed">Mixed (normal)</option><option value="hunter">Hunters only</option><option value="predictor">Predictors only</option><option value="flanker">Flankers only</option><option value="wanderer">Wanderers only</option></select></label>
         </div>
         <button id="backFromTestModeBtn" class="bigButton">Back</button>
@@ -4817,10 +4820,11 @@ const TEST_MODE = {
   zombies: true, // false = no zombies spawn at all (including the boss)
   fastShop: false, // shop opens every SHOP_CONFIG.testIntervalSeconds instead of every 2 minutes (see shop.js)
   shopCash: false, // start the run with SHOP_CONFIG.testStartMoney
+  envTime: 'auto', envWeather: 'auto', // environment testing: lock the time of day (hour) / the weather for the whole run
   lootTest: false, // loot testing: every container type and rarity is placed around the start of the run
   aiForce: 'mixed', // zombie AI testing: 'mixed' = normal, or force every new zombie to one personality (hunter | predictor | flanker | wanderer)
   isActive() {
-    return this.invincible || this.allWeapons || this.unlimitedAmmoGas || this.unlimitedStamina || !this.zombies || this.fastShop || this.shopCash || this.aiForce !== 'mixed' || this.lootTest;
+    return this.invincible || this.allWeapons || this.unlimitedAmmoGas || this.unlimitedStamina || !this.zombies || this.fastShop || this.shopCash || this.aiForce !== 'mixed' || this.lootTest || this.envTime !== 'auto' || this.envWeather !== 'auto';
   },
 };
 
@@ -6588,7 +6592,7 @@ class ZombieBrain {
   _think(ai, d, navGrid) {
     const z = this.z, p = ai.player, D = ai.diff, now = ai.now, P = ZAI_PERS[this.personality];
     const elapsed = Math.max(0, now - this.lastThinkT); this.lastThinkT = now; ai.stats.think++;
-    const detectR = ai.m(P.detect * this.profile.detect * this.t.detect) * D.detect, trackR = detectR * P.track, hunting = this.hunting;
+    const detectR = ai.m(P.detect * this.profile.detect * this.t.detect) * D.detect * (window.ENV_SYS ? ENV_SYS.aiDetect(this.personality) : 1), trackR = detectR * P.track, hunting = this.hunting;   // night / fog / rain change how far it can see
     // --- senses ---
     let sees = false;
     if (d <= detectR && this.tier < 2) sees = d <= ai.m(ZAI.closeSenseM) || ai.los(this);
@@ -6824,7 +6828,7 @@ class ZombieAIManager {
     for (const e of ev) {
       if (window.ZOMBIE_DIRECTOR) window.ZOMBIE_DIRECTOR.onSound(e);   // the director turns loud noise into zombies that come to investigate
       S.recent.push(e); if (e.kind === 'shot' || e.kind === 'explosion' || e.kind === 'loot') { this.mem.push({ x: e.x, y: e.y }); if (this.mem.length > 6) this.mem.shift(); }
-      const R = this.m(e.r);
+      const R = this.m(e.r) * (window.ENV_SYS ? ENV_SYS.hearMask(e.r) : 1);   // rain muffles sounds, thunder masks small ones
       for (const z of this.zombies) {
         const b = z.brain; if (!b || z.alive === false) continue;
         const range = R * this.diff.hear * b.profile.hear * b.t.hear, d = Math.hypot(z.x - e.x, z.y - e.y);
@@ -7121,7 +7125,7 @@ class ZombieDirector {
       else if (age > ZD.peakMax) this._setMood('RELAX');
       else if (age > 14 && this.cool <= 0 && !m.overwhelmed && m.threat < this.peakThreat * 0.5) this._spawnSmallOrAmbient(ctx, cap);   // reinforcements only if the player is coping
     } else {   // RELAX / QUIET
-      if (this.moodT <= 0) { if (this.mood === 'RELAX' && Math.random() < ZD.quietChance) this._setMood('QUIET'); else this._setMood('BUILD'); }
+      if (this.moodT <= 0) { if (this.mood === 'RELAX' && Math.random() < ZD.quietChance + (window.ENV_SYS ? ENV_SYS.dir().quiet : 0)) this._setMood('QUIET'); else this._setMood('BUILD'); }
       else this._trickle(ctx, cap);
     }
     // --- sound: attracted zombies ---
@@ -7133,7 +7137,7 @@ class ZombieDirector {
     const D = this._diff(), prev = this.mood; this.mood = mood;
     if (mood === 'BUILD') { const f = this.m.health > 0.8 && !this.m.surrounded ? 0.85 : 1; this.moodT = zdRand(...ZD.build) * f / (1 + 0.1 * this.stage); this.cool = Math.max(this.cool, 2); }
     else if (mood === 'PEAK') { this.peakStart = this.t; this.peakThreat = 1; this.moodT = 1e9; }
-    else if (mood === 'RELAX') { this.moodT = zdRand(...ZD.relax) * D.relax; this.cool = Math.max(this.cool, 6); }
+    else if (mood === 'RELAX') { this.moodT = zdRand(...ZD.relax) * D.relax * (window.ENV_SYS ? ENV_SYS.dir().relax : 1); this.cool = Math.max(this.cool, 6); }
     else if (mood === 'QUIET') { this.moodT = zdRand(...ZD.quiet) * D.relax; this.cool = 1e9; }
     if (prev !== mood) this._note('mood ' + prev + ' > ' + mood);
   }
@@ -7163,19 +7167,19 @@ class ZombieDirector {
   _room(cap) { return Math.max(0, Math.min(cap - this.m.active, this.tune.maxNearby - this.m.nearby)); }
   _fillTarget(cap) {
     const D = this._diff(), f = ZD.fill[this.mood]; const base = Array.isArray(f) ? f[0] + (f[1] - f[0]) * Math.max(0, Math.min(1, 1 - this.moodT / 45)) : f;
-    return Math.round(cap * Math.min(1, base * D.fill));
+    return Math.round(cap * Math.min(1, base * D.fill * (window.ENV_SYS ? ENV_SYS.dir().fill : 1)));
   }
 
   // ---------------------------------------------------------------- spawning decisions
   _spawnSmallOrAmbient(ctx, cap) {
     const room = this._room(cap), target = this._fillTarget(cap); this.m.target = target;
     if (this.m.active >= target || room < 2) { this.cool = 3; return; }
-    const kind = this.mood === 'BUILD' && this.stage >= 1 && Math.random() < 0.05 + 0.02 * this.stage ? 'ambush' : 'small';   // an occasional unexpected ambush
+    const kind = this.mood === 'BUILD' && this.stage >= 1 && Math.random() < (0.05 + 0.02 * this.stage) * (window.ENV_SYS ? ENV_SYS.dir().enc.ambush : 1) ? 'ambush' : 'small';   // an occasional unexpected ambush
     this._spawnEncounter(kind, ctx, cap);
   }
   _spawnMajor(ctx) {
     const cap = this._cap(), kinds = Object.keys(ZD_ENCOUNTERS).filter((k) => ZD_ENCOUNTERS[k].major && this.stage >= ZD_ENCOUNTERS[k].minStage);
-    const w = {}; for (const k of kinds) w[k] = ZD_ENCOUNTERS[k].weight(this.stage);
+    const w = {}; for (const k of kinds) w[k] = ZD_ENCOUNTERS[k].weight(this.stage) * (window.ENV_SYS ? ENV_SYS.dir().enc[k] || 1 : 1);   // night / fog / storms tilt which encounters come
     if (!kinds.length) { this._spawnEncounter('small', ctx, cap); this._setMood('RELAX'); return; }
     const k = zdPickKey(w); const n = this._spawnEncounter(k, ctx, cap);
     if (!n) { this._setMood('BUILD'); this.moodT = zdRand(8, 15); }
@@ -7233,14 +7237,15 @@ class ZombieDirector {
     });
     this.cool = zdRand(...E.cooldown) * D.cd / (1 + 0.04 * this.stage);
     if (!E0.major && this.m.target) this.cool *= Math.max(0.45, Math.min(1, (this.m.active + total) / this.m.target));   // a half-empty map is refilled sooner than a nearly full one
-    this.cool = Math.max(4, this.cool);
+    this.cool = Math.max(4, this.cool); if (window.ENV_SYS) this.cool *= ENV_SYS.dir().cd;
     const a0 = anchors[0]; this.last = { type: E.id || E.label, at: { x: a0.x, y: a0.y }, hidden: a0.hidden, street: a0.street, dist: Math.round(Math.hypot(a0.x - p.x, a0.y - p.y) / 9), t: this.t, n: total };
     this.stats.encounters[E.id || E.label] = (this.stats.encounters[E.id || E.label] || 0) + 1; this._note((E.id || E.label) + ' x' + total + (a0.hidden ? ' (hidden)' : ''));
     if (this.mood === 'PEAK') this.peakThreat = Math.max(1, total * 1.2);
     return total;
   }
   _gateMix(mix) {   // brutes / runners only appear in ordinary groups once the stage allows (the old random pool had them from second zero)
-    const out = {}; for (const k in mix) { if (k === 'runner' && this.stage < 1 && Math.random() < 0.6) continue; if (k === 'brute' && this.stage < 2) continue; out[k] = mix[k]; } return Object.keys(out).length ? out : { walker: 1 };
+    const out = {}; for (const k in mix) { if (k === 'runner' && this.stage < 1 && Math.random() < 0.6) continue; if (k === 'brute' && this.stage < 2) continue; out[k] = mix[k]; } if (out.runner && window.ENV_SYS) out.runner *= ENV_SYS.dir().runner;   // more fast zombies at night
+    return Object.keys(out).length ? out : { walker: 1 };
   }
   _runPending(q, ctx) {
     if (q.kind === 'group') {
@@ -7331,7 +7336,7 @@ class ZombieDirector {
   onSound(ev) {
     if (!this.enabled) return;
     const w = ev.kind === 'shot' ? 1 : ev.kind === 'explosion' ? 3 : ev.kind === 'throw' ? 0.2 : ev.kind === 'loot' ? 0.6 : 0; if (!w) return;   // a loud container (loot.js) counts as noise too
-    this.heat += (ev.r / 28) * w * 0.9; this.combat += 0.2; this.lastSound = { x: ev.x, y: ev.y, r: ev.r, kind: ev.kind, t: this.t };
+    this.heat += (ev.r / 28) * w * 0.9 * (window.ENV_SYS ? ENV_SYS.hearMask(ev.r) : 1); this.combat += 0.2; this.lastSound = { x: ev.x, y: ev.y, r: ev.r, kind: ev.kind, t: this.t };
   }
   _attractCheck(ctx, cap) {
     const D = this._diff(), th = ZD.attract.threshold * D.heat, A = ZD.attract, s = this.lastSound;
@@ -7822,6 +7827,404 @@ class LootSystem {
 const LOOT_SYS = new LootSystem();
 window.LOOT_SYS = LOOT_SYS;
 window.addEventListener('keydown', (e) => { if (e.code === 'F11' && window.LOOT_SYS) { e.preventDefault(); window.LOOT_SYS.debug = !window.LOOT_SYS.debug; const c = document.getElementById('lootDebugToggle'); if (c) c.checked = window.LOOT_SYS.debug; } });
+  </script>
+  <script>
+/**
+ * environment.js — day-and-night cycle + dynamic weather for Operation Peanut.
+ *
+ *  CLOCK:    ENV.dayLengthS real seconds = one 24 h day (default 1800 = 30 min). The run starts at ENV.startHour. Periods: dawn, morning, midday, afternoon, sunset, evening, night.
+ *  LIGHT:    every value is interpolated between hourly keyframes (ENV_LIGHT), so nothing ever jumps. Three things are driven:
+ *              1. the MapTiler map light (building colour / roof-vs-wall contrast): map.setLight(), 2 times a second;
+ *              2. the building drop shadows already in the map style (their offset direction + length follow the sun, opacity fades with dusk and cloud);
+ *              3. a low-resolution "light map" canvas (#envLight) multiplied over the map but UNDER the sprite canvas: ambient colour everywhere, a soft pool of light around
+ *                 the peanut, an optional flashlight cone toward the aim, lightning flashes. Characters, weapons and effects are never tinted by it.
+ *            Roads and buildings stay readable at night because the darkest ambient is still a mid blue (ENV_LIGHT 'amb') and the pool always lights the area around you.
+ *  VISIBILITY: ENV.visPx() is how far the peanut can see (night, fog, rain). Zombies fade out between 70% and 115% of it (so they are never visible "through" fog or deep
+ *            darkness) unless they are inside the flashlight cone or a lightning flash is on. Buildings keep occluding as before (the map is unchanged).
+ *  WEATHER:  clear, cloudy, rain, heavy rain, fog, storm. A small Markov chain picks the next one every few minutes; all the visual / audio / gameplay values glide toward the
+ *            new target over ~45 s (ENV.cur), so nothing switches instantly. Rain, fog, cloud shadows and lightning are drawn on one overlay canvas (#envFx).
+ *  ZOMBIES:  ENV.aiDetect(personality) scales sight range (more at night, less in fog / rain, per personality); ENV.hearMask(radiusM) scales how far sounds carry (rain,
+ *            thunder masks small sounds). Both are applied inside the EXISTING AI detection / hearing code, so zombies never learn anything they could not before.
+ *  DIRECTOR: ENV.dir() gives the zombie director small multipliers (more ambushes / specials / runners at night and in fog or storms, lulls in heavy rain), scaled by difficulty.
+ *  AUDIO:    procedural WebAudio loops (rain, wind, night crickets) and thunder, routed through Sound.masterGain so the existing mute button works; one voice per loop.
+ *  TUNING:   ENV, ENV_LIGHT, ENV_WEATHER, ENV_DIFF below. Debug panel: ` (backquote) or Test Mode; Test Mode can also lock the time of day / force a weather.
+ */
+const ENV = {
+  enabled: true,                   // lighting + visibility effects (F6 toggles); the clock and weather always run
+  dayLengthS: 1800,                // real seconds per in-game day  <- change this to balance
+  startHour: 6.5,                  // the run starts at dawn
+  weatherEveryS: [180, 420],       // seconds a weather lasts (x ENV.weatherFreq: 2 = twice as often)
+  weatherFreq: 1, transitionS: 45, // glide time between weathers
+  startWeather: { clear: 70, cloudy: 30 },
+  nightBrightness: 1,              // 1 = as designed; <1 darker nights, >1 lighter (scales how dark the ambient gets)
+  visDayPx: 3200, visNightPx: 760, visFogPx: 450, visRainPx: 700,   // sight distances in screen-world pixels (9 px = 1 m)
+  rainMax: 240, fxScale: 1,        // particles on screen at heaviest rain; 0..1 multiplier for cheaper effects
+  fogDensity: 1,                   // multiplies the fog overlay
+  flashlight: { range: 520, half: 0.42, onByDefault: true },
+  audio: { volume: 0.8, rain: 0.16, wind: 0.07, crickets: 0.02, thunder: 0.5 },
+  mapLightEvery: 0.5,              // seconds between map light / shadow updates
+};
+// Hourly keyframes. amb: ambient colour multiplied over the map; pool: colour at the peanut; map: MapTiler light colour + intensity; az/polar: sun direction for the map light;
+// sh: building-shadow strength, shLen: shadow length factor, shX: -1 (shadows lean left, sun in the east) .. 1 (right, sun in the west).
+const ENV_LIGHT = [
+  { h: 0,    amb: [60, 72, 132],   pool: [165, 178, 232], map: '#b8c6ff', mi: 0.48, az: 200, polar: 52, sh: 0,    shLen: 1,   shX: 0 },
+  { h: 4.5,  amb: [60, 72, 132],   pool: [165, 178, 232], map: '#b8c6ff', mi: 0.48, az: 200, polar: 52, sh: 0,    shLen: 1,   shX: 0 },
+  { h: 5.5,  amb: [118, 108, 150], pool: [205, 192, 228], map: '#ffd9c0', mi: 0.50, az: 95,  polar: 68, sh: 0.35, shLen: 2.4, shX: -1 },
+  { h: 6.5,  amb: [226, 196, 176], pool: [255, 236, 216], map: '#ffd9b0', mi: 0.55, az: 100, polar: 58, sh: 0.85, shLen: 2.0, shX: -1 },
+  { h: 8,    amb: [250, 236, 216], pool: [255, 250, 240], map: '#fff0d8', mi: 0.60, az: 125, polar: 42, sh: 1,    shLen: 1.3, shX: -0.7 },
+  { h: 12,   amb: [255, 255, 255], pool: [255, 255, 255], map: '#fff6e8', mi: 0.66, az: 180, polar: 22, sh: 1,    shLen: 0.45, shX: 0 },
+  { h: 15,   amb: [255, 248, 234], pool: [255, 252, 244], map: '#fff1da', mi: 0.62, az: 235, polar: 36, sh: 1,    shLen: 1.0, shX: 0.5 },
+  { h: 17.5, amb: [255, 222, 182], pool: [255, 240, 214], map: '#ffd8a8', mi: 0.60, az: 255, polar: 52, sh: 1,    shLen: 1.8, shX: 0.85 },
+  { h: 18.7, amb: [255, 172, 122], pool: [255, 218, 172], map: '#ffb27a', mi: 0.56, az: 262, polar: 64, sh: 0.9,  shLen: 2.6, shX: 1 },
+  { h: 19.7, amb: [150, 120, 150], pool: [226, 206, 226], map: '#d8a8c0', mi: 0.50, az: 255, polar: 70, sh: 0.45, shLen: 3.0, shX: 1 },
+  { h: 20.7, amb: [84, 92, 148],   pool: [182, 192, 236], map: '#b9c2ff', mi: 0.48, az: 230, polar: 60, sh: 0.1,  shLen: 2.0, shX: 1 },
+  { h: 22,   amb: [60, 72, 132],   pool: [165, 178, 232], map: '#b8c6ff', mi: 0.48, az: 200, polar: 52, sh: 0,    shLen: 1,   shX: 0 },
+  { h: 24,   amb: [60, 72, 132],   pool: [165, 178, 232], map: '#b8c6ff', mi: 0.48, az: 200, polar: 52, sh: 0,    shLen: 1,   shX: 0 },
+];
+const ENV_PERIODS = [['night', 0], ['dawn', 5], ['morning', 7], ['midday', 11], ['afternoon', 14], ['sunset', 17], ['evening', 19.5], ['night', 21.5]];
+// cloud / rain / fog / wind / storm: 0..1 targets. next: the weathers it can change into (weights).
+const ENV_WEATHER = {
+  clear:      { name: 'CLEAR',      cloud: 0.05, rain: 0,    fog: 0,    wind: 0.2,  storm: 0, w: 38, next: { cloudy: 5, fog: 1 } },
+  cloudy:     { name: 'CLOUDY',     cloud: 0.7,  rain: 0,    fog: 0.05, wind: 0.4,  storm: 0, w: 24, next: { clear: 5, rain: 3, fog: 1 } },
+  rain:       { name: 'RAIN',       cloud: 0.85, rain: 0.55, fog: 0.12, wind: 0.5,  storm: 0, w: 16, next: { cloudy: 4, heavy_rain: 2, clear: 1 } },
+  heavy_rain: { name: 'HEAVY RAIN', cloud: 0.95, rain: 1.0,  fog: 0.2,  wind: 0.8,  storm: 0, w: 8,  next: { rain: 4, storm: 2, cloudy: 1 } },
+  fog:        { name: 'FOG',        cloud: 0.5,  rain: 0,    fog: 0.95, wind: 0.08, storm: 0, w: 9,  next: { clear: 3, cloudy: 3 } },
+  storm:      { name: 'STORM',      cloud: 1.0,  rain: 1.0,  fog: 0.25, wind: 1.0,  storm: 1, w: 5,  next: { heavy_rain: 4, rain: 2 } },
+};
+// How strongly each zombie personality is affected (1 = fully). hunters track by smell and ignore fog, wanderers rely on sight.
+const ENV_PERS = { hunter: { night: 1, fog: 0.5, rain: 0.6 }, predictor: { night: 0.8, fog: 1, rain: 1 }, flanker: { night: 1, fog: 0.9, rain: 0.9 }, wanderer: { night: 0.6, fog: 1.3, rain: 1.2 } };
+const ENV_DIFF = { easy: { dir: 0.5 }, normal: { dir: 1 }, hard: { dir: 1.2 }, nightmare: { dir: 1.4 } };   // how strongly time / weather push the zombie director
+const envClamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const envLerp = (a, b, t) => a + (b - a) * t;
+const envMix3 = (a, b, t) => [envLerp(a[0], b[0], t), envLerp(a[1], b[1], t), envLerp(a[2], b[2], t)];
+const envHex = (h) => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
+const envRgbHex = (c) => '#' + c.map((v) => Math.round(envClamp(v, 0, 255)).toString(16).padStart(2, '0')).join('');
+function envPeriod(h) { let id = 'night'; for (const [p, from] of ENV_PERIODS) if (h >= from) id = p; return id; }
+function envKey(h) {   // hourly keyframes -> smooth values
+  let a = ENV_LIGHT[0], b = ENV_LIGHT[1];
+  for (let i = 0; i < ENV_LIGHT.length - 1; i++) if (h >= ENV_LIGHT[i].h && h <= ENV_LIGHT[i + 1].h) { a = ENV_LIGHT[i]; b = ENV_LIGHT[i + 1]; break; }
+  const t0 = b.h === a.h ? 0 : (h - a.h) / (b.h - a.h), t = t0 * t0 * (3 - 2 * t0);   // smoothstep
+  return { amb: envMix3(a.amb, b.amb, t), pool: envMix3(a.pool, b.pool, t), map: envMix3(envHex(a.map), envHex(b.map), t), mi: envLerp(a.mi, b.mi, t), az: envLerp(a.az, b.az, t), polar: envLerp(a.polar, b.polar, t), sh: envLerp(a.sh, b.sh, t), shLen: envLerp(a.shLen, b.shLen, t), shX: envLerp(a.shX, b.shX, t) };
+}
+const ENV_ICONS = {   // 12x12 pixel icons
+  sun:   ['....X.X.X...', '.....XXX....', '.X..XXXXX..X', '..XXXXXXXXX.', 'XXXXXXXXXXX.', '..XXXXXXXXX.', '.X..XXXXX..X', '.....XXX....', '....X.X.X...', '............', '............', '............'],
+  moon:  ['....XXXX....', '..XXXX......', '.XXXX.......', '.XXX........', 'XXXX........', 'XXXX........', 'XXXX........', '.XXXX.....X.', '.XXXXX...XX.', '..XXXXXXXX..', '....XXXX....', '............'],
+  cloud: ['............', '.....XXX....', '....XXXXX...', '..XXXXXXXX..', '.XXXXXXXXXX.', 'XXXXXXXXXXXX', 'XXXXXXXXXXXX', '.XXXXXXXXXX.', '............', '............', '............', '............'],
+  rain:  ['....XXX.....', '..XXXXXXX...', '.XXXXXXXXXX.', 'XXXXXXXXXXXX', '.XXXXXXXXXX.', '............', '..X..X..X...', '.X..X..X....', '..X..X..X...', '.X..X..X....', '............', '............'],
+  fog:   ['............', '.XXXXXXXXX..', '............', 'XXXXXXXXXXX.', '............', '..XXXXXXXXXX', '............', '.XXXXXXXX...', '............', 'XXXXXXXXXXX.', '............', '............'],
+  storm: ['...XXXXX....', '.XXXXXXXXX..', 'XXXXXXXXXXX.', '.XXXXXXXXX..', '.....XX.....', '....XX......', '...XXXXX....', '.....XX.....', '....XX......', '...X........', '............', '............'],
+};
+
+class EnvironmentSystem {
+  constructor() {
+    this.cfg = ENV; this.enabled = true; this.debug = false; this.dom = null; this.audio = null; this.lastMapT = 0; this.hudT = 0; this._label = '';
+    this.timeLock = null; this.weatherLock = null; this.timeScale = 1; this.flashOn = ENV.flashlight.onByDefault;
+    this.reset(null);
+  }
+  reset(game) {
+    this.t = ENV.startHour; this.days = 0; this.weather = zaiPickEnv(ENV.startWeather); this.cur = this._target(this.weather); this.next = this.weather; this.weatherT = envRand(...ENV.weatherEveryS) / ENV.weatherFreq; this.glide = 0;
+    this.bolt = 0; this.boltCool = 8; this.thunderAt = -1; this.thunderT = 0; this.lightT = 0; this.clouds = null; this.drops = []; this.ripples = []; this.k = envKey(this.t); this.vis = 3200; this.night = 0; this._dirC = null; this._dirT = -9;
+    this.lastLabel = ''; this.mapDirty = true; this.timeLock = null; this.weatherLock = null; this.timeScale = 1;
+    if (typeof TEST_MODE !== 'undefined') {   // Test Mode can lock the time of day / the weather for the whole run
+      if (TEST_MODE.envTime !== 'auto') { this.t = +TEST_MODE.envTime; this.timeLock = this.t; this.k = envKey(this.t); }
+      if (TEST_MODE.envWeather !== 'auto' && ENV_WEATHER[TEST_MODE.envWeather]) { this.weather = this.next = TEST_MODE.envWeather; this.cur = this._target(this.weather); this.weatherLock = this.weather; }
+    }
+  }
+  _target(w) { const d = ENV_WEATHER[w]; return { cloud: d.cloud, rain: d.rain, fog: d.fog, wind: d.wind, storm: d.storm }; }
+  get period() { return envPeriod(this.t); }
+  get weatherName() { return ENV_WEATHER[this.glide > 0.5 ? this.next : this.weather].name; }
+  get weatherId() { return this.glide > 0.5 ? this.next : this.weather; }
+  setTime(h) { this.t = ((h % 24) + 24) % 24; this.mapDirty = true; this.k = envKey(this.t); }
+  setWeather(id, instant) { if (!ENV_WEATHER[id]) return; this.weather = this.next = id; this.glide = 0; this.weatherT = envRand(...ENV.weatherEveryS) / ENV.weatherFreq; if (instant) this.cur = this._target(id); else this.cur = Object.assign({}, this.cur); this._tgt = this._target(id); this.mapDirty = true; }
+  setEnabled(on) { this.enabled = !!on; this.mapDirty = true; if (this.dom) this._applyEnabledDom(); }
+  lightMode() { return this.enabled; }
+  serialize() { const r = (n) => Math.round(n * 1000) / 1000; return { v: 1, t: r(this.t), d: this.days, w: this.weather, nx: this.next, g: r(this.glide), wt: r(this.weatherT), cur: Object.fromEntries(Object.entries(this.cur).map(([k, v]) => [k, r(v)])) }; }
+  restore(raw) {
+    this.reset(null); if (!raw || typeof raw !== 'object') return;
+    if (Number.isFinite(raw.t)) this.t = ((raw.t % 24) + 24) % 24; if (Number.isFinite(raw.d)) this.days = raw.d | 0;
+    if (ENV_WEATHER[raw.w]) this.weather = raw.w; if (ENV_WEATHER[raw.nx]) this.next = raw.nx; else this.next = this.weather;
+    if (Number.isFinite(raw.g)) this.glide = envClamp(raw.g, 0, 1); if (Number.isFinite(raw.wt)) this.weatherT = Math.max(5, raw.wt);
+    this.cur = this._target(this.weather); if (raw.cur && typeof raw.cur === 'object') for (const k of Object.keys(this.cur)) if (Number.isFinite(raw.cur[k])) this.cur[k] = envClamp(raw.cur[k], 0, 1);
+    this.k = envKey(this.t);
+  }
+
+  // ------------------------------------------------------------------ gameplay-facing values
+  nightness() { return this.night; }
+  visPx() { return this.vis; }
+  // zombies: how visible one at (x, y) is to the player, 0..1. Flashlight cone and lightning keep them visible.
+  zombieAlpha(x, y, player) {
+    if (!this.enabled || this.vis > 3000) return 1;
+    const d = Math.hypot(x - player.x, y - player.y), lo = this.vis * 0.7, hi = this.vis * 1.15;
+    if (d <= lo) return 1;
+    let a = 1 - (d - lo) / (hi - lo);
+    if (this.bolt > 0.1) a = Math.max(a, envClamp(this.bolt * 1.4, 0, 1) * (d < 1300 ? 1 : 0));
+    if (this.flashOn && this.night > 0.25) { const ang = Math.atan2(y - player.y, x - player.x), da = Math.abs(zaiAngDiff(ang, player.aimAngle)); if (d < ENV.flashlight.range * 1.15 && da < ENV.flashlight.half + 0.12) a = 1; }
+    return envClamp(a, 0, 1);
+  }
+  // Zombie sight range multiplier (used by the AI): more at night, less in fog / rain, per personality.
+  aiDetect(pers) {
+    if (!this.enabled) return 1; const P = ENV_PERS[pers] || ENV_PERS.hunter, c = this.cur;
+    let m = 1 + 0.25 * this.night * P.night;
+    m *= 1 - 0.55 * c.fog * Math.min(1, P.fog); if (P.fog > 1) m *= 1 - 0.1 * c.fog * (P.fog - 1);
+    m *= 1 - 0.18 * c.rain * P.rain; m *= 1 - 0.12 * c.storm * P.rain;
+    if (this.flashOn && this.night > 0.4) m *= 1 + 0.08 * this.night;   // a flashlight beam can be seen from further away (a small cost of using it)
+    return envClamp(m, 0.3, 1.5);
+  }
+  // How far a sound of radiusM metres still carries: rain and storms muffle it; thunder drowns out small sounds.
+  hearMask(radiusM) {
+    if (!this.enabled) return 1; const c = this.cur; let m = 1 - 0.3 * c.rain - 0.08 * c.wind * c.rain;
+    if (this.thunderT > 0) m *= radiusM < 45 ? 0.5 : radiusM < 90 ? 0.8 : 0.95;
+    return envClamp(m, 0.35, 1);
+  }
+  // Small multipliers for the zombie director (see ZombieDirector).
+  dir() {
+    if (this._dirC && this._tOf() - this._dirT < 1) return this._dirC;
+    const S = (ENV_DIFF[CONFIG.activeDifficulty] || ENV_DIFF.normal).dir, n = this.night, f = this.cur.fog, s = this.cur.storm, r = this.cur.rain, rh = envClamp((r - 0.5) / 0.5, 0, 1);
+    this._dirT = this._tOf(); this._dirC = this.enabled ? {
+      enc: { small: 1 - 0.15 * n * S, large: 1 + (0.2 * n - 0.25 * f) * S, ambush: 1 + (0.5 * n + 0.8 * f) * S, heavy: 1 + 0.4 * n * S, special: 1 + (0.6 * n + 0.7 * s) * S },
+      runner: 1 + 0.6 * n * S, fill: 1 + (0.06 * n + 0.04 * s) * S, cd: Math.max(0.7, 1 - (0.1 * n + 0.1 * s + 0.08 * f) * S), quiet: 0.25 * Math.max(rh, s), relax: 1 + 0.3 * rh,
+    } : { enc: { small: 1, large: 1, ambush: 1, heavy: 1, special: 1 }, runner: 1, fill: 1, cd: 1, quiet: 0, relax: 1 };
+    return this._dirC;
+  }
+  _tOf() { return this.clock || 0; }
+
+  // ------------------------------------------------------------------ per frame
+  update(dt, game) {
+    this.clock = (this.clock || 0) + dt; const dtG = dt;
+    if (this.timeLock !== null) this.t = this.timeLock; else this.t += dt * 24 / ENV.dayLengthS * this.timeScale;
+    if (this.t >= 24) { this.t -= 24; this.days++; }
+    // --- weather: pick, then glide ---
+    if (this.weatherLock) { if (this.weather !== this.weatherLock) this.setWeather(this.weatherLock, false); }
+    else { this.weatherT -= dt * this.timeScale; if (this.weatherT <= 0 && this.glide === 0) { const nx = ENV_WEATHER[this.weather].next; this.next = zaiPickEnv(nx); this.glide = 0.0001; this._tgt = this._target(this.next); } }
+    if (this.glide > 0) { this.glide += dt / ENV.transitionS; if (this.glide >= 1) { this.weather = this.next; this.glide = 0; this.weatherT = envRand(...ENV.weatherEveryS) / ENV.weatherFreq; } }
+    const tgt = this.glide > 0 ? this._tgt : this._target(this.weather), step = dt / ENV.transitionS;
+    for (const k in this.cur) this.cur[k] += envClamp(tgt[k] - this.cur[k], -step, step);
+    // --- lightning + thunder ---
+    if (this.cur.storm > 0.5) { this.boltCool -= dt; if (this.boltCool <= 0) { this.boltCool = envRand(7, 22); this.bolt = 1; this.thunderAt = this.clock + envRand(0.6, 4); this._boltFlicker = 2; } }
+    if (this.bolt > 0) { this.bolt = Math.max(0, this.bolt - dt * 2.2); if (this.bolt < 0.55 && this._boltFlicker > 0) { this._boltFlicker--; this.bolt = 0.9; } }
+    if (this.thunderAt > 0 && this.clock >= this.thunderAt) { this.thunderAt = -1; this.thunderT = 3.5; if (this.audio) this.audio.thunder(); }
+    if (this.thunderT > 0) this.thunderT -= dt;
+    // --- derived values ---
+    const k = this.k = envKey(this.t), lum = (c) => 0.3 * c[0] + 0.59 * c[1] + 0.11 * c[2], nightLum = lum(ENV_LIGHT[0].amb);
+    this.night = envClamp((255 - lum(k.amb)) / (255 - nightLum), 0, 1);
+    const c = this.cur, n = Math.pow(this.night, 1.1);
+    this.vis = Math.min(envLerp(ENV.visDayPx, ENV.visNightPx, n), envLerp(ENV.visDayPx, ENV.visFogPx, Math.pow(c.fog, 0.8)), envLerp(ENV.visDayPx, ENV.visRainPx, c.rain * 0.9));
+    if (this.bolt > 0) this.vis = Math.max(this.vis, 1600 * this.bolt);
+    // --- flashlight key ---
+    if (game.input && game.input.wasPressed('KeyF')) { this.flashOn = !this.flashOn; Sound.uiClick(); }
+    this._ui(game); this._draw(dt, game);
+    this.lastMapT += dt; if ((this.lastMapT >= ENV.mapLightEvery || this.mapDirty) && game.world3d) { this.lastMapT = 0; this.mapDirty = false; this._mapLight(game); }
+    this.hudT += dt; if (this.hudT >= 1 || this.mapDirty) { this.hudT = 0; this._hud(); }
+    this._audio(dt);
+  }
+
+  // ------------------------------------------------------------------ the map (MapTiler) light and shadows
+  _mapLight(game) {
+    const r = game.world3d && game.world3d.renderer; if (!r || !r.map || !r.style || !r.style.on) return;
+    const m = r.map, k = this.k, S = OP_STYLE;
+    try {
+      if (!this.enabled) { m.setLight(S.light); this._shadows(r, null); return; }
+      const cloud = this.cur.cloud, dim = 1 - 0.22 * cloud - 0.12 * this.cur.rain;
+      m.setLight({ anchor: 'viewport', color: envRgbHex(k.map), intensity: envClamp(k.mi * (0.92 + 0.08 * (1 - cloud)) * Math.min(1.15, ENV.nightBrightness ** 0.5), 0.3, 0.9), position: [1.4, k.az, k.polar] });
+      this._shadows(r, { str: k.sh * (1 - 0.65 * cloud) * (1 - 0.4 * this.cur.rain) * (1 - 0.6 * this.cur.fog), len: k.shLen, x: k.shX });
+    } catch (e) { /* the map may not have a light control yet */ }
+  }
+  _shadows(r, sh) {
+    const m = r.map, S = OP_STYLE, ids = r.style.shadowIds || []; if (!ids.length) return;
+    const spm = GAME3D.tileSizePx * Math.pow(2, typeof m.getZoom === 'function' ? m.getZoom() : 18.9) * Mercator.unitsPerMeter(m.getCenter().lat);
+    S.shadow.bands.forEach(([minH, dM], i) => {
+      const id = ids[i]; if (!id || !m.getLayer(id)) return;
+      if (!sh) { m.setPaintProperty(id, 'fill-translate', [dM * spm, dM * spm]); m.setPaintProperty(id, 'fill-opacity', S.shadow.opacity); return; }
+      const L = dM * spm * sh.len; m.setPaintProperty(id, 'fill-translate', [sh.x * L * 1.0, Math.abs(0.55 + 0.3 * Math.abs(sh.x)) * L]);   // shadows lean away from the sun and always a little down (the look of the original)
+      m.setPaintProperty(id, 'fill-opacity', S.shadow.opacity * sh.str);
+    });
+  }
+
+  // ------------------------------------------------------------------ DOM: light map, effects canvas, HUD chip
+  _ui(game) {
+    if (this.dom) return;
+    const cont = document.getElementById('gameContainer'); if (!cont) return;
+    const css = document.createElement('style'); css.textContent = `
+      #envLight{position:absolute;top:0;left:0;width:100%;height:100%;z-index:0;pointer-events:none;mix-blend-mode:multiply;image-rendering:auto}
+      #gameContainer:not(.world3d-active) #envLight{display:none}
+      #nightTint{display:none!important}
+      #envFx{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none}
+      #envHud{position:absolute;top:10px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:8px;padding:5px 10px;background:rgba(24,27,32,0.8);border:2px solid #000;font-family:'Press Start 2P','Courier New',monospace;color:#e8ecef;pointer-events:none;text-shadow:none;white-space:nowrap}
+      #envHud canvas{width:24px;height:24px;image-rendering:pixelated;transition:opacity .5s} #envHud .eh1{font-size:11px;color:#fff} #envHud .eh2{font-size:7px;color:#9aa4ab;margin-top:4px;transition:opacity .5s}
+      #envHud.fade canvas,#envHud.fade .eh2{opacity:0}
+      @media (max-width:760px){#envHud{top:auto;bottom:10px;padding:4px 7px}}`;
+    document.head.appendChild(css);
+    const light = document.createElement('canvas'); light.id = 'envLight'; light.width = 256; light.height = 144;
+    const nt = document.getElementById('nightTint'); if (nt) nt.insertAdjacentElement('afterend', light); else cont.insertBefore(light, cont.firstChild);
+    const fx = document.createElement('canvas'); fx.id = 'envFx'; const gc = document.getElementById('gameCanvas'); if (gc) gc.insertAdjacentElement('afterend', fx); else cont.appendChild(fx);
+    const hud = document.createElement('div'); hud.id = 'envHud'; hud.innerHTML = '<canvas width="12" height="12" id="envIcon"></canvas><div><div class="eh1" id="envTime">06:30</div><div class="eh2" id="envLabel">DAWN - CLEAR</div></div>';
+    const h = document.getElementById('hud'); (h || cont).appendChild(hud);
+    this.dom = { light, fx, hud, lctx: light.getContext('2d'), fctx: fx.getContext('2d'), icon: document.getElementById('envIcon'), time: document.getElementById('envTime'), label: document.getElementById('envLabel') };
+    this._applyEnabledDom(); if (typeof OP_STYLE !== 'undefined') { try { game.world3d && game.world3d.renderer && game.world3d.renderer.setNight(false); } catch (e) { /* ignore */ } }
+  }
+  _applyEnabledDom() { if (this.dom) this.dom.light.style.visibility = this.enabled ? 'visible' : 'hidden'; }
+  _hud() {
+    if (!this.dom) return;
+    const h = Math.floor(this.t), mnt = Math.floor((this.t - h) * 60), night = this.night > 0.5, w = this.weatherId, c = this.cur;
+    this.dom.time.textContent = String(h).padStart(2, '0') + ':' + String(mnt).padStart(2, '0');
+    const label = this.period.toUpperCase() + ' - ' + ENV_WEATHER[w].name, iconId = w === 'clear' ? (night ? 'moon' : 'sun') : w === 'cloudy' ? 'cloud' : w === 'rain' || w === 'heavy_rain' ? 'rain' : w;
+    if (label !== this._label || iconId !== this._icon) {
+      this.dom.label.textContent = label;
+      if (this._icon && iconId !== this._icon) { this.dom.hud.classList.add('fade'); clearTimeout(this._ft); this._ft = setTimeout(() => { this._drawIcon(iconId); this.dom.hud.classList.remove('fade'); }, 400); }   // the icon cross-fades
+      else this._drawIcon(iconId);
+      this._label = label; this._icon = iconId;
+    }
+  }
+  _drawIcon(id) {
+    const g = this.dom.icon.getContext('2d'), rows = ENV_ICONS[id] || ENV_ICONS.sun; g.clearRect(0, 0, 12, 12);
+    const col = { sun: '#ffd34d', moon: '#cfd8ff', cloud: '#c9d1d6', rain: '#7fb8ff', fog: '#b8c0c4', storm: '#ffe066' }[id] || '#fff';
+    g.fillStyle = col; rows.forEach((row, y) => { for (let x = 0; x < 12; x++) if (row[x] === 'X') g.fillRect(x, y, 1, 1); });
+    if (id === 'storm') { g.fillStyle = '#aab4bb'; for (let y = 0; y < 4; y++) for (let x = 0; x < 12; x++) if (rows[y][x] === 'X') g.fillRect(x, y, 1, 1); g.fillStyle = col; rows.forEach((row, y) => { if (y > 3) for (let x = 0; x < 12; x++) if (row[x] === 'X') g.fillRect(x, y, 1, 1); }); }
+  }
+
+  // ------------------------------------------------------------------ drawing
+  _draw(dt, game) {
+    const D = this.dom; if (!D) return; const cont = document.getElementById('gameContainer'), W = cont.clientWidth || 1280, H = cont.clientHeight || 800;
+    const player = game.player, cam = game.camera;
+    // player position on screen, px per world px, and aim direction on screen
+    let view = null; try { view = cam.viewSize(game.canvas); } catch (e) { view = { width: W, height: H }; }
+    const sp = cam.worldToScreen(player.x, player.y, view), sp2 = cam.worldToScreen(player.x + 100, player.y, view), scale = Math.max(0.2, Math.hypot(sp2.x - sp.x, sp2.y - sp.y) / 100);
+    const fx = sp.x / (view.width || W), fy = sp.y / (view.height || H);
+    const aimP = cam.worldToScreen(player.x + Math.cos(player.aimAngle) * 100, player.y + Math.sin(player.aimAngle) * 100, view), aimA = Math.atan2((aimP.y - sp.y) * (view.height ? 1 : 1), aimP.x - sp.x);
+    this._drawLight(fx, fy, scale, aimA, view);
+    this._drawFx(dt, W, H, fx * W, fy * H, scale);
+  }
+  _drawLight(fx, fy, scale, aimA, view) {
+    const D = this.dom, g = D.lctx, cw = D.light.width, ch = D.light.height, k = this.k, c = this.cur;
+    if (!this.enabled) return;
+    let amb = k.amb.slice(), pool = k.pool;
+    const nb = ENV.nightBrightness, dark = (v) => 255 - (255 - v) / nb;   // nightBrightness scales how far the ambient falls from white
+    if (nb !== 1) amb = amb.map((v) => envClamp(dark(v), 20, 255));
+    const cl = 1 - 0.2 * c.cloud * (1 - this.night * 0.5), wet = c.rain;
+    amb = [amb[0] * cl * (1 - 0.06 * wet), amb[1] * cl * (1 - 0.03 * wet), amb[2] * cl];
+    const flashK = this.bolt, boost = envClamp(flashK, 0, 1);
+    const day = amb[0] > 250 && amb[1] > 250 && amb[2] > 250 && boost < 0.02;
+    D.light.style.opacity = day ? 0 : 1; if (day) return;
+    g.globalCompositeOperation = 'source-over'; g.fillStyle = `rgb(${amb[0] | 0},${amb[1] | 0},${amb[2] | 0})`; g.fillRect(0, 0, cw, ch);
+    g.globalCompositeOperation = 'lighter';
+    const px = fx * cw, py = fy * ch, sx = cw / (view.width || 1280), rad = (envClamp(this.vis * 0.55, 230, 560)) * scale * sx;
+    const add = (col, a) => `rgba(${envClamp(col[0] - amb[0], 0, 255) | 0},${envClamp(col[1] - amb[1], 0, 255) | 0},${envClamp(col[2] - amb[2], 0, 255) | 0},${a})`;
+    // the pool of light around the peanut
+    const gr = g.createRadialGradient(px, py, rad * 0.05, px, py, rad); gr.addColorStop(0, add(pool, 1)); gr.addColorStop(0.55, add(pool, 0.45)); gr.addColorStop(1, add(pool, 0)); g.fillStyle = gr; g.fillRect(0, 0, cw, ch);
+    // flashlight cone (only when it is dark enough to matter)
+    if (this.flashOn && this.night > 0.2) {
+      const L = ENV.flashlight.range * scale * sx, a0 = aimA - ENV.flashlight.half, a1 = aimA + ENV.flashlight.half, wf = envClamp(this.night * 1.2, 0, 1);
+      const fg = g.createRadialGradient(px, py, L * 0.05, px, py, L); fg.addColorStop(0, add([255, 246, 220], 0.95 * wf)); fg.addColorStop(0.6, add([255, 240, 205], 0.55 * wf)); fg.addColorStop(1, add([255, 236, 200], 0));
+      g.fillStyle = fg; g.beginPath(); g.moveTo(px, py); g.arc(px, py, L, a0, a1); g.closePath(); g.fill();
+    }
+    // lightning lights the whole map for a moment
+    if (boost > 0.02) { g.fillStyle = `rgba(${envClamp(255 - amb[0], 0, 255) | 0},${envClamp(255 - amb[1], 0, 255) | 0},${envClamp(255 - amb[2], 0, 255) | 0},${boost * 0.9})`; g.fillRect(0, 0, cw, ch); }
+    g.globalCompositeOperation = 'source-over';
+  }
+  _drawFx(dt, W, H, px, py, scale) {
+    const D = this.dom, cv = D.fx; if (cv.width !== W || cv.height !== H) { cv.width = W; cv.height = H; }
+    const g = D.fctx, c = this.cur; g.clearRect(0, 0, W, H);
+    const fxs = ENV.fxScale;
+    // moving cloud shadows (subtle)
+    if (c.cloud > 0.25 && fxs > 0) {
+      if (!this.clouds) this.clouds = Array.from({ length: 6 }, (_, i) => ({ x: Math.random() * 1.4 - 0.2, y: Math.random(), r: 0.25 + Math.random() * 0.25, s: 0.6 + Math.random() * 0.8 }));
+      g.save(); for (const cl of this.clouds) { cl.x += dt * 0.004 * cl.s * (0.5 + c.wind); if (cl.x > 1.3) { cl.x = -0.3; cl.y = Math.random(); } const cx = cl.x * W, cy = cl.y * H, r = cl.r * Math.max(W, H); const gr = g.createRadialGradient(cx, cy, r * 0.1, cx, cy, r); const a = 0.1 * c.cloud; gr.addColorStop(0, `rgba(20,26,40,${a})`); gr.addColorStop(1, 'rgba(20,26,40,0)'); g.fillStyle = gr; g.fillRect(cx - r, cy - r, r * 2, r * 2); } g.restore();
+    }
+    // fog: clear around the peanut, thick toward the edges
+    if (c.fog > 0.04) {
+      const R = Math.max(W, H) * 0.75, inner = Math.max(120, this.vis * 0.35 * scale), d = c.fog * ENV.fogDensity, night = this.night;
+      const col = night > 0.5 ? '70,80,105' : '200,206,210', gr = g.createRadialGradient(px, py, inner, px, py, R);
+      gr.addColorStop(0, `rgba(${col},0)`); gr.addColorStop(0.35, `rgba(${col},${0.35 * d})`); gr.addColorStop(1, `rgba(${col},${0.82 * d})`); g.fillStyle = gr; g.fillRect(0, 0, W, H);
+    }
+    // rain: slanted streaks (+ a few ripples), capped
+    const rainN = Math.round(ENV.rainMax * c.rain * fxs);
+    if (rainN > 2) {
+      const wind = c.wind, slant = 0.22 + 0.55 * wind, len = 14 + 14 * c.rain, spd = 900 + 700 * c.rain;
+      while (this.drops.length < rainN) this.drops.push({ x: Math.random() * (W + 200) - 100, y: Math.random() * H, v: 0.8 + Math.random() * 0.5 });
+      if (this.drops.length > rainN) this.drops.length = rainN;
+      g.lineWidth = 1.5; g.strokeStyle = `rgba(185,205,235,${0.25 + 0.25 * c.rain})`; g.beginPath();
+      for (const d of this.drops) { d.y += spd * d.v * dt; d.x -= spd * d.v * dt * slant * 0.5; if (d.y > H) { d.y = -20; d.x = Math.random() * (W + 200) - 100; if (this.ripples.length < 24 && Math.random() < 0.25) this.ripples.push({ x: Math.random() * W, y: Math.random() * H, t: 0 }); } g.moveTo(d.x, d.y); g.lineTo(d.x + len * slant * 0.5, d.y - len); }
+      g.stroke();
+      g.lineWidth = 1; for (let i = this.ripples.length - 1; i >= 0; i--) { const r = this.ripples[i]; r.t += dt * 2.2; if (r.t >= 1) { this.ripples.splice(i, 1); continue; } g.strokeStyle = `rgba(190,210,240,${0.35 * (1 - r.t)})`; g.beginPath(); g.ellipse(r.x, r.y, 3 + r.t * 9, 1.5 + r.t * 4, 0, 0, 7); g.stroke(); }
+    } else { this.drops.length = 0; this.ripples.length = 0; }
+    // lightning flash
+    if (this.bolt > 0.02) { g.fillStyle = `rgba(235,240,255,${this.bolt * 0.35})`; g.fillRect(0, 0, W, H); }
+  }
+
+  // ------------------------------------------------------------------ audio (procedural, through the game's master gain so mute works)
+  _audio(dt) {
+    if (!this.audio) { if (!Sound.ctx) return; this.audio = new EnvAudio(); }
+    this.audio.update(this, dt);
+  }
+}
+function envRand(a, b) { return a + Math.random() * (b - a); }
+function zaiPickEnv(w) {
+  if (typeof w === 'object' && w) { let t = 0; for (const k in w) t += w[k]; let r = Math.random() * t; for (const k in w) { r -= w[k]; if (r <= 0) return k; } }
+  return 'clear';
+}
+
+class EnvAudio {
+  constructor() {
+    const ctx = Sound.ctx; this.ctx = ctx; this.busy = 0; const len = ctx.sampleRate * 2, buf = ctx.createBuffer(1, len, ctx.sampleRate), d = buf.getChannelData(0); let b0 = 0;
+    for (let i = 0; i < len; i++) { const w = Math.random() * 2 - 1; b0 = 0.985 * b0 + 0.15 * w; d[i] = b0 * 3 + w * 0.15; }   // soft, slightly pink noise
+    this.noise = buf; this.master = ctx.createGain(); this.master.gain.value = ENV.audio.volume; this.master.connect(Sound.masterGain || ctx.destination);   // mute lives on Sound.masterGain
+    const loop = (filters, gain) => { const s = ctx.createBufferSource(); s.buffer = buf; s.loop = true; let n = s; for (const f of filters) { n.connect(f); n = f; } const g = ctx.createGain(); g.gain.value = 0; n.connect(g); g.connect(this.master); s.start(); return g; };
+    const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 3600; bp.Q.value = 0.5; const hp = ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 900;
+    this.rain = loop([bp, hp]);
+    const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 520; this.wind = loop([lp]);
+    const cr = ctx.createOscillator(); cr.type = 'sine'; cr.frequency.value = 4300; const am = ctx.createGain(); am.gain.value = 0; const lfo = ctx.createOscillator(); lfo.frequency.value = 7; const lg = ctx.createGain(); lg.gain.value = 0.5; lfo.connect(lg); lg.connect(am.gain); cr.connect(am);
+    this.crick = ctx.createGain(); this.crick.gain.value = 0; am.connect(this.crick); this.crick.connect(this.master); cr.start(); lfo.start(); this.am = am; this.lfo = lfo;
+    this.t = 0;
+  }
+  update(env, dt) {
+    this.t += dt; if (this.t < 0.2) return; this.t = 0; const ctx = this.ctx, now = ctx.currentTime, c = env.cur, A = ENV.audio, calm = 1 - envClamp(c.rain * 1.2, 0, 1);
+    this.master.gain.setTargetAtTime(A.volume, now, 0.3);
+    this.rain.gain.setTargetAtTime(A.rain * Math.pow(c.rain, 1.3) * (0.6 + 0.6 * c.rain), now, 1.2);
+    this.wind.gain.setTargetAtTime(A.wind * (c.wind * 0.8 + env.night * 0.2) * (1 + 0.5 * Math.sin(env.clock * 0.35)), now, 1.5);
+    this.crick.gain.setTargetAtTime(env.enabled ? A.crickets * Math.pow(env.night, 2) * calm * (1 - c.fog * 0.6) : 0, now, 2);
+  }
+  thunder() {
+    const ctx = this.ctx; if (this.busy > ctx.currentTime) return;   // one thunder voice at a time
+    const now = ctx.currentTime, dur = 2.8 + Math.random() * 1.4; this.busy = now + dur;
+    const s = ctx.createBufferSource(); s.buffer = this.noise; s.loop = true; const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.setValueAtTime(900, now); lp.frequency.exponentialRampToValueAtTime(110, now + dur);
+    const g = ctx.createGain(); g.gain.setValueAtTime(0.0001, now); g.gain.exponentialRampToValueAtTime(ENV.audio.thunder, now + 0.06); g.gain.exponentialRampToValueAtTime(ENV.audio.thunder * 0.5, now + 0.5); g.gain.exponentialRampToValueAtTime(0.0001, now + dur);
+    s.connect(lp); lp.connect(g); g.connect(this.master); s.start(now); s.stop(now + dur + 0.1);
+  }
+}
+const ENV_SYS = new EnvironmentSystem();
+window.ENV_SYS = ENV_SYS;
+// Zombies that are further than the peanut can see fade out (never visible through fog or deep darkness); the flashlight cone and lightning keep them visible.
+(() => {
+  const draw = Zombie.prototype.draw;
+  Zombie.prototype.draw = function (ctx, cam, canvas, ...rest) {
+    const e = window.ENV_SYS, g = window.game; if (!e || !e.enabled || !g || !g.player) return draw.call(this, ctx, cam, canvas, ...rest);
+    const a = e.zombieAlpha(this.x, this.y, g.player); if (a >= 0.99) return draw.call(this, ctx, cam, canvas, ...rest);
+    if (a <= 0.02) return;
+    const ga = ctx.globalAlpha; ctx.globalAlpha = ga * a; try { return draw.call(this, ctx, cam, canvas, ...rest); } finally { ctx.globalAlpha = ga; }
+  };
+})();
+// ---- debug panel (backquote) ----
+(() => {
+  let panel = null;
+  const build = () => {
+    const d = document.createElement('div'); d.id = 'envPanel';
+    d.style.cssText = 'position:fixed;right:8px;top:70px;z-index:60;width:250px;padding:8px;background:rgba(10,12,14,0.88);border:2px solid #5ec8ff;color:#cfe;font:10px/1.5 monospace;pointer-events:auto;';
+    d.innerHTML = '<div style="color:#5ec8ff;font-weight:bold">ENVIRONMENT (`)</div><pre id="envInfo" style="margin:4px 0;white-space:pre-wrap"></pre>' +
+      '<div>Time <input id="envSlider" type="range" min="0" max="24" step="0.25" value="6.5" style="width:140px"> <button data-p="5.5">dawn</button><button data-p="9">morn</button><button data-p="12.5">mid</button><button data-p="15.5">aft</button><button data-p="18.5">sunset</button><button data-p="20.7">eve</button><button data-p="23.5">night</button></div>' +
+      '<div>Speed <select id="envSpeed"><option value="1">x1</option><option value="10">x10</option><option value="60">x60</option><option value="240">x240</option></select> <label><input id="envFreeze" type="checkbox"> freeze time</label></div>' +
+      '<div>Weather <button data-w="clear">clear</button><button data-w="cloudy">cloudy</button><button data-w="rain">rain</button><button data-w="heavy_rain">heavy</button><button data-w="fog">fog</button><button data-w="storm">storm</button> <label><input id="envWLock" type="checkbox"> lock</label></div>' +
+      '<div><button data-a="bolt">lightning</button> <label><input id="envLightOn" type="checkbox" checked> lighting</label> <label><input id="envFlash" type="checkbox" checked> flashlight</label></div>';
+    for (const ev of ['keydown', 'keyup', 'mousedown', 'mouseup', 'click', 'wheel', 'contextmenu', 'input']) d.addEventListener(ev, (e) => e.stopPropagation());
+    d.addEventListener('click', (e) => { const b = e.target; const E = window.ENV_SYS; if (b.dataset.p) { E.setTime(+b.dataset.p); } else if (b.dataset.w) { E.setWeather(b.dataset.w, false); if (document.getElementById('envWLock').checked) E.weatherLock = b.dataset.w; } else if (b.dataset.a === 'bolt') { E.bolt = 1; E.thunderAt = E.clock + 1.2; E._boltFlicker = 2; } });
+    d.addEventListener('change', (e) => { const E = window.ENV_SYS; if (e.target.id === 'envSlider') E.setTime(+e.target.value); if (e.target.id === 'envSpeed') E.timeScale = +e.target.value; if (e.target.id === 'envFreeze') E.timeLock = e.target.checked ? E.t : null; if (e.target.id === 'envWLock') E.weatherLock = e.target.checked ? E.weatherId : null; if (e.target.id === 'envLightOn') E.setEnabled(e.target.checked); if (e.target.id === 'envFlash') E.flashOn = e.target.checked; });
+    document.body.appendChild(d); return d;
+  };
+  window.ENV_SYS.setDebug = (on) => {
+    const E = window.ENV_SYS; E.debug = !!on; if (!panel) panel = build(); panel.style.display = on ? 'block' : 'none'; const c = document.getElementById('envDebugToggle'); if (c) c.checked = E.debug;
+    if (on && !E._pt) E._pt = setInterval(() => { if (!E.debug) return; const el = document.getElementById('envInfo'); if (!el) return; const m = E.dir(); el.textContent = `${String(Math.floor(E.t)).padStart(2, '0')}:${String(Math.floor((E.t % 1) * 60)).padStart(2, '0')} day ${E.days + 1}  ${E.period}  night ${E.night.toFixed(2)}\nweather ${E.weatherName} (${E.glide > 0 ? 'changing ' + Math.round(E.glide * 100) + '%' : 'next in ' + Math.round(E.weatherT) + 's'})\ncloud ${E.cur.cloud.toFixed(2)} rain ${E.cur.rain.toFixed(2)} fog ${E.cur.fog.toFixed(2)} wind ${E.cur.wind.toFixed(2)} storm ${E.cur.storm.toFixed(2)}\nvisibility ${Math.round(E.vis)}px  zombie sight x${E.aiDetect('hunter').toFixed(2)} (wanderer x${E.aiDetect('wanderer').toFixed(2)})\nsound carry x${E.hearMask(30).toFixed(2)}${E.thunderT > 0 ? ' THUNDER' : ''}  director: ambush x${m.enc.ambush.toFixed(2)} special x${m.enc.special.toFixed(2)} runners x${m.runner.toFixed(2)} quiet +${m.quiet.toFixed(2)}`; }, 500);
+  };
+  window.addEventListener('keydown', (e) => { if (e.code === 'Backquote' && window.ENV_SYS && !(e.target && e.target.tagName === 'INPUT')) { e.preventDefault(); window.ENV_SYS.setDebug(!window.ENV_SYS.debug); } });
+})();
   </script>
   <script>
 /**
@@ -10931,6 +11334,9 @@ class Game {
     bindToggle('tmFastShop', 'fastShop');
     bindToggle('tmShopCash', 'shopCash');
     bindToggle('tmLootTest', 'lootTest');
+    document.getElementById('envDebugToggle').addEventListener('change', (e) => { ENV_SYS.setDebug(e.target.checked); Sound.uiClick(); });   // debug panel only: not a cheat
+    document.getElementById('tmEnvTime').addEventListener('change', (e) => { TEST_MODE.envTime = e.target.value; Sound.uiClick(); refreshTestModeBtn(); });
+    document.getElementById('tmEnvWeather').addEventListener('change', (e) => { TEST_MODE.envWeather = e.target.value; Sound.uiClick(); refreshTestModeBtn(); });
     document.getElementById('lootDebugToggle').addEventListener('change', (e) => { LOOT_SYS.debug = e.target.checked; Sound.uiClick(); });   // debug overlay only: not a cheat
     document.getElementById('aiDebugToggle').addEventListener('change', (e) => { this.zombieAI.setDebug(e.target.checked); Sound.uiClick(); });   // debug overlay only: not a cheat, doesn't count as Test Mode
     document.getElementById('zdDebugToggle').addEventListener('change', (e) => { this.spawner.director.setDebug(e.target.checked); Sound.uiClick(); });   // debug panel only: not a cheat
@@ -10982,6 +11388,7 @@ class Game {
     this.pickups = [];
     this.floatingTexts = [];
     LOOT_SYS.reset(this);   // new run: fresh loot map
+    ENV_SYS.reset(this);    // new run: the clock and weather start again
     this.explosions = [];
     this.fx = this.fx || new CombatFX(); this.fx.clear();   // combat feedback effects (muzzle flashes, impacts, hit / death / pickup effects)
     // 3D run: no map-generated / synthetic obstacles and no old extruded-block system —
@@ -11252,6 +11659,7 @@ class Game {
       ach: ACH.serializeRun(), // this run's achievement stats, so Continue picks up exactly where it stopped
       difficulty: CONFIG.activeDifficulty, // a continued run keeps the difficulty it was started with
       zombies: this.zombies.filter((z) => z.alive !== false).map((z) => ({ type: z.type.id, x: r1(z.x), y: r1(z.y), health: z.health })),
+      env: ENV_SYS.serialize(),     // time of day + weather
       loot: LOOT_SYS.serialize(),   // containers, remaining items, respawn timers, buffs
       pickups: this.pickups.map((p) => ({ kind: p.kind, x: r1(p.x), y: r1(p.y), v: p.kind === 'weapon' ? p.weaponId : p.amount })),
       spawner: { elapsed: this.spawner.elapsed, timer: this.spawner.timer, nextBossAt: this.spawner.nextBossAt },
@@ -11437,7 +11845,8 @@ class Game {
       if (!CONFIG.PICKUPS[k.kind]) continue;
       this.pickups.push(new Pickup(k.x, k.y, k.kind, k.v));
     }
-    LOOT_SYS.restore(save.loot, this);   // older saves have no loot block: containers just start appearing again
+    LOOT_SYS.restore(save.loot, this);
+    ENV_SYS.restore(save.env);   // older saves have no env block: a fresh morning   // older saves have no loot block: containers just start appearing again
     this.bullets = [];
     this.camera.follow(pl.x, pl.y);
     if (this.world3d) { // the run started at the origin; put the camera, collision and zombie grid where the peanut really is
@@ -11528,6 +11937,7 @@ class Game {
     this.player.handleAim(this.input, this.canvas, this.camera.zoom, this.camera);
     this.player.update(dt);
     this.camera.follow(this.player.x, this.player.y);
+    ENV_SYS.update(dt, this);    // day / night clock, weather, lighting, environmental audio
     LOOT_SYS.update(dt, this);   // loot: container placement, searching (hold E), respawns, buffs
 
     // --- Weapon input: reload, switch, shoot ---
@@ -17089,7 +17499,7 @@ class MapTilerWorldRenderer {
     const el = document.getElementById('nightTint'); if (el) el.classList.toggle('on', OP_STYLE.night);
     if (this.style && this.style.on) { try { this.map.setLight(OP_STYLE.night ? OP_STYLE.nightLight : OP_STYLE.light); } catch (e) { /* ignore */ } }
   }
-  toggleNight() { this.setNight(!OP_STYLE.night); }
+  toggleNight() { if (window.ENV_SYS) window.ENV_SYS.setEnabled(!window.ENV_SYS.enabled); else this.setNight(!OP_STYLE.night); }   // F6: the day/night lighting is driven by the environment system; this switches it on / off
   togglePixel() { if (!this.style || !this.style.on) return; OP_STYLE.pixel = !OP_STYLE.pixel; try { this.style.revert(); this.style.apply(); } catch (err) { console.warn('[GameWorld3D] pixel toggle failed:', err.message); } }
   toggleStyle() { if (!this.style) return; try { if (this.style.on) this.style.revert(); else this.style.apply(); } catch (err) { console.warn('[GameWorld3D] style toggle failed:', err.message); } }
 
