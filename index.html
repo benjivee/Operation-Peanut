@@ -2229,7 +2229,7 @@ const EMBEDDED_ASSETS = {
     <!-- ===================== Start overlay (home page) ===================== -->
     <div id="startScreen" class="overlay homePage">
       <!-- Version: major.minor.patch. The patch digit goes 0-9 and rolls into the minor number (v3.88.9 -> v3.89.0); the minor number is two digits and rolls into the major number (v3.99.9 -> v4.00.0). Bumped by 1 on every change. -->
-      <div id="versionTag" class="versionTag">v3.94.2</div>
+      <div id="versionTag" class="versionTag">v3.94.3</div>
       <div id="homeSidebar" class="homeSidebar">
         <div class="homeSidebarTitle">Your Stats</div>
         <div id="homeLevel" class="homeLevel"></div>
@@ -7832,7 +7832,7 @@ window.addEventListener('keydown', (e) => { if (e.code === 'F11' && window.LOOT_
 /**
  * environment.js — day-and-night cycle + dynamic weather for Operation Peanut.
  *
- *  CLOCK:    ENV.dayLengthS real seconds = one 24 h day (default 1800 = 30 min). The run starts at ENV.startHour. Periods: dawn, morning, midday, afternoon, sunset, evening, night.
+ *  CLOCK:    ENV.dayLengthS real seconds = one 24 h day (default 1440 = 24 min). The run starts at ENV.startHour. Periods: dawn, morning, midday, afternoon, sunset, evening, night.
  *  LIGHT:    every value is interpolated between hourly keyframes (ENV_LIGHT), so nothing ever jumps. Three things are driven:
  *              1. the MapTiler map light (building colour / roof-vs-wall contrast): map.setLight(), 2 times a second;
  *              2. the building drop shadows already in the map style (their offset direction + length follow the sun, opacity fades with dusk and cloud);
@@ -7851,7 +7851,7 @@ window.addEventListener('keydown', (e) => { if (e.code === 'F11' && window.LOOT_
  */
 const ENV = {
   enabled: true,                   // lighting + visibility effects (F6 toggles); the clock and weather always run
-  dayLengthS: 1800,                // real seconds per in-game day  <- change this to balance
+  dayLengthS: 1440,                // real seconds per in-game day (24 min: 1 real minute = 1 in-game hour)  <- change this to balance
   startHour: 6.5,                  // the run starts at dawn
   weatherEveryS: [180, 420],       // seconds a weather lasts (x ENV.weatherFreq: 2 = twice as often)
   weatherFreq: 1, transitionS: 45, // glide time between weathers
