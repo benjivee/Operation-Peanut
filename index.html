@@ -1311,6 +1311,13 @@ html, body, button, input, select, textarea {
   box-shadow: inset 4px 4px 0 rgba(255,255,255,0.12), inset -4px -4px 0 rgba(0,0,0,0.4), 4px 4px 0 rgba(0,0,0,0.55); text-shadow: 2px 2px 0 #000; }
 #threatBanner .tbTitle { font-size: 11px; line-height: 1.6; }
 #threatBanner .tbSub { font-size: 8px; line-height: 1.8; margin-top: 4px; color: #ecdcd0; }
+
+/* ---- Test Mode: two columns of switches (one column on narrow screens), so the page is about half as tall ---- */
+.testToggles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 14px; width: 960px; max-width: 94vw; margin: 8px auto 12px auto; }
+.testToggles .testToggle { padding: 5px 12px; font-size: 10px; gap: 10px; min-width: 0; }
+.testToggles .testToggle span { min-width: 0; }
+.testToggles .testToggle select { max-width: 52%; min-width: 0; }
+@media (max-width: 760px) { .testToggles { grid-template-columns: 1fr; width: 460px; } }
 </style>
   <script>
 // Auto-generated for the single-file build: maps each original
@@ -2675,7 +2682,7 @@ const EMBEDDED_ASSETS = {
     <!-- ===================== Start overlay (home page) ===================== -->
     <div id="startScreen" class="overlay homePage">
       <!-- Version: major.minor.patch. The patch digit goes 0-9 and rolls into the minor number (v3.88.9 -> v3.89.0); the minor number is two digits and rolls into the major number (v3.99.9 -> v4.00.0). Bumped by 1 on every change. -->
-      <div id="versionTag" class="versionTag">v3.95.1</div>
+      <div id="versionTag" class="versionTag">v3.95.2</div>
       <div id="homeSidebar" class="homeSidebar">
         <div class="homeSidebarTitle">Your Stats</div>
         <div id="homeLevel" class="homeLevel"></div>
@@ -20708,3 +20715,4 @@ class MapTilerGameWorld {
   </script>
 </body>
 </html>
+  
