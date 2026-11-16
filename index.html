@@ -2682,7 +2682,7 @@ const EMBEDDED_ASSETS = {
     <!-- ===================== Start overlay (home page) ===================== -->
     <div id="startScreen" class="overlay homePage">
       <!-- Version: major.minor.patch. The patch digit goes 0-9 and rolls into the minor number (v3.88.9 -> v3.89.0); the minor number is two digits and rolls into the major number (v3.99.9 -> v4.00.0). Bumped by 1 on every change. -->
-      <div id="versionTag" class="versionTag">v3.95.2</div>
+      <div id="versionTag" class="versionTag">v3.95.4</div>
       <div id="homeSidebar" class="homeSidebar">
         <div class="homeSidebarTitle">Your Stats</div>
         <div id="homeLevel" class="homeLevel"></div>
@@ -2697,7 +2697,7 @@ const EMBEDDED_ASSETS = {
       </div>
       <div class="homePageContent">
         <h1>OPERATION PEANUT</h1>
-        <p class="tagline">When hell is full the dead shall walk the earth</p>
+        <p class="tagline">“When hell is full the dead shall walk the earth”</p>
         <button id="startBtn" class="bigButton" disabled>Loading…</button>
         <button id="testModeBtn" class="testModeButton">Test Mode</button>
         <button id="howToPlayBtn" class="testModeButton">How to Play</button>
@@ -2761,6 +2761,7 @@ const EMBEDDED_ASSETS = {
         <h1>PAUSED</h1>
         <p class="subtitle">Press <b>Esc</b> to resume</p>
         <div id="pauseLevel" class="pauseLevel"></div>
+        <label class="testToggle" style="width:260px;margin:0 auto 10px auto"><span>Effects</span><select id="fxQuality" style="font:inherit;font-size:11px;padding:6px;background:#14171b;color:#fff;border:3px solid #000"><option value="low">Low</option><option value="normal">Normal</option><option value="high">High</option></select></label>
         <button id="resumeBtn" class="bigButton">Resume</button>
         <button id="pauseCustomizeBtn" class="smallLinkButton">Customize</button>
         <button id="pauseChallengesBtn" class="smallLinkButton">Challenges</button>
@@ -5707,7 +5708,7 @@ class Bullet extends Entity {
     const back = camera.worldToScreen(this.x - this.vx0 * 0.02, this.y - this.vy0 * 0.02, canvas, camera.rig3d ? this._flightElev : undefined);
     if (camera.rig3d) back.y -= BUILDING_OCCLUSION_CONFIG.playerFeetOffset * PLAYER_SCALE * GAME3D.entityScale * (back.depthScale || 1);   // the same weapon-height lift as `p`
     const ang = Math.atan2(p.y - back.y, p.x - back.x);
-    if (this.explosive) this._drawSmoke(ctx, camera, canvas);
+    if (this.explosive && FX_SETTINGS.trails) this._drawSmoke(ctx, camera, canvas);
     ctx.save();
     camera.applyEntityScale(ctx, p, false);
     if (this.explosive) this._drawRocket(ctx, p, ang);
@@ -5719,7 +5720,7 @@ class Bullet extends Entity {
   _drawTracer(ctx, p, ang) {
     const S = this.style, L = S.len, W = S.wid;
     ctx.translate(Math.round(p.x), Math.round(p.y)); ctx.rotate(ang);
-    const seg = [[-L, 0.32, 0.22, S.tail], [-L * 0.68, 0.38, 0.55, S.body], [-L * 0.3, 0.3, 1, S.body]];   // [start, share of L, alpha, colour]
+    const seg = FX_SETTINGS.trails ? [[-L, 0.32, 0.22, S.tail], [-L * 0.68, 0.38, 0.55, S.body], [-L * 0.3, 0.3, 1, S.body]] : [[-L * 0.5, 0.5, 0.8, S.body]];   // trails off: just a short bright dash   // [start, share of L, alpha, colour]
     for (const [x, sh, al, col] of seg) { ctx.globalAlpha = al; ctx.fillStyle = col; ctx.fillRect(Math.round(x), -Math.floor(W / 2), Math.max(1, Math.round(L * sh)), W); }
     ctx.globalAlpha = 1; ctx.fillStyle = S.head; ctx.fillRect(-Math.round(L * 0.25), -Math.floor(W / 2), Math.max(2, Math.round(L * 0.25) + 1), W);   // hot head
   }
@@ -6743,9 +6744,11 @@ class Zombie extends Entity {
   }
 
   // Visual-only recoil: the sprite is nudged away from the hit for a moment. Position, speed and attacks are untouched.
-  flinch(dx, dy) {
-    const L = Math.hypot(dx, dy) || 1, f = this.type.isBoss ? 0.5 : 1;
-    this.flinchX = dx / L * 4 * f; this.flinchY = dy / L * 2.4 * f; this.flinchT = 0.12;
+  // `power` is how hard the hit was (pistol 1, shotgun pellets stack, explosions 3.5); bosses, brutes and armoured / elite zombies are shoved less. Capped, and it ends within 0.2 s.
+  flinch(dx, dy, power = 1) {
+    const L = Math.hypot(dx, dy) || 1, f = (this.type.isBoss ? 0.5 : this.type.id === 'brute' ? 0.55 : (this.vk === 'armoured' || this.elite) ? 0.7 : 1) * power, on = this.flinchT > 0;
+    this.flinchX = Utils.clamp((on ? this.flinchX : 0) + dx / L * 4 * f, -10, 10); this.flinchY = Utils.clamp((on ? this.flinchY : 0) + dy / L * 2.4 * f, -6, 6);
+    this.flinchDur = Math.min(0.2, 0.1 + 0.025 * power); this.flinchT = this.flinchDur;
   }
 
   takeDamage(amount, srcId) {
@@ -6769,7 +6772,7 @@ class Zombie extends Entity {
     const visualSize = zombieVisualSize(this.type); // spriteDisplaySize x this type's *_ZOMBIE_SCALE (visual only)
     const cullMargin = Math.max(50, visualSize);
     const g0 = { x: p.x, y: p.y, depthScale: p.depthScale }; // the ground point (scale pivot)
-    if (this.flinchT > 0) { const fl = this.flinchT / 0.12; p.x += this.flinchX * fl; p.y += this.flinchY * fl; }   // flinch (drawing only)
+    if (this.flinchT > 0) { const fl = this.flinchT / (this.flinchDur || 0.12); p.x += this.flinchX * fl; p.y += this.flinchY * fl; }   // flinch (drawing only)
     if (camera.rig3d && GAME3D.feetAnchor) p.y -= visualSize * 0.35; // 3D: stand the feet on the ground point
     if (p.x < -cullMargin || p.x > canvas.width + cullMargin || p.y < -cullMargin || p.y > canvas.height + cullMargin) return;
 
@@ -12322,6 +12325,15 @@ function _explosionPixelColor(dist) {
 // ---------------------------------------------------------------------
 // White tint when something takes damage (zombie hit flash, the peanut's white blink, the white frame at a zombie's death). Off: damage is shown by sparks, flinch and the red hurt effect instead.
 const COMBAT_WHITE_FLASH = false;
+// Effect settings (saved in the browser). Presets: low / normal / high. density scales every particle burst (and drops further on its own when the screen is busy);
+// impact = strength of bullet-impact effects; muzzle = muzzle flashes on / off; trails = bullet tails + rocket smoke on / off; explosions = extra debris / smoke / scorch (0 = just the base burst).
+const FX_PRESETS = { low: { density: 0.5, impact: 0.6, muzzle: true, trails: false, explosions: 0.5 }, normal: { density: 1, impact: 1, muzzle: true, trails: true, explosions: 1 }, high: { density: 1.4, impact: 1.25, muzzle: true, trails: true, explosions: 1.3 } };
+const FX_SETTINGS = Object.assign({ quality: 'normal' }, FX_PRESETS.normal);
+function fxApplyQuality(q) { if (!FX_PRESETS[q]) q = 'normal'; Object.assign(FX_SETTINGS, FX_PRESETS[q], { quality: q }); try { localStorage.setItem('op_fx_quality', q); } catch (e) { /* storage may be blocked */ } }
+try { fxApplyQuality(localStorage.getItem('op_fx_quality') || 'normal'); } catch (e) { /* defaults */ }
+const FX_FLINCH = { pistol: 1, smg: 0.8, rifle: 1.5, machinegun: 1.1, shotgun: 1.9, flamethrower: 0.25 };   // how hard each weapon's hit shoves a zombie's sprite (visual only)
+const FX_CONCRETE_COLS = ['#bdb6a6', '#8e8672', '#6f6a5e', '#d8d2c2'];
+const FX_ARMOUR_COLS = ['#ffffff', '#dbe4ee', '#9fb4c7', '#6f8196'];
 const FX_MUZZLE = {
   pistol: { len: 7, w: 1, life: 0.05, rays: [0], cols: ['#fff7d0', '#ffd24a', '#e8902a'] },
   shotgun: { len: 10, w: 2, life: 0.07, rays: [0, 0.32, -0.32], cols: ['#fff7d0', '#ffc94a', '#e8902a'] },
@@ -12329,7 +12341,7 @@ const FX_MUZZLE = {
   rifle: { len: 9, w: 2, life: 0.05, rays: [0], cols: ['#ffffff', '#ffd24a', '#e8902a'] },
   machinegun: { len: 12, w: 3, life: 0.05, rays: [0], cols: ['#ffffff', '#ffd24a', '#e8902a'] },
   rpg: { len: 9, w: 3, life: 0.09, rays: [0], cols: ['#ffffff', '#ffc94a', '#e0701e'], smoke: true },
-  flamethrower: { len: 6, w: 2, life: 0.06, rays: [0], cols: ['#fff4c0', '#ffb02a', '#e2501e'] },
+  // (no entry for the flamethrower: its own flame stream is the effect)
 };
 const FX_SPARK_COLS = ['#fff2b0', '#ffc94a', '#b8b4a6', '#7a786f'];
 const FX_WOOD_COLS = ['#d2a679', '#a8825a', '#6b4f2e', '#c8bfa8'];
@@ -12367,34 +12379,52 @@ class ZombieDeathFx {
 }
 
 class CombatFX {
-  constructor() { this.list = []; this.deaths = []; this.max = 150; }
+  constructor() { this.list = []; this.deaths = []; this.marks = []; this.max = 150; }
+  _mark(x, y, kind, life, R) { this.marks.push({ x, y, kind, age: 0, life, R: R || 0, seed: Math.random() * 1000 }); if (this.marks.length > 36) this.marks.shift(); }   // bullet marks / scorch: short-lived, capped
   _push(f) { f.age = 0; this.list.push(f); if (this.list.length > this.max) this.list.shift(); return f; }
+  dens() { const l = this.list.length; return FX_SETTINGS.density * (l > 110 ? 0.5 : l > 80 ? 0.75 : 1); }   // fewer particles when the screen is already busy
   _burst(n, speed, base, spread, cols, life, extra) {   // n particles flung around angle `base` (screen space is resolved when drawn)
+    n = Math.max(1, Math.round(n * this.dens()));
     const ps = []; for (let i = 0; i < n; i++) { const a = base + (Math.random() - 0.5) * spread, s = speed * (0.5 + Math.random() * 0.7); ps.push({ a, s, c: cols[(Math.random() * cols.length) | 0] }); }
     return Object.assign({ ps, life }, extra);
   }
   update(dt) {
     let w = 0; for (let i = 0; i < this.list.length; i++) { const f = this.list[i]; f.age += dt; if (f.age < f.life) this.list[w++] = f; } this.list.length = w;
     w = 0; for (let i = 0; i < this.deaths.length; i++) { const f = this.deaths[i]; f.age += dt; if (f.age < f.life) this.deaths[w++] = f; } this.deaths.length = w;
+    w = 0; for (let i = 0; i < this.marks.length; i++) { const f = this.marks[i]; f.age += dt; if (f.age < f.life) this.marks[w++] = f; } this.marks.length = w;
   }
-  clear() { this.list.length = 0; this.deaths.length = 0; }
+  clear() { this.list.length = 0; this.deaths.length = 0; this.marks.length = 0; }
   // --- creation (called from the existing combat code, after it has decided what happened) ---
   muzzle(cfg, player, spec) {
-    if (!cfg || cfg.melee || cfg.thrown || !spec) return;
+    if (!cfg || cfg.melee || cfg.thrown || !spec || !FX_SETTINGS.muzzle || cfg.id === 'flamethrower') return;
     const m = FX_MUZZLE[cfg.id] || { len: 7, w: 1, life: 0.05, rays: [0], cols: ['#fff7d0', '#ffd24a', '#e8902a'] };
     this._push({ t: 'muzzle', m, ox: spec.x - player.x, oy: spec.y - player.y, ang: spec.angle, life: m.life });   // stored relative to the player so it follows the weapon
-    if (m.smoke) this._push(this._burst(5, 40, spec.angle + Math.PI, 1.2, ['#c8c4b8', '#8e8a80', '#5f5c55'], 0.3, { t: 'smoke', x: spec.x, y: spec.y, rel: player, ox: spec.x - player.x, oy: spec.y - player.y }));
+    if (m.smoke) {   // RPG launch: a flash at the tube AND a back-blast plume of smoke and fire out of the rear
+      this._push({ t: 'muzzle', m: { len: 7, w: 2, life: 0.1, rays: [0.5, -0.5], cols: m.cols }, ox: spec.x - player.x, oy: spec.y - player.y, ang: spec.angle + Math.PI, life: 0.1 });
+      this._push(this._burst(9, 55, spec.angle + Math.PI, 1.5, ['#c8c4b8', '#8e8a80', '#5f5c55', '#e0a050'], 0.45, { t: 'smoke', x: spec.x, y: spec.y, rel: player, ox: spec.x - player.x, oy: spec.y - player.y }));
+    }
   }
-  spark(b) {   // a bullet stopped by a building / the map wall
-    if (b.flame) return; const base = Math.atan2(b.vy, b.vx) + Math.PI;
-    if (b._hitFx) { const wood = b._hitFx === 'wood'; b._hitFx = null; this._push(this._burst(wood ? 6 : 8, wood ? 60 : 85, base, 2.6, wood ? FX_WOOD_COLS : FX_METAL_COLS, 0.24, { t: 'spark', x: b.x, y: b.y, g: 150 })); return; }   // metal sparks off a car / lamp, wood chips off a trunk
-    this._push(this._burst(6, 70, base, 2.2, FX_SPARK_COLS, 0.22, { t: 'spark', x: b.x, y: b.y, g: 160 }));
-    this._push(this._burst(3, 18, base, 2.6, FX_DUST_COLS, 0.3, { t: 'spark', x: b.x, y: b.y, g: -10, big: true }));
+  spark(b) {   // a bullet stopped by something solid: what it looks like depends on WHAT it hit (hitKind comes from the prop; buildings and the map edge are concrete)
+    if (b.flame) return; const base = Math.atan2(b.vy, b.vx) + Math.PI, kind = b._hitFx || 'concrete', I = FX_SETTINGS.impact; b._hitFx = null; if (I <= 0) return;
+    const n = (v) => Math.max(1, Math.round(v * I));
+    if (kind === 'wood') { this._push(this._burst(n(7), 62, base, 2.4, FX_WOOD_COLS, 0.26, { t: 'spark', x: b.x, y: b.y, g: 150 })); this._push(this._burst(n(2), 16, base, 2.6, FX_DUST_COLS, 0.28, { t: 'spark', x: b.x, y: b.y, g: -8, big: true })); }
+    else if (kind === 'metal') { this._push(this._burst(n(9), 95, base, 2.6, FX_METAL_COLS, 0.22, { t: 'spark', x: b.x, y: b.y, g: 150 })); this._push({ t: 'ping', x: b.x, y: b.y, life: 0.08 }); }
+    else { this._push(this._burst(n(5), 58, base, 2.4, FX_CONCRETE_COLS, 0.24, { t: 'spark', x: b.x, y: b.y, g: 170 })); this._push(this._burst(n(3), 16, base, 2.8, FX_DUST_COLS, 0.34, { t: 'spark', x: b.x, y: b.y, g: -12, big: true })); this._push(this._burst(n(2), 80, base, 1.8, FX_SPARK_COLS, 0.14, { t: 'spark', x: b.x, y: b.y, g: 150 })); }
+    this._mark(b.x, b.y, kind, 5.5);
   }
   dust(b) { this._dustN = (this._dustN || 0) + 1; if (this._dustN % 2) return; this._push(this._burst(3, 14, -Math.PI / 2, 2.4, FX_DUST_COLS, 0.26, { t: 'spark', x: b.x, y: b.y, g: -6, big: true })); }   // a shot landing on the ground at the end of its range
-  hit(b, z) {   // a bullet / flame striking a zombie
-    if (b.flame) { const n = performance.now(); if ((z._fxT || 0) > n) return; z._fxT = n + 110; this._push(this._burst(3, 40, Math.atan2(b.vy, b.vx), 2.4, ['#ffd24a', '#e2501e', '#fff4c0'], 0.18, { t: 'spark', x: z.x, y: z.y, g: -30, body: z })); return; }
-    this._push(this._burst(6, 55, Math.atan2(b.vy, b.vx), 1.6, FX_HIT_COLS, 0.18, { t: 'spark', x: b.x, y: b.y, g: 120, body: z }));
+  hit(b, z) {   // a bullet / flame striking a zombie, at the point where the path met it
+    const I = FX_SETTINGS.impact, ox = b.x - z.x, oy = b.y - z.y;
+    if (b.flame) { const n = performance.now(); if ((z._fxT || 0) > n) return; z._fxT = n + 110; this._push(this._burst(3, 40, Math.atan2(b.vy, b.vx), 2.4, ['#ffd24a', '#e2501e', '#fff4c0'], 0.18, { t: 'spark', x: z.x, y: z.y, g: -30, body: z, ox: 0, oy: 0 })); return; }
+    if (I <= 0) return; const dir = Math.atan2(b.vy, b.vx), heavy = Math.min(1.6, (b.damage || 15) / 20);
+    if (z.armourHitT > 0) {   // armour that is still on: bright metal sparks glancing off, no blood
+      this._push(this._burst(Math.round((5 + heavy * 2) * I), 90, dir + Math.PI, 2.6, FX_ARMOUR_COLS, 0.2, { t: 'spark', x: b.x, y: b.y, g: 140, body: z, ox, oy })); this._push({ t: 'ping', x: b.x, y: b.y, life: 0.08, body: z, ox, oy }); return;
+    }
+    this._push(this._burst(Math.round((4 + heavy * 3) * I), 55 + heavy * 15, dir, 1.5, FX_HIT_COLS, 0.18, { t: 'spark', x: b.x, y: b.y, g: 120, body: z, ox, oy }));   // spray carried on in the bullet's direction
+    this._push(this._burst(Math.max(1, Math.round(2 * I)), 28, dir + Math.PI, 1.8, FX_HIT_COLS, 0.14, { t: 'spark', x: b.x, y: b.y, g: 120, body: z, ox, oy }));            // and a little splash back toward the shooter
+  }
+  blastHit(z, x, y) {   // a zombie caught in an explosion: embers and grit thrown off it, away from the blast
+    if (FX_SETTINGS.explosions <= 0) return; this._push(this._burst(Math.round(4 * FX_SETTINGS.explosions), 70, Math.atan2(z.y - y, z.x - x), 2.6, ['#ffd24a', '#e2501e', '#5f5c55', '#8e2a2a'], 0.3, { t: 'spark', x: z.x, y: z.y, g: 110, body: z, ox: 0, oy: 0 }));
   }
   meleeHit(z, weapon, player) {   // a hammer swing / chainsaw tick that connected
     const n = performance.now(), saw = !!weapon.config.fuelTank;
@@ -12407,25 +12437,43 @@ class CombatFX {
   splash(x, y, n = 4) {   // little blue pixels kicked up by feet in a stream (WaterZones3D)
     this._push(this._burst(n, 46, -Math.PI / 2, 2.8, FX_WATER_COLS, 0.34, { t: 'spark', x, y, g: 170, ground: true }));
   }
-  blast(x, y, r) { this._push({ t: 'blast', x, y, r, life: 0.35 }); this._push(this._burst(7, 26, -Math.PI / 2, 2.8, ['#8a867c', '#5f5c55', '#3a3833'], 0.7, { t: 'spark', x, y, g: -22, big: true })); }
+  blast(x, y, r) {   // explosion extras on top of the pixel burst: the shockwave ring is exactly the damage radius `r`
+    this._push({ t: 'blast', x, y, r, life: 0.35 }); const E = FX_SETTINGS.explosions; if (E <= 0) return;
+    this._push(this._burst(Math.round(8 * E), 26, -Math.PI / 2, 2.8, ['#8a867c', '#5f5c55', '#3a3833'], 0.9, { t: 'spark', x, y, g: -26, big: true }));        // smoke rising
+    this._push(this._burst(Math.round(10 * E), r * 1.5, -Math.PI / 2, 3.6, ['#ffd24a', '#e2501e', '#6f6a5e', '#3a3833'], 0.75, { t: 'spark', x, y, g: 260 }));   // debris flung up and falling back
+    this._mark(x, y, 'scorch', 9, r * 0.55);   // a scorch mark on the ground
+  }
   pulse(x, y, kind) { this._push({ t: 'pulse', x, y, kind, life: kind === 'weapon' || kind === 'unlock' ? 0.6 : 0.42 }); }
   // --- drawing (inside the already-scaled world context) ---
   draw(ctx, camera, view, occ, k, anchor, withDeaths) {
     if (withDeaths) for (const d of this.deaths) d.draw(ctx, camera, view);
-    if (!this.list.length) return;
+    if (!this.list.length && !this.marks.length) return;
     const rig = camera.rig3d, lift = rig ? BUILDING_OCCLUSION_CONFIG.playerFeetOffset * PLAYER_SCALE * GAME3D.entityScale : 0;
     ctx.save(); ctx.imageSmoothingEnabled = false;
+    for (const m of this.marks) {   // bullet marks on walls / cars / trunks and scorch on the ground: chunky pixels that dissolve in steps near the end
+      let vis = 1; if (occ) { vis = occ.bulletVisibility({ x: m.x, y: m.y }, lift * k); if (vis < 0.2) continue; }
+      const p = camera.worldToScreen(m.x, m.y, view), ds = p.depthScale || 1, u = 2 * ds, left = m.life - m.age, keep = left > 1 ? 1 : left > 0.4 ? 0.5 : 0.25;
+      if (rig && m.kind !== 'scorch') p.y -= lift * ds;
+      const px = (dx, dy, c, i, sz = u) => { if (((i * 7 + (m.seed | 0)) % 100) / 100 > keep) return; ctx.fillStyle = c; ctx.fillRect(Math.round((p.x + dx * u) / sz) * sz, Math.round((p.y + dy * u) / sz) * sz, sz, sz); };
+      ctx.globalAlpha = vis;
+      if (m.kind === 'scorch') { const R = m.R * ds, n = 26; for (let i = 0; i < n; i++) { const a = i / n * Math.PI * 2, rr = R * (0.45 + 0.55 * ((Math.sin(m.seed + i * 12.9) + 1) / 2)); for (let j = 0.3; j <= 1; j += 0.35) { ctx.fillStyle = j < 0.7 ? '#1d1a18' : '#35302b'; if (((i * 5 + j * 10 + (m.seed | 0)) % 100) / 100 > keep) continue; ctx.fillRect(Math.round((p.x + Math.cos(a) * rr * j) / 3) * 3, Math.round((p.y + Math.sin(a) * rr * j * 0.55) / 3) * 3, 3 * ds, 3 * ds); } } }
+      else if (m.kind === 'metal') { px(0, 0, '#26262a', 0); px(1, 0, '#26262a', 1); px(-1, -1, '#e8e8ec', 2); px(2, -1, '#9a9aa2', 3); px(-1, 1, '#8a8a90', 4); }
+      else if (m.kind === 'wood') { px(0, 0, '#3a2814', 0); px(-1, 0, '#4a3320', 1); px(1, 0, '#4a3320', 2); px(-2, 1, '#d2a679', 3); px(2, -1, '#d2a679', 4); px(0, -2, '#c8bfa8', 5); }
+      else { px(0, 0, '#2e2a26', 0); px(-1, 0, '#3f3a33', 1); px(-2, -1, '#d8d2c2', 2); px(2, 0, '#bdb6a6', 3); px(1, -2, '#d8d2c2', 4); px(-1, 2, '#8e8672', 5); }
+    }
+    ctx.globalAlpha = 1;
     for (const f of this.list) {
       const t = f.age / f.life;
       let gx = f.x, gy = f.y; if (f.t === 'muzzle') { gx = anchor.x + f.ox; gy = anchor.y + f.oy; } else if (f.rel) { gx = anchor.x + f.ox; gy = anchor.y + f.oy; }
-      if (f.body && f.body.alive !== undefined) { gx = f.body.x; gy = f.body.y; }
+      if (f.body && f.body.alive !== undefined) { gx = f.body.x + (f.ox || 0); gy = f.body.y + (f.oy || 0); }   // effects on a zombie follow it, at the exact contact point
       let vis = 1;
       if (occ && f.t !== 'muzzle' && f.t !== 'pulse' && f.t !== 'smoke') { vis = occ.bulletVisibility({ x: gx, y: gy }, lift * k); if (vis < 0.2) continue; }   // never through a solid building
       const p = camera.worldToScreen(gx, gy, view), ds = p.depthScale || 1, u = 2 * ds, ground = { x: p.x, y: p.y };
       if (rig && f.t !== 'blast' && f.t !== 'pulse' && !f.ground) p.y -= (f.body ? zombieVisualSize(f.body.type) * 0.3 * GAME3D.entityScale : lift) * ds;
       const sq = (x, y, c, s = u) => { ctx.fillStyle = c; ctx.fillRect(Math.round(x / s) * s, Math.round(y / s) * s, s, s); };
       ctx.globalAlpha = vis;
-      if (f.t === 'muzzle') {
+      if (f.t === 'ping') { const w = u * 3 * (1 - t); ctx.fillStyle = '#ffffff'; ctx.fillRect(Math.round((p.x - w / 2) / u) * u, Math.round((p.y - u / 2) / u) * u, w, u); ctx.fillRect(Math.round((p.x - u / 2) / u) * u, Math.round((p.y - w / 2) / u) * u, u, w); }   // one-frame metal glint
+      else if (f.t === 'muzzle') {
         const q = camera.worldToScreen(gx + Math.cos(f.ang) * 12, gy + Math.sin(f.ang) * 12, view); let dx = q.x - ground.x, dy = q.y - ground.y; const L = Math.hypot(dx, dy) || 1; dx /= L; dy /= L;
         const m = f.m, shrink = t < 0.6 ? 1 : 0.55;
         for (const r of m.rays) {
@@ -12644,6 +12692,7 @@ class Game {
     document.getElementById('zdDebugToggle').addEventListener('change', (e) => { this.spawner.director.setDebug(e.target.checked); Sound.uiClick(); });   // debug panel only: not a cheat
     document.getElementById('threatDebugToggle').addEventListener('change', (e) => { THREAT.setDebug(e.target.checked); Sound.uiClick(); });   // debug panel only: not a cheat
     document.getElementById('tmThreatStage').addEventListener('change', (e) => { TEST_MODE.threatStage = e.target.value; Sound.uiClick(); refreshTestModeBtn(); });
+    { const q = document.getElementById('fxQuality'); q.value = FX_SETTINGS.quality; q.addEventListener('change', (e) => { fxApplyQuality(e.target.value); Sound.uiClick(); }); }   // particle density / impact strength / trails / explosion extras
     document.getElementById('tmAiForce').addEventListener('change', (e) => { TEST_MODE.aiForce = e.target.value; Sound.uiClick(); refreshTestModeBtn(); });
     testModeBtn.addEventListener('click', () => {
       Sound.uiClick();
@@ -13574,6 +13623,7 @@ class Game {
       if (!zombie.alive) continue;
       if (Utils.distance(x, y, zombie.x, zombie.y) <= splashRadius + zombie.radius) {
         const died = zombie.takeDamage(damage, srcId);
+        if (!died) { zombie.flinch(zombie.x - x, zombie.y - y, 3.5); this.fx.blastHit(zombie, x, y); }   // survivors are shoved away from the blast (visual only)
         if (died) this._onZombieKilled(zombie, srcId); // still plays its own zombieDeath() — a kill is worth calling out even during an explosion
       }
     }
@@ -13655,7 +13705,7 @@ class Game {
     if (bullet.explosive) this._explodeBullet(bullet);
     else {
       const died = zomb.takeDamage(bullet.damage, bullet.weaponId);
-      this.fx.hit(bullet, zomb); zomb.flinch(bullet.vx, bullet.vy);
+      this.fx.hit(bullet, zomb); zomb.flinch(bullet.vx, bullet.vy, FX_FLINCH[bullet.weaponId] || 1);
       bullet.alive = false;
       if (died) this._onZombieKilled(zomb, bullet.weaponId); else Sound.zombieHit();
     }
@@ -20715,4 +20765,3 @@ class MapTilerGameWorld {
   </script>
 </body>
 </html>
-  
