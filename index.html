@@ -2675,7 +2675,7 @@ const EMBEDDED_ASSETS = {
     <!-- ===================== Start overlay (home page) ===================== -->
     <div id="startScreen" class="overlay homePage">
       <!-- Version: major.minor.patch. The patch digit goes 0-9 and rolls into the minor number (v3.88.9 -> v3.89.0); the minor number is two digits and rolls into the major number (v3.99.9 -> v4.00.0). Bumped by 1 on every change. -->
-      <div id="versionTag" class="versionTag">v3.94.7</div>
+      <div id="versionTag" class="versionTag">v3.95.1</div>
       <div id="homeSidebar" class="homeSidebar">
         <div class="homeSidebarTitle">Your Stats</div>
         <div id="homeLevel" class="homeLevel"></div>
@@ -4398,12 +4398,15 @@ class Camera {
   // Where the cursor is AIMING. 2D: the point under the cursor. 3D run: a zombie
   // whose drawn body is under the cursor is aimed at as a whole (the cursor's
   // ground point would be behind it, because the sprite stands up from its feet).
-  aimPointAt(sx, sy, canvas) {
+  aimPointAt(sx, sy, canvas, forBullet = false) {
     const t = this.screenToWorld(sx, sy, canvas);
     if (this.rig3d && GAME3D.bodyAim && this.rig3d.pickZombieAt) {
       const z = this.rig3d.pickZombieAt(sx, sy, t);
       if (z) return { x: z.x, y: z.y };
     }
+    // Shots fly at weapon height (drawn BUILDING_OCCLUSION_CONFIG.playerFeetOffset above the ground path), so for a shot the cursor means "this spot at weapon height":
+    // aim at the ground point that far further down the screen, and the drawn bullet passes right through the crosshair. (Grenades keep the plain ground point.)
+    if (forBullet && this.rig3d && GAME3D.feetAnchor) return this.screenToWorld(sx, sy + BUILDING_OCCLUSION_CONFIG.playerFeetOffset * PLAYER_SCALE * GAME3D.entityScale, canvas);
     return t;
   }
 
@@ -5625,6 +5628,16 @@ function _flamePixelColor(t) {
   return FLAME_PALETTE[i];
 }
 
+// How each weapon's bullet looks (screen px under the entity scale): len / wid of the tracer and its colours. The flamethrower and the RPG have their own drawing.
+const BULLET_STYLES = {
+  default:    { len: 12, wid: 2, head: '#ffffff', body: '#ffe08a', tail: '#d49a3a' },
+  pistol:     { len: 11, wid: 2, head: '#ffffff', body: '#ffe08a', tail: '#d49a3a' },
+  smg:        { len: 10, wid: 2, head: '#fff6d0', body: '#ffd27a', tail: '#d08a3a' },
+  rifle:      { len: 20, wid: 2, head: '#ffffff', body: '#fff0a8', tail: '#e0b04a' },
+  machinegun: { len: 15, wid: 3, head: '#fff2c0', body: '#ffc861', tail: '#c8782e' },
+  shotgun:    { len: 6,  wid: 3, head: '#ffe9c4', body: '#ffb347', tail: '#b8641f' },
+};
+
 class Bullet extends Entity {
   constructor(spec) {
     super(spec.x, spec.y, spec.radius);
@@ -5634,6 +5647,9 @@ class Bullet extends Entity {
     this.color = spec.color || '#f1c40f';
     this.life = spec.life ?? CONFIG.BULLET.maxLifetime;
     this.prevX = spec.x; this.prevY = spec.y; // where it was before the latest update(): collision sweeps this whole step
+    this.vx0 = this.vx; this.vy0 = this.vy;
+    this.style = BULLET_STYLES[spec.weaponId] || BULLET_STYLES.default;
+    this.trail = spec.explosive ? [] : null; this.trailT = 0;   // rocket smoke puffs
     this.explosive = !!spec.explosive;
     this.splashRadius = spec.splashRadius || 0;
     this.weaponId = spec.weaponId;
@@ -5665,7 +5681,11 @@ class Bullet extends Entity {
     this.x += this.vx * dt;
     this.y += this.vy * dt;
     this.life -= dt;
-    if (this.life <= 0) this.alive = false;
+    if (this.explosive) {   // a rocket that reaches the end of its range bursts in the air (Game does that) instead of just vanishing
+      this.trailT -= dt; if (this.trailT <= 0) { this.trailT = 0.035; this.trail.push({ x: this.x, y: this.y, a: 0 }); if (this.trail.length > 12) this.trail.shift(); }
+      for (const t of this.trail) t.a += dt;
+      if (this.life <= 0) this.fuseOut = true;
+    } else if (this.life <= 0) this.alive = false;
   }
 
   draw(ctx, camera, canvas) {
@@ -5675,13 +5695,46 @@ class Bullet extends Entity {
     const p = camera.worldToScreen(this.x, this.y, canvas, camera.rig3d ? this._flightElev : undefined);
     if (camera.rig3d) p.y -= BUILDING_OCCLUSION_CONFIG.playerFeetOffset * PLAYER_SCALE * GAME3D.entityScale * (p.depthScale || 1); // 3D: projectiles fly at weapon height, not along the ground
     if (this.flame) { ctx.save(); camera.applyEntityScale(ctx, p, false); this._drawFlame(ctx, p); ctx.restore(); return; }
+    // Direction ON SCREEN: project the point a little behind the bullet along its flight path, so the drawn tracer lines up with where it is really going in the
+    // pitched 3D view as well as the flat one (the same projection and lift are used, so the picture and the hit detection agree).
+    const back = camera.worldToScreen(this.x - this.vx0 * 0.02, this.y - this.vy0 * 0.02, canvas, camera.rig3d ? this._flightElev : undefined);
+    if (camera.rig3d) back.y -= BUILDING_OCCLUSION_CONFIG.playerFeetOffset * PLAYER_SCALE * GAME3D.entityScale * (back.depthScale || 1);   // the same weapon-height lift as `p`
+    const ang = Math.atan2(p.y - back.y, p.x - back.x);
+    if (this.explosive) this._drawSmoke(ctx, camera, canvas);
     ctx.save();
     camera.applyEntityScale(ctx, p, false);
-    ctx.fillStyle = this.color;
-    ctx.beginPath();
-    ctx.arc(p.x, p.y, this.radius, 0, Math.PI * 2);
-    ctx.fill();
+    if (this.explosive) this._drawRocket(ctx, p, ang);
+    else this._drawTracer(ctx, p, ang);
     ctx.restore();
+  }
+
+  // Pixel tracer: a bright head, a coloured body and a fading tail, all along the screen direction of travel. Style (length / width / colours) per weapon.
+  _drawTracer(ctx, p, ang) {
+    const S = this.style, L = S.len, W = S.wid;
+    ctx.translate(Math.round(p.x), Math.round(p.y)); ctx.rotate(ang);
+    const seg = [[-L, 0.32, 0.22, S.tail], [-L * 0.68, 0.38, 0.55, S.body], [-L * 0.3, 0.3, 1, S.body]];   // [start, share of L, alpha, colour]
+    for (const [x, sh, al, col] of seg) { ctx.globalAlpha = al; ctx.fillStyle = col; ctx.fillRect(Math.round(x), -Math.floor(W / 2), Math.max(1, Math.round(L * sh)), W); }
+    ctx.globalAlpha = 1; ctx.fillStyle = S.head; ctx.fillRect(-Math.round(L * 0.25), -Math.floor(W / 2), Math.max(2, Math.round(L * 0.25) + 1), W);   // hot head
+  }
+
+  // The RPG round: a visible rocket (body, nose, fins) with a flickering exhaust and a trail of smoke puffs left in the world behind it.
+  _drawSmoke(ctx, camera, canvas) {   // puffs are left in the world, so they are projected one by one
+    ctx.save();
+    for (const t of this.trail) {
+      const q = camera.worldToScreen(t.x, t.y, canvas, camera.rig3d ? this._flightElev : undefined);
+      if (camera.rig3d) q.y -= BUILDING_OCCLUSION_CONFIG.playerFeetOffset * PLAYER_SCALE * GAME3D.entityScale * (q.depthScale || 1);
+      const k = Math.min(1, t.a / 0.45), sz = 3 + k * 5; ctx.globalAlpha = 0.5 * (1 - k); ctx.fillStyle = k < 0.25 ? '#e8b060' : '#8b8f93';
+      ctx.fillRect(Math.round(q.x - sz / 2), Math.round(q.y - sz / 2), Math.round(sz), Math.round(sz));
+    }
+    ctx.restore();
+  }
+  _drawRocket(ctx, p, ang) {
+    ctx.translate(Math.round(p.x), Math.round(p.y)); ctx.rotate(ang);
+    const fl = 6 + Math.floor(Math.random() * 5);
+    ctx.fillStyle = '#ff8a1c'; ctx.fillRect(-9 - fl, -2, fl, 4); ctx.fillStyle = '#ffd34a'; ctx.fillRect(-9 - Math.floor(fl * 0.6), -1, Math.floor(fl * 0.6), 2);   // exhaust
+    ctx.fillStyle = '#4b5258'; ctx.fillRect(-10, -4, 3, 2); ctx.fillRect(-10, 2, 3, 2);                                                             // fins
+    ctx.fillStyle = '#2b2f33'; ctx.fillRect(-9, -3, 17, 6); ctx.fillStyle = '#8f979d'; ctx.fillRect(-8, -2, 15, 4); ctx.fillStyle = '#c3cacf'; ctx.fillRect(-7, -2, 13, 1);   // body
+    ctx.fillStyle = '#c0392b'; ctx.fillRect(7, -2, 3, 4); ctx.fillStyle = '#7d241b'; ctx.fillRect(10, -1, 2, 2);                                      // red nose
   }
 
   // Pixelated flame blob: square pixels snapped to a shared grid (like the
@@ -6174,7 +6227,7 @@ class Player extends Entity {
     if (camera && camera.rig3d) {
       // 3D run: the view is pitched, so screen angle != world angle. Aim at the
       // world point under the cursor instead (same facing logic afterwards).
-      const t = camera.aimPointAt(input.mouseX, input.mouseY, canvas);
+      const t = camera.aimPointAt(input.mouseX, input.mouseY, canvas, true);
       this.aimTarget = t;
       this.aimAngle = Math.atan2(t.y - this.y, t.x - this.x);
       this.facing = Utils.directionFromVector(Math.cos(this.aimAngle), Math.sin(this.aimAngle), this.facing);
@@ -8459,6 +8512,8 @@ const THREAT = {
     const L = this._el('threatLabel'); if (!L) return;
     const s = this.stageInfo(), F = this._el('threatFill'), P = this._el('threatPips'), last = this.stage >= this.cfg.stages.length;
     L.textContent = 'THREAT ' + s.id + '/' + this.cfg.stages.length + ' ' + s.short; L.style.color = s.color;
+    const env = this._el('envHud'), sw = this._el('statsWrap');   // the clock / weather block sits directly under the stats panel (top right), leaving the top centre free for the weapon / boss banners
+    if (env && sw && window.innerWidth > 760) { const pr = (env.offsetParent || document.body).getBoundingClientRect(); env.style.top = Math.round(sw.getBoundingClientRect().bottom - pr.top + 8) + 'px'; }
     if (F) { F.style.width = (last ? 100 : Math.round(this.progress * 100)) + '%'; F.style.backgroundColor = s.color; }
     if (P && P._n !== this.stage) { P._n = this.stage; P.innerHTML = this.cfg.stages.map((x) => `<i style="background:${x.id <= this.stage ? x.color : '#3a3f47'}"></i>`).join(''); }
   },
@@ -9278,7 +9333,7 @@ class EnvironmentSystem {
       #gameContainer:not(.world3d-active) #envLight{display:none}
       #nightTint{display:none!important}
       #envFx{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none}
-      #envHud{position:absolute;top:10px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:8px;padding:5px 10px;background:rgba(24,27,32,0.8);border:2px solid #000;font-family:'Press Start 2P','Courier New',monospace;color:#e8ecef;pointer-events:none;text-shadow:none;white-space:nowrap}
+      #envHud{position:absolute;top:190px;right:16px;left:auto;display:flex;align-items:center;gap:8px;padding:5px 10px;background:rgba(24,27,32,0.8);border:2px solid #000;font-family:'Press Start 2P','Courier New',monospace;color:#e8ecef;pointer-events:none;text-shadow:none;white-space:nowrap}
       #envHud canvas{width:24px;height:24px;image-rendering:pixelated;transition:opacity .5s} #envHud .eh1{font-size:11px;color:#fff} #envHud .eh2{font-size:7px;color:#9aa4ab;margin-top:4px;transition:opacity .5s}
       #envHud.fade canvas,#envHud.fade .eh2{opacity:0}
       @media (max-width:760px){#envHud{top:auto;bottom:10px;padding:4px 7px}}`;
@@ -13257,7 +13312,11 @@ class Game {
       } else {
         const specs = this.player.tryShoot(); // array of bullet specs (1 per pellet) or null
         if (specs) {
-          for (const spec of specs) this.bullets.push(new Bullet(spec));
+          for (const spec of specs) {
+            const nb = new Bullet(spec); this.bullets.push(nb);
+            this._bulletSweep(nb, this.player.x, this.player.y, nb.x, nb.y);   // a wall / zombie between the body and the muzzle is hit now, not flown past
+          }
+          if (this.bullets.length > 320) this.bullets.splice(0, this.bullets.length - 320);   // hard cap (a held machine gun + flames never piles up)
           ACH.fired(weapon.config);
           this.fx.muzzle(weapon.config, this.player, specs[0]);
           Sound.shoot(weapon.config.id);
@@ -13294,62 +13353,14 @@ class Game {
       bullet.update(dt);
     }
 
-    // --- Collisions: bullets vs zombies ---
+    // --- Collisions: bullets vs zombies AND solid obstacles, in ONE swept pass ---
+    // The whole step (previous -> current position) is tested as a segment, against the walls / cars / trunks AND the zombies, and whichever is met FIRST along
+    // the path wins. (Before, a zombie was only tested at the bullet's end point - a fast rifle / machine-gun round could skip clean over one in a slow frame - and
+    // zombies were checked before walls, so a shot could hurt a zombie standing behind a building.) An RPG that reaches the end of its range bursts in the air.
     for (const bullet of this.bullets) {
       if (!bullet.alive) continue;
-      for (const zombie of this.zombies) {
-        if (!zombie.alive) continue;
-        if (Utils.circlesOverlap(bullet.x, bullet.y, bullet.radius, zombie.x, zombie.y, zombie.radius)) {
-          if (bullet.explosive) {
-            this._explodeBullet(bullet);
-          } else {
-            const died = zombie.takeDamage(bullet.damage, bullet.weaponId);
-            this.fx.hit(bullet, zombie); zombie.flinch(bullet.vx, bullet.vy);
-            bullet.alive = false;
-            if (died) this._onZombieKilled(zombie, bullet.weaponId);
-            else Sound.zombieHit();
-          }
-          break;
-        }
-      }
-    }
-
-    // --- Collisions: bullets vs buildings/obstacles — without this, bullets
-    // (and zombies standing behind a wall) were untouchable through solid
-    // buildings. A regular bullet is simply stopped by whatever it hits
-    // first; an explosive one still detonates (and damages zombies in its
-    // splash radius) right at the building's surface instead of passing
-    // through to blast whatever's on the other side.
-    // The test sweeps the bullet's whole step (previous -> current position), not just
-    // where it ended up, so a fast shot (RPG) or a slow frame can't skip through a thin
-    // wall; the bullet stops at the first surface it meets. Only buildings near the
-    // segment are looked at (bounding-circle prefilter), which also keeps this cheap
-    // with the few hundred buildings of a 3D run.
-    for (const bullet of this.bullets) {
-      if (!bullet.alive) continue;
-      const sx = bullet.prevX === undefined ? bullet.x : bullet.prevX, sy = bullet.prevY === undefined ? bullet.y : bullet.prevY;
-      const ex = bullet.x, ey = bullet.y;
-      const x0 = Math.min(sx, ex), x1 = Math.max(sx, ex), y0 = Math.min(sy, ey), y1 = Math.max(sy, ey);
-      let near = null;
-      for (const o of this.obstacles) {
-        if (o.isWater || (o.isProp && !o.stopsShots)) continue;   // low scenery (barriers, crates ...): shots fly over it. Cars, tree trunks and lamp posts are solid and stop shots.
-        const r = Math.hypot(o.halfWidth, o.halfHeight) + bullet.radius;
-        if (o.x + r < x0 || o.x - r > x1 || o.y + r < y0 || o.y - r > y1) continue;
-        (near || (near = [])).push(o);
-      }
-      if (!near) continue;
-      const steps = Math.min(48, Math.max(1, Math.ceil(Math.hypot(ex - sx, ey - sy) / Math.max(3, bullet.radius))));
-      let hit = false;
-      for (let i = 1; i <= steps && !hit; i++) {
-        const qx = sx + (ex - sx) * i / steps, qy = sy + (ey - sy) * i / steps;
-        for (const obstacle of near) {
-          if (Utils.resolveCircleRect(qx, qy, bullet.radius, obstacle)) { bullet.x = qx; bullet.y = qy; hit = true; bullet._hitFx = obstacle.hitKind || null; break; }
-        }
-      }
-      if (hit) {
-        if (bullet.explosive) this._explodeBullet(bullet);
-        else { bullet.alive = false; this.fx.spark(bullet); }
-      }
+      this._bulletSweep(bullet, bullet.prevX === undefined ? bullet.x : bullet.prevX, bullet.prevY === undefined ? bullet.y : bullet.prevY, bullet.x, bullet.y);
+      if (bullet.alive && bullet.fuseOut) this._explodeBullet(bullet);
     }
 
     // --- Collisions: bullets vs the map-edge wall. Without this, bullets
@@ -13593,6 +13604,57 @@ class Game {
   }
 
   // Handles an explosive bullet (currently just the RPG) on impact.
+  // Earliest fraction (0..1) along the segment S->E at which a point enters the circle (c, r); 0 when it starts inside; null when it misses.
+  _segCircleT(sx, sy, ex, ey, cx, cy, r) {
+    const dx = ex - sx, dy = ey - sy, fx = sx - cx, fy = sy - cy, c = fx * fx + fy * fy - r * r;
+    if (c <= 0) return 0;
+    const a = dx * dx + dy * dy; if (a < 1e-9) return null;
+    const bq = fx * dx + fy * dy; if (bq >= 0) return null;   // moving away
+    const disc = bq * bq - a * c; if (disc < 0) return null;
+    const t = (-bq - Math.sqrt(disc)) / a; return t <= 1 ? t : null;
+  }
+  // Sweeps one bullet from (sx, sy) to (ex, ey): the first solid obstacle or zombie on the way takes the hit (walls stop it, a zombie takes damage once, an RPG detonates
+  // at the contact point). Also used at the moment a shot is fired, from the player's body to the muzzle, so a wall or zombie between them can't be skipped.
+  _bulletSweep(bullet, sx, sy, ex, ey) {
+    const x0 = Math.min(sx, ex), x1 = Math.max(sx, ex), y0 = Math.min(sy, ey), y1 = Math.max(sy, ey), len = Math.hypot(ex - sx, ey - sy);
+    // nearest solid obstacle on the path (the bounding-circle prefilter keeps this cheap with a few hundred buildings)
+    let wallT = Infinity, wallObs = null;
+    for (const o of this.obstacles) {
+      if (o.isWater || (o.isProp && !o.stopsShots)) continue;   // low scenery (barriers, crates ...): shots fly over it. Cars, tree trunks and lamp posts are solid and stop shots.
+      const r = Math.hypot(o.halfWidth, o.halfHeight) + bullet.radius;
+      if (o.x + r < x0 || o.x - r > x1 || o.y + r < y0 || o.y - r > y1) continue;
+      const steps = Math.min(48, Math.max(1, Math.ceil(len / Math.max(3, bullet.radius))));
+      for (let i = 0; i <= steps; i++) {
+        const t = i / steps; if (t >= wallT) break;
+        if (Utils.resolveCircleRect(sx + (ex - sx) * t, sy + (ey - sy) * t, bullet.radius, o)) { wallT = t; wallObs = o; break; }
+      }
+    }
+    // nearest zombie on the path
+    let zT = Infinity, zomb = null;
+    for (const z of this.zombies) {
+      if (!z.alive) continue;
+      const r = z.radius + bullet.radius;
+      if (z.x + r < x0 || z.x - r > x1 || z.y + r < y0 || z.y - r > y1) continue;
+      const t = this._segCircleT(sx, sy, ex, ey, z.x, z.y, r);
+      if (t !== null && t < zT) { zT = t; zomb = z; }
+    }
+    if (wallT === Infinity && !zomb) return false;
+    if (wallT <= zT) {   // a wall / car / trunk is first
+      bullet.x = sx + (ex - sx) * wallT; bullet.y = sy + (ey - sy) * wallT; bullet._hitFx = wallObs.hitKind || null;
+      if (bullet.explosive) this._explodeBullet(bullet); else { bullet.alive = false; this.fx.spark(bullet); }
+      return true;
+    }
+    bullet.x = sx + (ex - sx) * zT; bullet.y = sy + (ey - sy) * zT;   // the zombie is first: the hit happens where the path meets it
+    if (bullet.explosive) this._explodeBullet(bullet);
+    else {
+      const died = zomb.takeDamage(bullet.damage, bullet.weaponId);
+      this.fx.hit(bullet, zomb); zomb.flinch(bullet.vx, bullet.vy);
+      bullet.alive = false;
+      if (died) this._onZombieKilled(zomb, bullet.weaponId); else Sound.zombieHit();
+    }
+    return true;
+  }
+
   _explodeBullet(bullet) {
     bullet.alive = false;
     this._explodeAt(bullet.x, bullet.y, bullet.splashRadius, bullet.damage, bullet.weaponId);
@@ -19752,18 +19814,39 @@ const OP_SCALE = {
   },
 };
 
+// Tree brightness follows the time of day: the artwork is dark, so by day it is lightened (up to about 1.4x at midday), around dawn / dusk it is lighter than at night,
+// and at night it falls back below its original brightness (the night tint then darkens everything else too). Shaded copies are cached in 1/16 steps, so it costs nothing per frame.
+const OP_TREE_SHADE = {
+  min: 0.85, range: 0.55, step: 16, cache: new WeakMap(),
+  factor() {
+    const e = window.ENV_SYS; if (!e || !e.enabled || !e.k) return this.min + this.range;   // no day / night system: treat it as full daylight
+    const a = e.k.amb, lum = Math.min(1, (0.3 * a[0] + 0.59 * a[1] + 0.11 * a[2]) / 255);
+    return this.min + this.range * lum;
+  },
+  get(s) {
+    const lv = Math.round(this.factor() * this.step); let m = this.cache.get(s.canvas); if (!m) this.cache.set(s.canvas, m = new Map());
+    let out = m.get(lv); if (out) return out;
+    const f = lv / this.step, src = s.canvas, w = src.width || src.naturalWidth, h = src.height || src.naturalHeight, c = document.createElement('canvas'); c.width = w; c.height = h;
+    const g = c.getContext('2d'); g.imageSmoothingEnabled = false; g.drawImage(src, 0, 0);
+    if (f > 1) { g.globalCompositeOperation = 'lighter'; g.globalAlpha = Math.min(1, f - 1); g.drawImage(src, 0, 0); }               // adds the tree's own colours back onto itself: transparent pixels stay transparent
+    else if (f < 1) { g.globalCompositeOperation = 'source-atop'; g.globalAlpha = 1 - f; g.fillStyle = '#000'; g.fillRect(0, 0, w, h); }
+    out = { canvas: c, sx: s.sx, sy: s.sy, sw: s.sw, sh: s.sh }; m.set(lv, out); return out;
+  },
+};
+
 // A decorative object. Drawn like a pickup (sprite standing on the terrain point); `flat` ones lie on the ground.
 class Prop {
   constructor(kind, x, y, spr, w, h, o = {}) { this.kind = kind; this.x = x; this.y = y; this.spr = spr; this.w = w; this.h = h; this.flat = !!o.flat; this.flip = !!o.flip; this.flipV = !!o.flipV; this.obstacle = o.obstacle || null; this.fr = o.fr || 0; this.alpha = o.alpha === undefined ? 1 : o.alpha; this.tilt = o.tilt || 0; }   // fr = turn of a flat decal on the ground (radians), alpha = fade, tilt = lean of a standing prop
   draw(ctx, camera, view, focus) {
-    const p = camera.worldToScreen(this.x, this.y, view), s = this.spr;
+    const p = camera.worldToScreen(this.x, this.y, view), s = this.kind === 'tree' ? OP_TREE_SHADE.get(this.spr) : this.spr;   // trees are lightened / darkened with the time of day
     ctx.save(); camera.applyEntityScale(ctx, p, false); ctx.imageSmoothingEnabled = false;
     if (this.kind === 'tree' && focus) {   // the canopy turns see-through while the peanut is behind it, so the player is never hidden
       const behind = focus.y < this.y && this.y - focus.y < this.h && Math.abs(focus.x - this.x) < this.w * 0.55, a = this._a === undefined ? 1 : this._a;
       this._a = a + ((behind ? 0.4 : 1) - a) * 0.2; ctx.globalAlpha = this._a;
     }
-    if (this.kind === 'light' && OP_STYLE.night) {   // a warm pool of light at night (drawn above the night tint)
-      const gl = ctx.createRadialGradient(p.x, p.y, 3, p.x, p.y, 78); gl.addColorStop(0, 'rgba(255,214,120,0.30)'); gl.addColorStop(1, 'rgba(255,214,120,0)');
+    const lampK = this.kind !== 'light' ? 0 : (window.ENV_SYS && window.ENV_SYS.enabled) ? Math.max(0, Math.min(1, ((window.ENV_SYS.night || 0) - 0.15) / 0.5)) : (OP_STYLE.night ? 1 : 0);   // lamps follow the time of day: off by day, fading on through dusk, full at night
+    if (lampK > 0.02) {   // a warm pool of light at night (drawn above the night tint)
+      const gl = ctx.createRadialGradient(p.x, p.y, 3, p.x, p.y, 78); gl.addColorStop(0, 'rgba(255,214,120,' + (0.30 * lampK).toFixed(3) + ')'); gl.addColorStop(1, 'rgba(255,214,120,0)');
       ctx.save(); ctx.translate(p.x, p.y); ctx.scale(1, 0.6); ctx.translate(-p.x, -p.y); ctx.fillStyle = gl; ctx.fillRect(p.x - 78, p.y - 78, 156, 156); ctx.restore();
     }
     if (this.alpha !== 1) ctx.globalAlpha = this.alpha;
