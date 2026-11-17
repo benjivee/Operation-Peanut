@@ -2761,7 +2761,6 @@ const EMBEDDED_ASSETS = {
         <h1>PAUSED</h1>
         <p class="subtitle">Press <b>Esc</b> to resume</p>
         <div id="pauseLevel" class="pauseLevel"></div>
-        <label class="testToggle" style="width:260px;margin:0 auto 10px auto"><span>Effects</span><select id="fxQuality" style="font:inherit;font-size:11px;padding:6px;background:#14171b;color:#fff;border:3px solid #000"><option value="low">Low</option><option value="normal">Normal</option><option value="high">High</option></select></label>
         <button id="resumeBtn" class="bigButton">Resume</button>
         <button id="pauseCustomizeBtn" class="smallLinkButton">Customize</button>
         <button id="pauseChallengesBtn" class="smallLinkButton">Challenges</button>
@@ -5708,7 +5707,7 @@ class Bullet extends Entity {
     const back = camera.worldToScreen(this.x - this.vx0 * 0.02, this.y - this.vy0 * 0.02, canvas, camera.rig3d ? this._flightElev : undefined);
     if (camera.rig3d) back.y -= BUILDING_OCCLUSION_CONFIG.playerFeetOffset * PLAYER_SCALE * GAME3D.entityScale * (back.depthScale || 1);   // the same weapon-height lift as `p`
     const ang = Math.atan2(p.y - back.y, p.x - back.x);
-    if (this.explosive && FX_SETTINGS.trails) this._drawSmoke(ctx, camera, canvas);
+    if (this.explosive) this._drawSmoke(ctx, camera, canvas);
     ctx.save();
     camera.applyEntityScale(ctx, p, false);
     if (this.explosive) this._drawRocket(ctx, p, ang);
@@ -5720,7 +5719,7 @@ class Bullet extends Entity {
   _drawTracer(ctx, p, ang) {
     const S = this.style, L = S.len, W = S.wid;
     ctx.translate(Math.round(p.x), Math.round(p.y)); ctx.rotate(ang);
-    const seg = FX_SETTINGS.trails ? [[-L, 0.32, 0.22, S.tail], [-L * 0.68, 0.38, 0.55, S.body], [-L * 0.3, 0.3, 1, S.body]] : [[-L * 0.5, 0.5, 0.8, S.body]];   // trails off: just a short bright dash   // [start, share of L, alpha, colour]
+    const seg = [[-L, 0.32, 0.22, S.tail], [-L * 0.68, 0.38, 0.55, S.body], [-L * 0.3, 0.3, 1, S.body]];   // [start, share of L, alpha, colour]
     for (const [x, sh, al, col] of seg) { ctx.globalAlpha = al; ctx.fillStyle = col; ctx.fillRect(Math.round(x), -Math.floor(W / 2), Math.max(1, Math.round(L * sh)), W); }
     ctx.globalAlpha = 1; ctx.fillStyle = S.head; ctx.fillRect(-Math.round(L * 0.25), -Math.floor(W / 2), Math.max(2, Math.round(L * 0.25) + 1), W);   // hot head
   }
@@ -6744,11 +6743,9 @@ class Zombie extends Entity {
   }
 
   // Visual-only recoil: the sprite is nudged away from the hit for a moment. Position, speed and attacks are untouched.
-  // `power` is how hard the hit was (pistol 1, shotgun pellets stack, explosions 3.5); bosses, brutes and armoured / elite zombies are shoved less. Capped, and it ends within 0.2 s.
-  flinch(dx, dy, power = 1) {
-    const L = Math.hypot(dx, dy) || 1, f = (this.type.isBoss ? 0.5 : this.type.id === 'brute' ? 0.55 : (this.vk === 'armoured' || this.elite) ? 0.7 : 1) * power, on = this.flinchT > 0;
-    this.flinchX = Utils.clamp((on ? this.flinchX : 0) + dx / L * 4 * f, -10, 10); this.flinchY = Utils.clamp((on ? this.flinchY : 0) + dy / L * 2.4 * f, -6, 6);
-    this.flinchDur = Math.min(0.2, 0.1 + 0.025 * power); this.flinchT = this.flinchDur;
+  flinch(dx, dy) {
+    const L = Math.hypot(dx, dy) || 1, f = this.type.isBoss ? 0.5 : 1;
+    this.flinchX = dx / L * 4 * f; this.flinchY = dy / L * 2.4 * f; this.flinchT = 0.12;
   }
 
   takeDamage(amount, srcId) {
@@ -6772,7 +6769,7 @@ class Zombie extends Entity {
     const visualSize = zombieVisualSize(this.type); // spriteDisplaySize x this type's *_ZOMBIE_SCALE (visual only)
     const cullMargin = Math.max(50, visualSize);
     const g0 = { x: p.x, y: p.y, depthScale: p.depthScale }; // the ground point (scale pivot)
-    if (this.flinchT > 0) { const fl = this.flinchT / (this.flinchDur || 0.12); p.x += this.flinchX * fl; p.y += this.flinchY * fl; }   // flinch (drawing only)
+    if (this.flinchT > 0) { const fl = this.flinchT / 0.12; p.x += this.flinchX * fl; p.y += this.flinchY * fl; }   // flinch (drawing only)
     if (camera.rig3d && GAME3D.feetAnchor) p.y -= visualSize * 0.35; // 3D: stand the feet on the ground point
     if (p.x < -cullMargin || p.x > canvas.width + cullMargin || p.y < -cullMargin || p.y > canvas.height + cullMargin) return;
 
@@ -8770,6 +8767,75 @@ function lootPick(w, rnd) { rnd = rnd || Math.random; let t = 0; for (const k in
 const lootEsc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const lootRarityInfo = (i) => ACC_RARITIES.find((r) => r.id === LOOT_RARITY[i]) || { name: LOOT_RARITY[i], color: '#fff' };
 
+// Pixel-art loot containers. Every container is a small sprite (1 art pixel = 2 world px, so the sizes in LOOT_CONTAINERS are unchanged) built once and drawn with no smoothing;
+// the rarity glow is a stepped, dithered pixel ellipse instead of a soft gradient, and the sparkle / particles / rays snap to the same 2 px grid.
+const LOOT_PIX = {
+  U: 2, cache: {},
+  _cv(w, h) { const c = document.createElement('canvas'); c.width = w; c.height = h; const g = c.getContext('2d'); g.imageSmoothingEnabled = false; return [c, g]; },
+  _hex(col, a) { const n = parseInt(col.slice(1, 7), 16); return `rgba(${n >> 16},${(n >> 8) & 255},${n & 255},${a})`; },
+  kind(k) {   // { closed, open, lid } canvases (open = lid slot dark, lid = the lifted lid band)
+    if (this.cache[k]) return this.cache[k];
+    const O = '#1a1208', mk = (w, h, draw, lidH, lidDraw, openFill) => {
+      const [c, g] = this._cv(w, h), r = (x, y, ww, hh, col) => { g.fillStyle = col; g.fillRect(x, y, ww, hh); }, px = (x, y, col) => r(x, y, 1, 1, col);
+      draw(r, px, w, h);
+      const [o, go] = this._cv(w, h); go.drawImage(c, 0, 0);
+      if (lidH) { go.fillStyle = openFill || '#241608'; go.fillRect(1, 1, w - 2, lidH); go.fillStyle = 'rgba(0,0,0,0.35)'; go.fillRect(1, 1, w - 2, 1); }
+      let l = null; if (lidH) { const [lc, lg] = this._cv(w, lidH + 1); lg.fillStyle = O; lg.fillRect(0, 0, w, lidH + 1); lidDraw(lg, w, lidH); l = lc; }
+      return { closed: c, open: o, lid: l, w, h };
+    };
+    let spr;
+    if (k === 'wooden') spr = mk(15, 13, (r, px, w, h) => {
+      const A = '#a8763e', B = '#c9955a', C = '#6b4620', N = '#e0d6b8';
+      r(0, 0, w, h, O); r(1, 1, 13, 11, A); r(1, 1, 13, 3, B); r(1, 3, 13, 1, '#b68247'); r(1, 6, 13, 1, C); r(1, 9, 13, 1, C);
+      for (let i = 0; i <= 10; i++) px(2 + i, 4 + Math.round(i * 0.7), C);   // the diagonal brace
+      px(2, 2, N); px(12, 2, N); px(2, 10, N); px(12, 10, N); r(1, 11, 13, 1, '#8a5f31');
+    }, 3, (g, w, lh) => { g.fillStyle = '#c9955a'; g.fillRect(1, 1, w - 2, lh - 1); g.fillStyle = '#a8763e'; g.fillRect(1, lh - 1, w - 2, 1); g.fillStyle = '#e0d6b8'; g.fillRect(2, 1, 1, 1); g.fillRect(w - 3, 1, 1, 1); });
+    else if (k === 'military') spr = mk(17, 14, (r, px, w, h) => {
+      const A = '#566b3a', B = '#6f8a49', D = '#2e3a1d', Y = '#d9d17a'; const star = ['00100', '11111', '01110', '01110', '10001'];
+      r(0, 0, w, h, '#12180c'); r(1, 1, 15, 12, A); r(1, 1, 15, 3, B); r(1, 12, 15, 1, '#46572e'); r(0, 6, 2, 3, D); r(15, 6, 2, 3, D); px(2, 2, D); px(14, 2, D); px(2, 11, D); px(14, 11, D);
+      for (let y = 0; y < 5; y++) for (let x = 0; x < 5; x++) if (star[y][x] === '1') px(6 + x, 5 + y, Y);
+    }, 3, (g, w, lh) => { g.fillStyle = '#6f8a49'; g.fillRect(1, 1, w - 2, lh - 1); g.fillStyle = '#566b3a'; g.fillRect(1, lh - 1, w - 2, 1); g.fillStyle = '#2e3a1d'; g.fillRect(1, 1, 1, 1); g.fillRect(w - 2, 1, 1, 1); }, '#1c2512');
+    else if (k === 'medical') spr = mk(14, 11, (r, px, w, h) => {
+      const A = '#e9eef0', B = '#cfd8dc', R = '#d63031';
+      r(0, 0, w, h, O); r(1, 1, 12, 9, A); r(1, 1, 12, 2, B); r(1, 9, 12, 1, '#b9c4ca'); r(6, 3, 2, 6, R); r(4, 5, 6, 2, R); r(6, 3, 2, 1, '#ff6b6b'); px(2, 2, '#b9c4ca'); px(11, 2, '#b9c4ca');
+    }, 2, (g, w, lh) => { g.fillStyle = '#cfd8dc'; g.fillRect(1, 1, w - 2, lh - 1); g.fillStyle = '#e9eef0'; g.fillRect(1, 1, w - 2, 1); }, '#2a3236');
+    else if (k === 'ammo') spr = mk(15, 10, (r, px, w, h) => {
+      const A = '#3d4a2c', B = '#5a6b3f', D = '#2a331d', Y = '#f1c40f';
+      r(0, 0, w, h, O); r(1, 1, 13, 8, A); r(1, 1, 13, 2, D); r(1, 3, 13, 1, B); r(1, 8, 13, 1, D);
+      for (let i = 0; i < 5; i++) { r(3 + i * 2, 4, 1, 3, Y); px(3 + i * 2, 4, '#fff0a0'); px(3 + i * 2, 7, '#b88a0a'); }
+    }, 2, (g, w, lh) => { g.fillStyle = '#5a6b3f'; g.fillRect(1, 1, w - 2, lh - 1); g.fillStyle = '#2a331d'; g.fillRect(1, 1, w - 2, 1); }, '#171d10');
+    else spr = mk(12, 12, (r, px, w, h) => {   // backpack: rounded body, a lower pocket, straps and a buckle (no lid)
+      const A = '#7a3b2e', D = '#5d2b21';
+      r(1, 0, 10, 12, O); r(0, 1, 12, 10, O); r(2, 1, 8, 10, A); r(1, 2, 10, 8, A); r(2, 1, 8, 1, '#99503f'); r(2, 7, 8, 4, D); r(1, 8, 10, 2, D);
+      r(3, 2, 1, 5, '#4a2118'); r(8, 2, 1, 5, '#4a2118'); r(5, 5, 2, 3, '#c9a24a'); px(5, 5, '#ffe28a'); r(2, 10, 8, 1, '#3f1c14');
+    }, 0, null);
+    return (this.cache[k] = spr);
+  },
+  shadow(w, h) {   // a stepped (pixel) ellipse
+    const key = 'sh' + w + 'x' + h; if (this.cache[key]) return this.cache[key];
+    const cw = Math.round(w * 1.1 / this.U), ch = Math.max(3, Math.round(h * 0.56 / this.U)), [c, g] = this._cv(cw, ch); g.fillStyle = 'rgba(0,0,0,0.38)';
+    for (let y = 0; y < ch; y++) for (let x = 0; x < cw; x++) { const dx = (x + 0.5 - cw / 2) / (cw / 2), dy = (y + 0.5 - ch / 2) / (ch / 2); if (dx * dx + dy * dy <= 1) g.fillRect(x, y, 1, 1); }
+    return (this.cache[key] = { c, cw, ch });
+  },
+  glow(rarity, col) {   // dithered rings: solid core, checkerboard middle, sparse rim
+    const key = 'gl' + rarity; if (this.cache[key]) return this.cache[key];
+    const rad = 24 + rarity * 4, cw = rad, ch = Math.round(rad * 0.6), [c, g] = this._cv(cw, ch), k = rarity >= 3 ? 1.3 : 1;
+    for (let y = 0; y < ch; y++) for (let x = 0; x < cw; x++) {
+      const dx = (x + 0.5 - cw / 2) / (cw / 2), dy = (y + 0.5 - ch / 2) / (ch / 2), d = Math.hypot(dx, dy), chk = (x + y) & 1;
+      let a = 0; if (d < 0.38) a = 0.42; else if (d < 0.68) a = chk ? 0.34 : 0.14; else if (d < 1) a = (chk && ((x >> 1) + (y >> 1)) % 2 === 0) ? 0.26 : 0;
+      if (a > 0) { g.fillStyle = this._hex(col, Math.min(0.7, a * k)); g.fillRect(x, y, 1, 1); }
+    }
+    return (this.cache[key] = { c, cw, ch });
+  },
+  diamond(col) {   // the abandoned-car marker
+    const key = 'dm' + col; if (this.cache[key]) return this.cache[key];
+    const [c, g] = this._cv(9, 9);
+    for (let y = 0; y < 9; y++) { const half = 4 - Math.abs(y - 4); for (let x = 4 - half; x <= 4 + half; x++) { g.fillStyle = (x === 4 - half || x === 4 + half || y === 0 || y === 8) ? '#000' : col; g.fillRect(x, y, 1, 1); } }
+    g.fillStyle = 'rgba(255,255,255,0.45)'; g.fillRect(3, 3, 1, 1);
+    return (this.cache[key] = c);
+  },
+};
+
 class LootContainer {
   constructor(id, kind, x, y, rarity) {
     this.id = id; this.kind = kind; this.x = x; this.y = y; this.rarity = rarity; this.state = 'closed';   // closed | open (empty, waiting to respawn) | partial (items left in it)
@@ -8785,38 +8851,41 @@ class LootContainer {
   }
   draw(ctx, camera, canvas) {
     const p = camera.worldToScreen(this.x, this.y, canvas); if (p.x < -60 || p.x > canvas.width + 60 || p.y < -60 || p.y > canvas.height + 60) return;
-    const col = lootRarityInfo(this.rarity).color, def = this.def, full = this.canSearch, t = this.phase, searching = LOOT.target === this && LOOT.progress > 0;
-    ctx.save(); camera.applyEntityScale(ctx, p); ctx.translate(p.x + (searching ? Math.sin(t * 9) * 1.4 : 0), p.y - (camera.rig3d ? 10 : 0));
-    if (this.kind === 'car') {   // the car itself is the map's sprite; only a marker hovers over it
-      if (full) { const by = -30 + Math.sin(t) * 3; ctx.globalAlpha = 0.9; ctx.fillStyle = col; ctx.strokeStyle = '#000'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(0, by - 8); ctx.lineTo(7, by); ctx.lineTo(0, by + 8); ctx.lineTo(-7, by); ctx.closePath(); ctx.fill(); ctx.stroke(); ctx.globalAlpha = 1; this._sparkle(ctx, col, by); }
+    const col = lootRarityInfo(this.rarity).color, def = this.def, full = this.canSearch, t = this.phase, searching = LOOT.target === this && LOOT.progress > 0, U = LOOT_PIX.U;
+    ctx.save(); camera.applyEntityScale(ctx, p); ctx.imageSmoothingEnabled = false;
+    ctx.translate(Math.round(p.x + (searching ? Math.sin(t * 9) * 1.4 : 0)), Math.round(p.y - (camera.rig3d ? 10 : 0)));   // whole pixels, so nothing is ever drawn between pixels
+    if (this.kind === 'car') {   // the car itself is the map's sprite; only a pixel marker hovers over it
+      if (full) { const by = Math.round((-30 + Math.sin(t) * 3) / U) * U; ctx.globalAlpha = 0.9; ctx.drawImage(LOOT_PIX.diamond(col), -9, by - 9, 18, 18); ctx.globalAlpha = 1; this._sparkle(ctx, col, by); }
       this._parts(ctx); ctx.restore(); return;
     }
-    // rarity glow + sparkle (only while there is something to take)
-    if (full) {
-      const pulse = 0.55 + Math.sin(t) * 0.2, rad = 24 + this.rarity * 4;
-      const g = ctx.createRadialGradient(0, 4, 2, 0, 4, rad); g.addColorStop(0, col + (this.rarity >= 3 ? 'aa' : '77')); g.addColorStop(1, col + '00');
-      ctx.globalAlpha = pulse * (this.rarity === 0 ? 0.6 : 1); ctx.fillStyle = g; ctx.beginPath(); ctx.ellipse(0, 4, rad, rad * 0.6, 0, 0, 7); ctx.fill(); ctx.globalAlpha = 1;
-      if (this.rarity === 4) { ctx.strokeStyle = col; ctx.lineWidth = 2; ctx.globalAlpha = 0.5; for (let i = 0; i < 6; i++) { const a = t * 0.6 + i * Math.PI / 3; ctx.beginPath(); ctx.moveTo(Math.cos(a) * 14, Math.sin(a) * 8); ctx.lineTo(Math.cos(a) * 34, Math.sin(a) * 20); ctx.stroke(); } ctx.globalAlpha = 1; }
+    if (full) {   // rarity glow (dithered pixel rings) + sparkle, only while there is something to take
+      const g = LOOT_PIX.glow(this.rarity, col), pulse = Math.round((0.55 + Math.sin(t) * 0.2) * (this.rarity === 0 ? 0.6 : 1) * 6) / 6;
+      ctx.globalAlpha = Math.min(1, pulse * 1.5); ctx.drawImage(g.c, -g.cw * U / 2, 4 - g.ch * U / 2, g.cw * U, g.ch * U); ctx.globalAlpha = 1;
+      if (this.rarity === 4) {   // legendary: six rotating pixel rays
+        ctx.fillStyle = col; ctx.globalAlpha = 0.5;
+        for (let i = 0; i < 6; i++) { const a = t * 0.6 + i * Math.PI / 3; for (let st = 0; st <= 9; st++) { const d = 14 + st * 2.2; ctx.fillRect(Math.round(Math.cos(a) * d / U) * U, Math.round(Math.sin(a) * d * 0.58 / U) * U, U, U); } }
+        ctx.globalAlpha = 1;
+      }
     }
-    ctx.fillStyle = 'rgba(0,0,0,0.35)'; ctx.beginPath(); ctx.ellipse(0, 10, def.w * 0.55, def.h * 0.28, 0, 0, 7); ctx.fill();
-    const open = !full || (this.openT < 0.5), lid = open ? Math.min(1, this.openT / 0.25) : 0, w = def.w, h = def.h;
-    this._body(ctx, w, h, lid, !full);
-    if (full) this._sparkle(ctx, col, -h - 6);
+    const sh = LOOT_PIX.shadow(def.w, def.h); ctx.drawImage(sh.c, -sh.cw * U / 2, 10 - sh.ch * U / 2, sh.cw * U, sh.ch * U);
+    const open = !full || (this.openT < 0.5), lid = open ? Math.min(1, this.openT / 0.25) : 0;
+    this._body(ctx, def.w, def.h, lid, !full);
+    if (full) this._sparkle(ctx, col, Math.round((-def.h - 6) / U) * U);
     this._parts(ctx); ctx.restore();
   }
-  _sparkle(ctx, col, y) { const k = Math.floor(this.phase * 1.3) % 4; ctx.fillStyle = col; ctx.globalAlpha = 0.5 + 0.5 * Math.sin(this.phase * 2); const ox = [-8, 7, -3, 9][k]; ctx.fillRect(ox - 1, y - 1, 3, 3); ctx.fillRect(ox - 3, y, 7, 1); ctx.fillRect(ox, y - 3, 1, 7); ctx.globalAlpha = 1; }
-  _parts(ctx) { for (const q of this.parts) { ctx.globalAlpha = Math.max(0, q.life); ctx.fillStyle = q.c; ctx.fillRect(q.x, q.y, 3, 3); } ctx.globalAlpha = 1; }
+  _sparkle(ctx, col, y) {   // a plus-shaped glint made of 2 px squares
+    const k = Math.floor(this.phase * 1.3) % 4, ox = [-8, 6, -4, 10][k]; ctx.fillStyle = col; ctx.globalAlpha = Math.round((0.5 + 0.5 * Math.sin(this.phase * 2)) * 4) / 4;
+    for (const d of [-4, -2, 0, 2, 4]) { ctx.fillRect(ox + d, y, 2, 2); if (d) ctx.fillRect(ox, y + d, 2, 2); }
+    ctx.globalAlpha = 1;
+  }
+  _parts(ctx) { for (const q of this.parts) { ctx.globalAlpha = Math.max(0, Math.round(q.life * 4) / 4); ctx.fillStyle = q.c; ctx.fillRect(Math.round(q.x / 2) * 2, Math.round(q.y / 2) * 2, 2, 2); } ctx.globalAlpha = 1; }
   _body(ctx, w, h, lid, empty) {
-    const k = this.kind, dim = empty ? 0.55 : 1;
-    ctx.save(); ctx.globalAlpha = dim; ctx.lineWidth = 2; ctx.strokeStyle = '#1a1208';
-    const box = (fill, trim) => { ctx.fillStyle = fill; ctx.beginPath(); ctx.rect(-w / 2, -h / 2, w, h); ctx.fill(); ctx.stroke(); if (trim) { ctx.fillStyle = trim; ctx.fillRect(-w / 2 + 2, -h / 2 + 2, w - 4, 3); } };
-    if (k === 'wooden') { box('#a8763e', '#c9955a'); ctx.strokeStyle = '#6b4620'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(-w / 2, -h / 6); ctx.lineTo(w / 2, -h / 6); ctx.moveTo(-w / 2, h / 6); ctx.lineTo(w / 2, h / 6); ctx.moveTo(-w / 2, -h / 2); ctx.lineTo(w / 2, h / 2); ctx.stroke(); }
-    else if (k === 'military') { box('#566b3a', '#6f8a49'); ctx.fillStyle = '#d9d17a'; ctx.font = "8px 'Press Start 2P', monospace"; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('\u2605', 0, 1); ctx.fillStyle = '#2e3a1d'; ctx.fillRect(-w / 2, -2, 4, 4); ctx.fillRect(w / 2 - 4, -2, 4, 4); }
-    else if (k === 'medical') { box('#e9eef0', '#cfd8dc'); ctx.fillStyle = '#d63031'; ctx.fillRect(-2, -h / 2 + 4, 4, h - 8); ctx.fillRect(-7, -2, 14, 4); }
-    else if (k === 'ammo') { box('#3d4a2c', '#5a6b3f'); ctx.fillStyle = '#f1c40f'; for (let i = -2; i <= 2; i++) ctx.fillRect(i * 5 - 1, -3, 3, 8); ctx.fillStyle = '#2a331d'; ctx.fillRect(-w / 2, -h / 2, w, 3); }
-    else if (k === 'backpack') { ctx.fillStyle = '#7a3b2e'; ctx.beginPath(); ctx.roundRect(-w / 2, -h / 2, w, h, 6); ctx.fill(); ctx.stroke(); ctx.fillStyle = '#5d2b21'; ctx.fillRect(-w / 2 + 3, 1, w - 6, h / 2 - 3); ctx.fillStyle = '#c9a24a'; ctx.fillRect(-2, -3, 4, 5); }
-    // lid pops up when opened
-    if (lid > 0 && k !== 'backpack') { ctx.fillStyle = 'rgba(255,255,255,0.18)'; ctx.fillRect(-w / 2, -h / 2 - 9 * lid, w, 4); }
+    const spr = LOOT_PIX.kind(this.kind), U = LOOT_PIX.U, x = -spr.w * U / 2, y = -spr.h * U / 2;
+    ctx.save(); ctx.globalAlpha = empty ? 0.55 : 1;
+    if (lid > 0 && spr.lid) {   // the lid lifts off in whole-pixel steps
+      ctx.drawImage(spr.open, x, y, spr.w * U, spr.h * U);
+      const lift = Math.round(lid * 4) * U; ctx.drawImage(spr.lid, x, y - lift - U, spr.w * U, spr.lid.height * U);
+    } else ctx.drawImage(spr.closed, x, y, spr.w * U, spr.h * U);
     ctx.restore();
   }
 }
@@ -12325,15 +12394,6 @@ function _explosionPixelColor(dist) {
 // ---------------------------------------------------------------------
 // White tint when something takes damage (zombie hit flash, the peanut's white blink, the white frame at a zombie's death). Off: damage is shown by sparks, flinch and the red hurt effect instead.
 const COMBAT_WHITE_FLASH = false;
-// Effect settings (saved in the browser). Presets: low / normal / high. density scales every particle burst (and drops further on its own when the screen is busy);
-// impact = strength of bullet-impact effects; muzzle = muzzle flashes on / off; trails = bullet tails + rocket smoke on / off; explosions = extra debris / smoke / scorch (0 = just the base burst).
-const FX_PRESETS = { low: { density: 0.5, impact: 0.6, muzzle: true, trails: false, explosions: 0.5 }, normal: { density: 1, impact: 1, muzzle: true, trails: true, explosions: 1 }, high: { density: 1.4, impact: 1.25, muzzle: true, trails: true, explosions: 1.3 } };
-const FX_SETTINGS = Object.assign({ quality: 'normal' }, FX_PRESETS.normal);
-function fxApplyQuality(q) { if (!FX_PRESETS[q]) q = 'normal'; Object.assign(FX_SETTINGS, FX_PRESETS[q], { quality: q }); try { localStorage.setItem('op_fx_quality', q); } catch (e) { /* storage may be blocked */ } }
-try { fxApplyQuality(localStorage.getItem('op_fx_quality') || 'normal'); } catch (e) { /* defaults */ }
-const FX_FLINCH = { pistol: 1, smg: 0.8, rifle: 1.5, machinegun: 1.1, shotgun: 1.9, flamethrower: 0.25 };   // how hard each weapon's hit shoves a zombie's sprite (visual only)
-const FX_CONCRETE_COLS = ['#bdb6a6', '#8e8672', '#6f6a5e', '#d8d2c2'];
-const FX_ARMOUR_COLS = ['#ffffff', '#dbe4ee', '#9fb4c7', '#6f8196'];
 const FX_MUZZLE = {
   pistol: { len: 7, w: 1, life: 0.05, rays: [0], cols: ['#fff7d0', '#ffd24a', '#e8902a'] },
   shotgun: { len: 10, w: 2, life: 0.07, rays: [0, 0.32, -0.32], cols: ['#fff7d0', '#ffc94a', '#e8902a'] },
@@ -12341,7 +12401,7 @@ const FX_MUZZLE = {
   rifle: { len: 9, w: 2, life: 0.05, rays: [0], cols: ['#ffffff', '#ffd24a', '#e8902a'] },
   machinegun: { len: 12, w: 3, life: 0.05, rays: [0], cols: ['#ffffff', '#ffd24a', '#e8902a'] },
   rpg: { len: 9, w: 3, life: 0.09, rays: [0], cols: ['#ffffff', '#ffc94a', '#e0701e'], smoke: true },
-  // (no entry for the flamethrower: its own flame stream is the effect)
+  flamethrower: { len: 6, w: 2, life: 0.06, rays: [0], cols: ['#fff4c0', '#ffb02a', '#e2501e'] },
 };
 const FX_SPARK_COLS = ['#fff2b0', '#ffc94a', '#b8b4a6', '#7a786f'];
 const FX_WOOD_COLS = ['#d2a679', '#a8825a', '#6b4f2e', '#c8bfa8'];
@@ -12379,52 +12439,34 @@ class ZombieDeathFx {
 }
 
 class CombatFX {
-  constructor() { this.list = []; this.deaths = []; this.marks = []; this.max = 150; }
-  _mark(x, y, kind, life, R) { this.marks.push({ x, y, kind, age: 0, life, R: R || 0, seed: Math.random() * 1000 }); if (this.marks.length > 36) this.marks.shift(); }   // bullet marks / scorch: short-lived, capped
+  constructor() { this.list = []; this.deaths = []; this.max = 150; }
   _push(f) { f.age = 0; this.list.push(f); if (this.list.length > this.max) this.list.shift(); return f; }
-  dens() { const l = this.list.length; return FX_SETTINGS.density * (l > 110 ? 0.5 : l > 80 ? 0.75 : 1); }   // fewer particles when the screen is already busy
   _burst(n, speed, base, spread, cols, life, extra) {   // n particles flung around angle `base` (screen space is resolved when drawn)
-    n = Math.max(1, Math.round(n * this.dens()));
     const ps = []; for (let i = 0; i < n; i++) { const a = base + (Math.random() - 0.5) * spread, s = speed * (0.5 + Math.random() * 0.7); ps.push({ a, s, c: cols[(Math.random() * cols.length) | 0] }); }
     return Object.assign({ ps, life }, extra);
   }
   update(dt) {
     let w = 0; for (let i = 0; i < this.list.length; i++) { const f = this.list[i]; f.age += dt; if (f.age < f.life) this.list[w++] = f; } this.list.length = w;
     w = 0; for (let i = 0; i < this.deaths.length; i++) { const f = this.deaths[i]; f.age += dt; if (f.age < f.life) this.deaths[w++] = f; } this.deaths.length = w;
-    w = 0; for (let i = 0; i < this.marks.length; i++) { const f = this.marks[i]; f.age += dt; if (f.age < f.life) this.marks[w++] = f; } this.marks.length = w;
   }
-  clear() { this.list.length = 0; this.deaths.length = 0; this.marks.length = 0; }
+  clear() { this.list.length = 0; this.deaths.length = 0; }
   // --- creation (called from the existing combat code, after it has decided what happened) ---
   muzzle(cfg, player, spec) {
-    if (!cfg || cfg.melee || cfg.thrown || !spec || !FX_SETTINGS.muzzle || cfg.id === 'flamethrower') return;
+    if (!cfg || cfg.melee || cfg.thrown || !spec) return;
     const m = FX_MUZZLE[cfg.id] || { len: 7, w: 1, life: 0.05, rays: [0], cols: ['#fff7d0', '#ffd24a', '#e8902a'] };
     this._push({ t: 'muzzle', m, ox: spec.x - player.x, oy: spec.y - player.y, ang: spec.angle, life: m.life });   // stored relative to the player so it follows the weapon
-    if (m.smoke) {   // RPG launch: a flash at the tube AND a back-blast plume of smoke and fire out of the rear
-      this._push({ t: 'muzzle', m: { len: 7, w: 2, life: 0.1, rays: [0.5, -0.5], cols: m.cols }, ox: spec.x - player.x, oy: spec.y - player.y, ang: spec.angle + Math.PI, life: 0.1 });
-      this._push(this._burst(9, 55, spec.angle + Math.PI, 1.5, ['#c8c4b8', '#8e8a80', '#5f5c55', '#e0a050'], 0.45, { t: 'smoke', x: spec.x, y: spec.y, rel: player, ox: spec.x - player.x, oy: spec.y - player.y }));
-    }
+    if (m.smoke) this._push(this._burst(5, 40, spec.angle + Math.PI, 1.2, ['#c8c4b8', '#8e8a80', '#5f5c55'], 0.3, { t: 'smoke', x: spec.x, y: spec.y, rel: player, ox: spec.x - player.x, oy: spec.y - player.y }));
   }
-  spark(b) {   // a bullet stopped by something solid: what it looks like depends on WHAT it hit (hitKind comes from the prop; buildings and the map edge are concrete)
-    if (b.flame) return; const base = Math.atan2(b.vy, b.vx) + Math.PI, kind = b._hitFx || 'concrete', I = FX_SETTINGS.impact; b._hitFx = null; if (I <= 0) return;
-    const n = (v) => Math.max(1, Math.round(v * I));
-    if (kind === 'wood') { this._push(this._burst(n(7), 62, base, 2.4, FX_WOOD_COLS, 0.26, { t: 'spark', x: b.x, y: b.y, g: 150 })); this._push(this._burst(n(2), 16, base, 2.6, FX_DUST_COLS, 0.28, { t: 'spark', x: b.x, y: b.y, g: -8, big: true })); }
-    else if (kind === 'metal') { this._push(this._burst(n(9), 95, base, 2.6, FX_METAL_COLS, 0.22, { t: 'spark', x: b.x, y: b.y, g: 150 })); this._push({ t: 'ping', x: b.x, y: b.y, life: 0.08 }); }
-    else { this._push(this._burst(n(5), 58, base, 2.4, FX_CONCRETE_COLS, 0.24, { t: 'spark', x: b.x, y: b.y, g: 170 })); this._push(this._burst(n(3), 16, base, 2.8, FX_DUST_COLS, 0.34, { t: 'spark', x: b.x, y: b.y, g: -12, big: true })); this._push(this._burst(n(2), 80, base, 1.8, FX_SPARK_COLS, 0.14, { t: 'spark', x: b.x, y: b.y, g: 150 })); }
-    this._mark(b.x, b.y, kind, 5.5);
+  spark(b) {   // a bullet stopped by a building / the map wall
+    if (b.flame) return; const base = Math.atan2(b.vy, b.vx) + Math.PI;
+    if (b._hitFx) { const wood = b._hitFx === 'wood'; b._hitFx = null; this._push(this._burst(wood ? 6 : 8, wood ? 60 : 85, base, 2.6, wood ? FX_WOOD_COLS : FX_METAL_COLS, 0.24, { t: 'spark', x: b.x, y: b.y, g: 150 })); return; }   // metal sparks off a car / lamp, wood chips off a trunk
+    this._push(this._burst(6, 70, base, 2.2, FX_SPARK_COLS, 0.22, { t: 'spark', x: b.x, y: b.y, g: 160 }));
+    this._push(this._burst(3, 18, base, 2.6, FX_DUST_COLS, 0.3, { t: 'spark', x: b.x, y: b.y, g: -10, big: true }));
   }
   dust(b) { this._dustN = (this._dustN || 0) + 1; if (this._dustN % 2) return; this._push(this._burst(3, 14, -Math.PI / 2, 2.4, FX_DUST_COLS, 0.26, { t: 'spark', x: b.x, y: b.y, g: -6, big: true })); }   // a shot landing on the ground at the end of its range
-  hit(b, z) {   // a bullet / flame striking a zombie, at the point where the path met it
-    const I = FX_SETTINGS.impact, ox = b.x - z.x, oy = b.y - z.y;
-    if (b.flame) { const n = performance.now(); if ((z._fxT || 0) > n) return; z._fxT = n + 110; this._push(this._burst(3, 40, Math.atan2(b.vy, b.vx), 2.4, ['#ffd24a', '#e2501e', '#fff4c0'], 0.18, { t: 'spark', x: z.x, y: z.y, g: -30, body: z, ox: 0, oy: 0 })); return; }
-    if (I <= 0) return; const dir = Math.atan2(b.vy, b.vx), heavy = Math.min(1.6, (b.damage || 15) / 20);
-    if (z.armourHitT > 0) {   // armour that is still on: bright metal sparks glancing off, no blood
-      this._push(this._burst(Math.round((5 + heavy * 2) * I), 90, dir + Math.PI, 2.6, FX_ARMOUR_COLS, 0.2, { t: 'spark', x: b.x, y: b.y, g: 140, body: z, ox, oy })); this._push({ t: 'ping', x: b.x, y: b.y, life: 0.08, body: z, ox, oy }); return;
-    }
-    this._push(this._burst(Math.round((4 + heavy * 3) * I), 55 + heavy * 15, dir, 1.5, FX_HIT_COLS, 0.18, { t: 'spark', x: b.x, y: b.y, g: 120, body: z, ox, oy }));   // spray carried on in the bullet's direction
-    this._push(this._burst(Math.max(1, Math.round(2 * I)), 28, dir + Math.PI, 1.8, FX_HIT_COLS, 0.14, { t: 'spark', x: b.x, y: b.y, g: 120, body: z, ox, oy }));            // and a little splash back toward the shooter
-  }
-  blastHit(z, x, y) {   // a zombie caught in an explosion: embers and grit thrown off it, away from the blast
-    if (FX_SETTINGS.explosions <= 0) return; this._push(this._burst(Math.round(4 * FX_SETTINGS.explosions), 70, Math.atan2(z.y - y, z.x - x), 2.6, ['#ffd24a', '#e2501e', '#5f5c55', '#8e2a2a'], 0.3, { t: 'spark', x: z.x, y: z.y, g: 110, body: z, ox: 0, oy: 0 }));
+  hit(b, z) {   // a bullet / flame striking a zombie
+    if (b.flame) { const n = performance.now(); if ((z._fxT || 0) > n) return; z._fxT = n + 110; this._push(this._burst(3, 40, Math.atan2(b.vy, b.vx), 2.4, ['#ffd24a', '#e2501e', '#fff4c0'], 0.18, { t: 'spark', x: z.x, y: z.y, g: -30, body: z })); return; }
+    this._push(this._burst(6, 55, Math.atan2(b.vy, b.vx), 1.6, FX_HIT_COLS, 0.18, { t: 'spark', x: b.x, y: b.y, g: 120, body: z }));
   }
   meleeHit(z, weapon, player) {   // a hammer swing / chainsaw tick that connected
     const n = performance.now(), saw = !!weapon.config.fuelTank;
@@ -12437,43 +12479,25 @@ class CombatFX {
   splash(x, y, n = 4) {   // little blue pixels kicked up by feet in a stream (WaterZones3D)
     this._push(this._burst(n, 46, -Math.PI / 2, 2.8, FX_WATER_COLS, 0.34, { t: 'spark', x, y, g: 170, ground: true }));
   }
-  blast(x, y, r) {   // explosion extras on top of the pixel burst: the shockwave ring is exactly the damage radius `r`
-    this._push({ t: 'blast', x, y, r, life: 0.35 }); const E = FX_SETTINGS.explosions; if (E <= 0) return;
-    this._push(this._burst(Math.round(8 * E), 26, -Math.PI / 2, 2.8, ['#8a867c', '#5f5c55', '#3a3833'], 0.9, { t: 'spark', x, y, g: -26, big: true }));        // smoke rising
-    this._push(this._burst(Math.round(10 * E), r * 1.5, -Math.PI / 2, 3.6, ['#ffd24a', '#e2501e', '#6f6a5e', '#3a3833'], 0.75, { t: 'spark', x, y, g: 260 }));   // debris flung up and falling back
-    this._mark(x, y, 'scorch', 9, r * 0.55);   // a scorch mark on the ground
-  }
+  blast(x, y, r) { this._push({ t: 'blast', x, y, r, life: 0.35 }); this._push(this._burst(7, 26, -Math.PI / 2, 2.8, ['#8a867c', '#5f5c55', '#3a3833'], 0.7, { t: 'spark', x, y, g: -22, big: true })); }
   pulse(x, y, kind) { this._push({ t: 'pulse', x, y, kind, life: kind === 'weapon' || kind === 'unlock' ? 0.6 : 0.42 }); }
   // --- drawing (inside the already-scaled world context) ---
   draw(ctx, camera, view, occ, k, anchor, withDeaths) {
     if (withDeaths) for (const d of this.deaths) d.draw(ctx, camera, view);
-    if (!this.list.length && !this.marks.length) return;
+    if (!this.list.length) return;
     const rig = camera.rig3d, lift = rig ? BUILDING_OCCLUSION_CONFIG.playerFeetOffset * PLAYER_SCALE * GAME3D.entityScale : 0;
     ctx.save(); ctx.imageSmoothingEnabled = false;
-    for (const m of this.marks) {   // bullet marks on walls / cars / trunks and scorch on the ground: chunky pixels that dissolve in steps near the end
-      let vis = 1; if (occ) { vis = occ.bulletVisibility({ x: m.x, y: m.y }, lift * k); if (vis < 0.2) continue; }
-      const p = camera.worldToScreen(m.x, m.y, view), ds = p.depthScale || 1, u = 2 * ds, left = m.life - m.age, keep = left > 1 ? 1 : left > 0.4 ? 0.5 : 0.25;
-      if (rig && m.kind !== 'scorch') p.y -= lift * ds;
-      const px = (dx, dy, c, i, sz = u) => { if (((i * 7 + (m.seed | 0)) % 100) / 100 > keep) return; ctx.fillStyle = c; ctx.fillRect(Math.round((p.x + dx * u) / sz) * sz, Math.round((p.y + dy * u) / sz) * sz, sz, sz); };
-      ctx.globalAlpha = vis;
-      if (m.kind === 'scorch') { const R = m.R * ds, n = 26; for (let i = 0; i < n; i++) { const a = i / n * Math.PI * 2, rr = R * (0.45 + 0.55 * ((Math.sin(m.seed + i * 12.9) + 1) / 2)); for (let j = 0.3; j <= 1; j += 0.35) { ctx.fillStyle = j < 0.7 ? '#1d1a18' : '#35302b'; if (((i * 5 + j * 10 + (m.seed | 0)) % 100) / 100 > keep) continue; ctx.fillRect(Math.round((p.x + Math.cos(a) * rr * j) / 3) * 3, Math.round((p.y + Math.sin(a) * rr * j * 0.55) / 3) * 3, 3 * ds, 3 * ds); } } }
-      else if (m.kind === 'metal') { px(0, 0, '#26262a', 0); px(1, 0, '#26262a', 1); px(-1, -1, '#e8e8ec', 2); px(2, -1, '#9a9aa2', 3); px(-1, 1, '#8a8a90', 4); }
-      else if (m.kind === 'wood') { px(0, 0, '#3a2814', 0); px(-1, 0, '#4a3320', 1); px(1, 0, '#4a3320', 2); px(-2, 1, '#d2a679', 3); px(2, -1, '#d2a679', 4); px(0, -2, '#c8bfa8', 5); }
-      else { px(0, 0, '#2e2a26', 0); px(-1, 0, '#3f3a33', 1); px(-2, -1, '#d8d2c2', 2); px(2, 0, '#bdb6a6', 3); px(1, -2, '#d8d2c2', 4); px(-1, 2, '#8e8672', 5); }
-    }
-    ctx.globalAlpha = 1;
     for (const f of this.list) {
       const t = f.age / f.life;
       let gx = f.x, gy = f.y; if (f.t === 'muzzle') { gx = anchor.x + f.ox; gy = anchor.y + f.oy; } else if (f.rel) { gx = anchor.x + f.ox; gy = anchor.y + f.oy; }
-      if (f.body && f.body.alive !== undefined) { gx = f.body.x + (f.ox || 0); gy = f.body.y + (f.oy || 0); }   // effects on a zombie follow it, at the exact contact point
+      if (f.body && f.body.alive !== undefined) { gx = f.body.x; gy = f.body.y; }
       let vis = 1;
       if (occ && f.t !== 'muzzle' && f.t !== 'pulse' && f.t !== 'smoke') { vis = occ.bulletVisibility({ x: gx, y: gy }, lift * k); if (vis < 0.2) continue; }   // never through a solid building
       const p = camera.worldToScreen(gx, gy, view), ds = p.depthScale || 1, u = 2 * ds, ground = { x: p.x, y: p.y };
       if (rig && f.t !== 'blast' && f.t !== 'pulse' && !f.ground) p.y -= (f.body ? zombieVisualSize(f.body.type) * 0.3 * GAME3D.entityScale : lift) * ds;
       const sq = (x, y, c, s = u) => { ctx.fillStyle = c; ctx.fillRect(Math.round(x / s) * s, Math.round(y / s) * s, s, s); };
       ctx.globalAlpha = vis;
-      if (f.t === 'ping') { const w = u * 3 * (1 - t); ctx.fillStyle = '#ffffff'; ctx.fillRect(Math.round((p.x - w / 2) / u) * u, Math.round((p.y - u / 2) / u) * u, w, u); ctx.fillRect(Math.round((p.x - u / 2) / u) * u, Math.round((p.y - w / 2) / u) * u, u, w); }   // one-frame metal glint
-      else if (f.t === 'muzzle') {
+      if (f.t === 'muzzle') {
         const q = camera.worldToScreen(gx + Math.cos(f.ang) * 12, gy + Math.sin(f.ang) * 12, view); let dx = q.x - ground.x, dy = q.y - ground.y; const L = Math.hypot(dx, dy) || 1; dx /= L; dy /= L;
         const m = f.m, shrink = t < 0.6 ? 1 : 0.55;
         for (const r of m.rays) {
@@ -12692,7 +12716,6 @@ class Game {
     document.getElementById('zdDebugToggle').addEventListener('change', (e) => { this.spawner.director.setDebug(e.target.checked); Sound.uiClick(); });   // debug panel only: not a cheat
     document.getElementById('threatDebugToggle').addEventListener('change', (e) => { THREAT.setDebug(e.target.checked); Sound.uiClick(); });   // debug panel only: not a cheat
     document.getElementById('tmThreatStage').addEventListener('change', (e) => { TEST_MODE.threatStage = e.target.value; Sound.uiClick(); refreshTestModeBtn(); });
-    { const q = document.getElementById('fxQuality'); q.value = FX_SETTINGS.quality; q.addEventListener('change', (e) => { fxApplyQuality(e.target.value); Sound.uiClick(); }); }   // particle density / impact strength / trails / explosion extras
     document.getElementById('tmAiForce').addEventListener('change', (e) => { TEST_MODE.aiForce = e.target.value; Sound.uiClick(); refreshTestModeBtn(); });
     testModeBtn.addEventListener('click', () => {
       Sound.uiClick();
@@ -13623,7 +13646,6 @@ class Game {
       if (!zombie.alive) continue;
       if (Utils.distance(x, y, zombie.x, zombie.y) <= splashRadius + zombie.radius) {
         const died = zombie.takeDamage(damage, srcId);
-        if (!died) { zombie.flinch(zombie.x - x, zombie.y - y, 3.5); this.fx.blastHit(zombie, x, y); }   // survivors are shoved away from the blast (visual only)
         if (died) this._onZombieKilled(zombie, srcId); // still plays its own zombieDeath() — a kill is worth calling out even during an explosion
       }
     }
@@ -13705,7 +13727,7 @@ class Game {
     if (bullet.explosive) this._explodeBullet(bullet);
     else {
       const died = zomb.takeDamage(bullet.damage, bullet.weaponId);
-      this.fx.hit(bullet, zomb); zomb.flinch(bullet.vx, bullet.vy, FX_FLINCH[bullet.weaponId] || 1);
+      this.fx.hit(bullet, zomb); zomb.flinch(bullet.vx, bullet.vy);
       bullet.alive = false;
       if (died) this._onZombieKilled(zomb, bullet.weaponId); else Sound.zombieHit();
     }
