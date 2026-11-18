@@ -2682,7 +2682,7 @@ const EMBEDDED_ASSETS = {
     <!-- ===================== Start overlay (home page) ===================== -->
     <div id="startScreen" class="overlay homePage">
       <!-- Version: major.minor.patch. The patch digit goes 0-9 and rolls into the minor number (v3.88.9 -> v3.89.0); the minor number is two digits and rolls into the major number (v3.99.9 -> v4.00.0). Bumped by 1 on every change. -->
-      <div id="versionTag" class="versionTag">v3.95.5</div>
+      <div id="versionTag" class="versionTag">v3.95.7</div>
       <div id="homeSidebar" class="homeSidebar">
         <div class="homeSidebarTitle">Your Stats</div>
         <div id="homeLevel" class="homeLevel"></div>
@@ -5314,7 +5314,7 @@ const TEST_MODE = {
   threatStage: 'auto', // threat testing: 'auto' or 1..5 locks the Zombie Threat stage (threat.js)
   aiForce: 'mixed', // zombie AI testing: 'mixed' = normal, or force every new zombie to one personality (hunter | predictor | flanker | wanderer)
   isActive() {
-    return this.invincible || this.allWeapons || this.unlimitedAmmoGas || this.unlimitedStamina || !this.zombies || this.fastShop || this.shopCash || this.aiForce !== 'mixed' || this.lootTest || this.threatStage !== 'auto' || this.envTime !== 'auto' || this.envWeather !== 'auto';
+    return !!(window.MP && window.MP.active) || this.invincible || this.allWeapons || this.unlimitedAmmoGas || this.unlimitedStamina || !this.zombies || this.fastShop || this.shopCash || this.aiForce !== 'mixed' || this.lootTest || this.threatStage !== 'auto' || this.envTime !== 'auto' || this.envWeather !== 'auto';
   },
 };
 
@@ -9774,7 +9774,7 @@ class HUD {
     this.killText.textContent = `Kills: ${player.kills}`;
     this.zombieCountText.textContent = `Zombies: ${zombies.length}`;
     this.moneyText.textContent = `Cash: $${player.money}`;
-    this.shopText.textContent = shopIn == null ? '' : `Next shop: ${Utils.formatTime(Math.ceil(shopIn))}`;
+    this.shopText.textContent = (shopIn == null || (window.MP && MP.active)) ? '' : `Next shop: ${Utils.formatTime(Math.ceil(shopIn))}`;   // (no shop countdown in multiplayer)
 
     const weapon = player.currentWeapon;
     this.weaponName.textContent = weapon.name;
@@ -9972,7 +9972,7 @@ class ShopSystem {
     this._bind();
   }
 
-  get interval() { return TEST_MODE.fastShop ? SHOP_CONFIG.testIntervalSeconds : SHOP_CONFIG.intervalSeconds; }
+  get interval() { if (window.MP && MP.active) return 1e9; return TEST_MODE.fastShop ? SHOP_CONFIG.testIntervalSeconds : SHOP_CONFIG.intervalSeconds; }   // (no pausing shop in multiplayer yet)
 
   // Cash for a kill of this zombie type.
   static killReward(type) {
@@ -13316,6 +13316,7 @@ class Game {
     acc.open();
   }
   _togglePause() {
+    if (window.MP && MP.active) return;   // multiplayer: the game cannot be paused (the other players keep playing)
     if (this.state === 'playing') {
       this.state = 'paused';
       document.getElementById('pauseScreen').classList.remove('hidden');
@@ -13356,6 +13357,7 @@ class Game {
   }
 
   _update(dt) {
+    if (window.MP && MP.active) MP.update(dt, this);   // multiplayer: send my state, move the other players
     const world = CONFIG.WORLD;
     if (this.world3d) this._world3dPreUpdate(); // 3D run: refresh the nearby-building collision list + debug keys
     else if (this.navGrid && this._nav2dCentre && Math.hypot(this.player.x - this._nav2dCentre.x, this.player.y - this._nav2dCentre.y) > NAV_WINDOW_PX * 0.3 && performance.now() - this._nav2dAt > 500) {   // 2D fallback: walked out of the middle of the nav window
@@ -14058,12 +14060,13 @@ class Game {
 
   _gameOver() {
     this.state = 'gameover';
+    if (window.MP && MP.active) MP.onGameEnd();
     this.shop.forceClose();
     const xpResult = XP.runEnded(); // player XP: end-of-run bonuses (before the achievement system stores the new best)
     ACH.runEnded(); // achievements: final bests are stored; lifetime progress is kept (saved BEFORE the report is shown)
     let report = null; try { report = RunReport.build(xpResult, this.testModeRun); } catch (err) { console.warn('[report]', err); }   // read-only: it never awards anything
     CHAL.runEnded(); // challenges: save, and start the next day's set if the day changed during the run
-    SavedRun.clear(); // the run is over — nothing left to continue
+    if (!(window.MP && MP.active)) SavedRun.clear(); // the run is over — nothing left to continue (a multiplayer run never touched the single-player save)
     document.getElementById('finalStats').textContent =
       `Survived ${Utils.formatTime(this.survivalTime)} — ${this.player.kills} kills` +
       (this.testModeRun ? ' (Test Mode — not counted toward your stats)' : '');
@@ -14184,6 +14187,7 @@ class Game {
       for (const e of this.pickups) e.draw(ctx, cam, canvas);
       for (const e of LOOT_SYS.drawList()) e.draw(ctx, cam, canvas);
       for (const e of this.zombies) e.draw(ctx, cam, canvas);
+      if (window.MP && MP.active) MP.drawRemotes(ctx, cam, canvas);
       for (const e of this.bullets) e.draw(ctx, cam, canvas);
       player.draw(ctx, cam, canvas);
     };
@@ -14268,6 +14272,7 @@ class Game {
     for (const e of this.pickups) if (!placed.has(e)) e.draw(ctx, cam, canvas);
     for (const e of LOOT_SYS.drawList()) if (!placed.has(e)) e.draw(ctx, cam, canvas);
     for (const e of this.zombies) if (!placed.has(e)) e.draw(ctx, cam, canvas);
+    if (window.MP && MP.active) MP.drawRemotes(ctx, cam, canvas);   // the other players
     for (const e of this.bullets) e.draw(ctx, cam, canvas);
     if (!placed.has(player)) player.draw(ctx, cam, canvas);
   }
@@ -16582,6 +16587,7 @@ class CitySelectFlow {
       if (e.key === 'Enter') this._tryFindCity();
     });
     document.getElementById('citySelectBackBtn').addEventListener('click', () => {
+      if (window.MP && MP.flowBack(this)) return;   // a multiplayer host going back returns to the lobby
       this._hideAllScreens();
       document.getElementById('startScreen').classList.remove('hidden');
     });
@@ -16607,7 +16613,7 @@ class CitySelectFlow {
     document.getElementById('difficultyContinueBtn').addEventListener('click', () => this._showBringCash(false));   // difficulty -> BRING CASH -> confirm
     this._wireBringCash();
     document.getElementById('difficultyBackBtn').addEventListener('click', () => this._showSpawnArea(false));
-    document.getElementById('confirmSpawnBtn').addEventListener('click', () => this._showGenerating());
+    document.getElementById('confirmSpawnBtn').addEventListener('click', () => { if (window.MP && MP.interceptConfirm(this)) return; this._showGenerating(); });   // multiplayer host: the server starts everyone together
 
     document.getElementById('mapGenRetryBtn').addEventListener('click', () => this._showGenerating());
     document.getElementById('mapGenContinueBtn').addEventListener('click', () => this._finish(null));
@@ -16617,6 +16623,7 @@ class CitySelectFlow {
   // Entry point — called when the home page's Play button is clicked,
   // and again if the player picks "Change City" after a run.
   begin() {
+    if (window.MP) MP.flowBegin();   // starting a normal run ends any finished multiplayer match
     this.cityName = '';
     this.selectedCity = null;
     this.searchResults = [];
@@ -17020,6 +17027,7 @@ class CitySelectFlow {
     this.game._pendingWorld = world; // null = 2D map
     this.game.currentCityName = this.cityName || '';
     this.game.start({ x, y }, generated);
+    if (window.MP && MP.active) MP.onGameStart(this.game);   // multiplayer: spawn ring, remote players, HUD
   }
 
   _placeholderNormPointToWorld(normX, normY) {
@@ -18301,6 +18309,292 @@ class RunReportSystem {
 }
 const RunReport = new RunReportSystem();
   </script>
+  <script>
+/**
+ * multiplayer.js - Operation Peanut online multiplayer, CLIENT side (Stage 1: lobby, shared world start, player sync).
+ *
+ * Talks to multiplayer-server/server.js over a WebSocket. Everything here is inert until the player opens MULTIPLAYER from the main menu:
+ * single-player never touches this module except through a handful of `window.MP && MP.active` checks.
+ *
+ * What it does:  menu + lobby screens, room codes, host settings, the host picking the map with the normal city flow and EVERYONE loading that same
+ *   spot, sending this player's state at 15 Hz, drawing the other players (the normal peanut sprites, 8 directions + 360-degree aim) with interpolation,
+ *   a small HUD (names, health, mode, player count) and join / leave / disconnect notices, reconnecting after a dropped connection.
+ * What it does NOT do yet: share the zombie world and the combat (each player still runs their own zombies), downed / revive, scoring and friendly fire.
+ * See multiplayer-server/README.md for the staged plan.
+ */
+const MP_CONFIG = {
+  defaultUrl: '',               // put your deployed server here, e.g. 'wss://operation-peanut-mp.onrender.com' (players can also type one in the menu, or open the game with ?mp=wss://...)
+  sendHz: 15, interpDelayMs: 110, extrapolateMs: 160, snapDistance: 450, reconnectTries: 6, spawnRing: 34,
+  colors: ['#ffd24a', '#4aa3ff', '#7bdc65', '#ff6b6b'],
+  modes: { coop: 'CO-OP SURVIVAL', comp: 'COMPETITIVE' },
+};
+
+const MP = {
+  cfg: MP_CONFIG, ws: null, sid: null, url: '', name: '', status: 'offline', myId: null, code: null, room: null, slot: 0,
+  active: false, pending: false, host: false, remotes: new Map(), game: null, _sendT: 0, _hudT: 0, _lastSent: null, _tries: 0, _wantOnline: false, _flowErr: false,
+
+  // ------------------------------------------------------------ settings / identity
+  resolveUrl() {
+    let u = ''; try { u = new URLSearchParams(location.search).get('mp') || ''; if (u) localStorage.setItem('op_mp_url', u); } catch (e) { /* ignore */ }
+    if (!u) { try { u = localStorage.getItem('op_mp_url') || ''; } catch (e) { /* ignore */ } }
+    if (!u) u = this.cfg.defaultUrl || '';
+    if (!u && /^(localhost|127\.0\.0\.1)$/.test(location.hostname)) u = 'ws://localhost:8080';
+    return u;
+  },
+  loadIdentity() {
+    try { this.name = localStorage.getItem('op_mp_name') || ''; this.sid = sessionStorage.getItem('op_mp_sid') || null; } catch (e) { /* ignore */ }
+    if (!this.name) this.name = 'Peanut' + Math.floor(100 + Math.random() * 900);
+  },
+
+  // ------------------------------------------------------------ connection
+  connect() {
+    return new Promise((resolve, reject) => {
+      if (this.ws && this.ws.readyState === 1 && this.status === 'online') return resolve();
+      this._closeSocket(); this.status = 'connecting'; this._ui();
+      let ws; try { ws = new WebSocket(this.url); } catch (e) { this.status = 'offline'; return reject(new Error('That server address is not valid')); }
+      this.ws = ws; let done = false;
+      const fail = (msg) => { if (done) return; done = true; clearTimeout(to); try { ws.close(); } catch (e) { /* closing anyway */ } this.status = 'offline'; reject(new Error(msg)); };
+      const to = setTimeout(() => fail('Could not reach the server'), 8000);
+      ws.onopen = () => ws.send(JSON.stringify({ t: 'hello', name: this.name, sid: this.sid }));
+      ws.onerror = () => fail('Could not reach the server');
+      ws.onmessage = (e) => { let m; try { m = JSON.parse(e.data); } catch (x) { return; } if (m.t === 'welcome' && !done) { done = true; clearTimeout(to); this.sid = m.sid; this.myId = m.id; this.status = 'online'; this._tries = 0; try { sessionStorage.setItem('op_mp_sid', m.sid); } catch (x) { /* ignore */ } resolve(m); } this.handle(m); };
+      ws.onclose = () => { if (this.ws === ws) this._dropped(); fail('Connection closed'); };
+    });
+  },
+  _closeSocket() { const w = this.ws; this.ws = null; if (w) { w.onclose = w.onmessage = w.onerror = null; try { w.close(); } catch (e) { /* ignore */ } } },
+  _dropped() {   // lost the connection: if we are in a room, try to get our seat back with the same session id
+    const was = this.status; this.status = 'offline'; this.ws = null;
+    if (was !== 'online' || !this._wantOnline || !(this.room || this.active)) { this._ui(); return; }
+    this.toast('Connection lost - reconnecting...', 'drop'); this._reconnect();
+  },
+  _reconnect() {
+    if (this._tries >= this.cfg.reconnectTries) { this.toast('Could not reconnect', 'drop'); this._wantOnline = false; if (this.active) this.exitMatch(); this.room = null; this._ui(); return; }
+    const wait = Math.min(8000, 800 * 2 ** this._tries++);
+    setTimeout(() => this.connect().then(() => this.toast('Reconnected', 'join')).catch(() => this._reconnect()), wait);
+  },
+  send(o) { if (this.ws && this.ws.readyState === 1) this.ws.send(JSON.stringify(o)); },
+
+  // ------------------------------------------------------------ incoming messages
+  handle(m) {
+    switch (m.t) {
+      case 'joined': this.code = m.code; this.myId = m.id; this.setMsg(''); return;
+      case 'room': this.setMsg(''); this.room = m; this.code = m.code; this.host = m.hostId === this.myId; this.slot = Math.max(0, m.players.findIndex((p) => p.id === this.myId)); if (!this.active) this.showLobby(); this._hud(true); return;
+      case 'notice': this.toast(m.text, m.kind); return;
+      case 'left': this._removeRemote(m.id); return;
+      case 'left_room': this.room = null; this.code = null; this.host = false; return;
+      case 'start': if (this.active && m.resume) return; this.onStart(m); return;
+      case 'snap': this._ingest(m); return;
+      case 'error': this.onError(m); return;
+      default: return;
+    }
+  },
+  onError(m) {
+    if (m.code === 'replaced') { this._wantOnline = false; this.toast(m.msg, 'drop'); this.exitMatch(); this.room = null; this._closeSocket(); this.status = 'offline'; this.openMenu(); return; }
+    const flowOpen = this.pending && !this.active;
+    if (flowOpen && ['few', 'not_host', 'no_world', 'bad_world', 'started'].includes(m.code)) { this.pending = false; this._leaveFlow(); this.showLobby(); }
+    this.setMsg(m.msg); this.toast(m.msg, 'drop');
+  },
+
+  // ------------------------------------------------------------ menus / lobby UI
+  _el(id) { return document.getElementById(id); },
+  initUI() {
+    const css = document.createElement('style'); css.textContent = `
+      #mpMenu, #mpLobby { background: #101214 !important; }   /* opaque, like the start screen: the HUD panels never show through */
+      #mpMenu .overlayBox, #mpLobby .overlayBox { width: 640px; max-width: 96vw; box-sizing: border-box; }
+      #mpMenu .mpBox, #mpLobby .mpBox { width: 100%; box-sizing: border-box; margin: 0 auto; padding: 10px 6px; text-align: left; }
+      .mpRow { display: flex; gap: 10px; align-items: center; margin: 10px 0; flex-wrap: wrap; } .mpRow label { font-size: 10px; min-width: 120px; }
+      .mpIn { font: inherit; font-size: 12px; padding: 9px 10px; background: #14171b; color: #fff; border: 3px solid #000; flex: 1; min-width: 0; text-transform: none; }
+      .mpModes { display: flex; gap: 10px; } .mpModes button { flex: 1; } .mpModes button.sel { outline: 4px solid #ffd24a; }
+      .mpMsg { min-height: 16px; font-size: 9px; color: #ff9a9a; margin: 6px 0; } .mpCode { font-size: 30px; letter-spacing: 8px; text-align: center; margin: 6px 0; color: #ffd24a; cursor: pointer; text-shadow: 3px 3px 0 #000; }
+      .mpSlots { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 12px 0; } .mpSlot { padding: 10px 12px; background: #1c2026; border: 3px solid #000; font-size: 10px; min-height: 18px; display: flex; gap: 8px; align-items: center; }
+      .mpSlot.empty { opacity: 0.45; } .mpSlot .dot { width: 12px; height: 12px; flex: none; border: 2px solid #000; } .mpSlot .tag { margin-left: auto; font-size: 8px; color: #ffd24a; } .mpSlot.off { opacity: 0.6; } .mpSlot.off .tag { color: #ff9a9a; }
+      .mpSet { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 14px; margin: 8px 0 14px; } .mpSet label { font-size: 9px; display: flex; gap: 8px; align-items: center; justify-content: space-between; } .mpSet select { font: inherit; font-size: 10px; padding: 5px; background: #14171b; color: #fff; border: 3px solid #000; }
+      #mpHud { position: absolute; left: 16px; top: 156px; width: 190px; padding: 8px 10px; font-size: 8px; line-height: 1.5; pointer-events: none; } #mpHud .mpTitle { color: #ffd24a; margin-bottom: 6px; } #mpHud .mpP { display: flex; align-items: center; gap: 6px; margin: 4px 0; } #mpHud .mpP .dot { width: 8px; height: 8px; border: 1px solid #000; flex: none; } #mpHud .mpN { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } #mpHud .mpB { width: 46px; height: 6px; background: #26292e; border: 1px solid #000; flex: none; } #mpHud .mpB i { display: block; height: 100%; }
+      #mpToasts { position: fixed; left: 16px; bottom: 84px; display: flex; flex-direction: column; gap: 6px; align-items: flex-start; pointer-events: none; z-index: 9999; } .mpToast { color: #fff; background: rgba(24,27,32,0.92); border: 3px solid #000; padding: 6px 10px; font-size: 9px; text-shadow: 2px 2px 0 #000; animation: mpFade 4.2s forwards; } @keyframes mpFade { 0%, 80% { opacity: 1; } 100% { opacity: 0; } }
+      @media (max-width: 760px) { .mpSlots, .mpSet { grid-template-columns: 1fr; } #mpHud { top: 150px; width: 150px; } }`;
+    document.head.appendChild(css);
+    const btn = document.createElement('button'); btn.id = 'mpBtn'; btn.className = 'testModeButton'; btn.textContent = 'Multiplayer';
+    const start = this._el('startBtn'); if (start && start.parentNode) start.parentNode.insertBefore(btn, this._el('testModeBtn') || start.nextSibling);
+    btn.addEventListener('click', () => { Sound.uiClick(); this.openMenu(); });
+    const menu = document.createElement('div'); menu.id = 'mpMenu'; menu.className = 'overlay hidden';
+    menu.innerHTML = `<div class="overlayBox"><h1>MULTIPLAYER</h1><p class="subtitle">Up to 4 players. Everyone plays the same city.</p><div class="mpBox">
+      <div class="mpRow"><label>NAME</label><input id="mpName" class="mpIn" maxlength="14" autocomplete="off"></div>
+      <div class="mpRow"><label>SERVER</label><input id="mpUrl" class="mpIn" placeholder="wss://your-server.example.com" autocomplete="off"></div>
+      <div class="mpRow"><label>MODE</label><div class="mpModes"><button id="mpModeCoop" class="testModeButton sel">Co-op Survival</button><button id="mpModeComp" class="testModeButton">Competitive</button></div></div>
+      <div class="mpRow"><button id="mpCreate" class="bigButton" style="flex:1">Create Room</button></div>
+      <div class="mpRow"><input id="mpCode" class="mpIn" maxlength="5" placeholder="ROOM CODE" style="text-transform:uppercase"><button id="mpJoin" class="testModeButton">Join</button></div>
+      <div id="mpMenuMsg" class="mpMsg"></div><div class="mpRow"><button id="mpMenuBack" class="testModeButton">Back</button></div></div></div>`;
+    document.body.appendChild(menu);
+    const lobby = document.createElement('div'); lobby.id = 'mpLobby'; lobby.className = 'overlay hidden';
+    lobby.innerHTML = `<div class="overlayBox"><h1>LOBBY</h1><div class="mpBox"><div id="mpLobbyMode" class="subtitle"></div><div id="mpCodeBig" class="mpCode" title="Click to copy"></div><div id="mpCount" class="subtitle"></div>
+      <div id="mpSlots" class="mpSlots"></div><div id="mpSet" class="mpSet"></div><div id="mpLobbyMsg" class="mpMsg"></div>
+      <div class="mpRow"><button id="mpStart" class="bigButton" style="flex:1">Start</button><button id="mpLeave" class="testModeButton">Leave</button></div></div></div>`;
+    document.body.appendChild(lobby);
+    const hud = document.createElement('div'); hud.id = 'mpHud'; hud.className = 'hudPanel hidden'; (this._el('hud') || document.body).appendChild(hud);
+    const toasts = document.createElement('div'); toasts.id = 'mpToasts'; document.body.appendChild(toasts);   // fixed to the screen so notices also show in the lobby
+    const $ = (id) => this._el(id);
+    $('mpName').value = this.name; $('mpUrl').value = this.url;
+    let mode = 'coop'; const setMode = (m) => { mode = m; $('mpModeCoop').classList.toggle('sel', m === 'coop'); $('mpModeComp').classList.toggle('sel', m === 'comp'); };
+    $('mpModeCoop').onclick = () => setMode('coop'); $('mpModeComp').onclick = () => setMode('comp');
+    $('mpMenuBack').onclick = () => { Sound.uiClick(); menu.classList.add('hidden'); this._el('startScreen').classList.remove('hidden'); };
+    const go = async (fn) => {
+      this.name = ($('mpName').value || '').replace(/[^\w \-.!]/g, '').trim().slice(0, 14) || this.name; this.url = ($('mpUrl').value || '').trim();
+      try { localStorage.setItem('op_mp_name', this.name); if (this.url) localStorage.setItem('op_mp_url', this.url); } catch (e) { /* ignore */ }
+      if (!/^wss?:\/\//i.test(this.url)) return this.setMsg('Enter the server address (it starts with ws:// or wss://)');
+      this.setMsg('Connecting...'); this._wantOnline = true;
+      try { await this.connect(); fn(); } catch (e) { this.setMsg(e.message); }
+    };
+    $('mpCreate').onclick = () => { Sound.uiClick(); go(() => this.send({ t: 'create', mode })); };
+    $('mpJoin').onclick = () => { Sound.uiClick(); const c = ($('mpCode').value || '').trim(); if (c.length < 5) return this.setMsg('Enter the 5-character room code'); go(() => this.send({ t: 'join', code: c })); };
+    $('mpCode').addEventListener('keydown', (e) => { e.stopPropagation(); if (e.key === 'Enter') $('mpJoin').click(); });
+    for (const id of ['mpName', 'mpUrl']) $(id).addEventListener('keydown', (e) => e.stopPropagation());
+    $('mpLeave').onclick = () => { Sound.uiClick(); this.send({ t: 'leave' }); this.room = null; this.pending = false; this.openMenu(); };
+    $('mpStart').onclick = () => { Sound.uiClick(); this.pickMap(); };
+    $('mpCodeBig').onclick = () => { try { navigator.clipboard.writeText(this.code || ''); this.toast('Room code copied', 'info'); } catch (e) { /* ignore */ } };
+    new MutationObserver(() => { if (!this._el('startScreen').classList.contains('hidden') && this.active) this.exitMatch(); }).observe(this._el('startScreen'), { attributes: true, attributeFilter: ['class'] });
+  },
+  setMsg(t) { for (const id of ['mpMenuMsg', 'mpLobbyMsg']) { const e = this._el(id); if (e) e.textContent = t || ''; } },
+  openMenu() {
+    for (const o of document.querySelectorAll('.overlay')) o.classList.add('hidden'); this._el('mpMenu').classList.remove('hidden');
+    this._el('mpName').value = this.name; this._el('mpUrl').value = this.url; this.setMsg(this.url ? '' : 'Enter your multiplayer server address first');
+  },
+  showLobby() { for (const o of document.querySelectorAll('.overlay')) o.classList.add('hidden'); this._el('mpLobby').classList.remove('hidden'); this.renderLobby(); },
+  renderLobby() {
+    const r = this.room; if (!r) return; const $ = (id) => this._el(id), host = this.host, S = r.settings, n = r.players.filter((p) => p.connected).length;
+    $('mpLobbyMode').textContent = this.cfg.modes[r.mode] || r.mode; $('mpCodeBig').textContent = r.code; $('mpCount').textContent = `${n} / ${r.max} players - need ${r.min}+ to start`;
+    $('mpSlots').innerHTML = [0, 1, 2, 3].map((i) => { const p = r.players[i]; return p ? `<div class="mpSlot${p.connected ? '' : ' off'}"><span class="dot" style="background:${this.cfg.colors[i]}"></span><span>${this._esc(p.name)}${p.id === this.myId ? ' (you)' : ''}</span><span class="tag">${p.host ? 'HOST' : p.connected ? '' : 'OFFLINE'}</span></div>` : '<div class="mpSlot empty">waiting for player...</div>'; }).join('');
+    const dis = host ? '' : ' disabled', sel = (id, opts, v) => `<select id="${id}"${dis}>${opts.map(([val, lab]) => `<option value="${val}"${String(val) === String(v) ? ' selected' : ''}>${lab}</option>`).join('')}</select>`;
+    let h = `<label>Mode ${sel('mpsMode', [['coop', 'Co-op'], ['comp', 'Competitive']], r.mode)}</label>`;
+    if (r.mode === 'comp') h += `<label>Match ${sel('mpsMin', [[5, '5 min'], [10, '10 min'], [15, '15 min'], [20, '20 min']], S.minutes)}</label><label>Friendly fire ${sel('mpsFF', [['true', 'On'], ['false', 'Off']], S.friendlyFire)}</label><label>Respawn ${sel('mpsResp', [['true', 'On'], ['false', 'Off']], S.respawn)}</label>`;
+    else h += `<label>Revive time ${sel('mpsRev', [[4, '4 s'], [6, '6 s'], [8, '8 s'], [12, '12 s']], S.reviveSecs)}</label>`;
+    $('mpSet').innerHTML = h;
+    const on = (id, f) => { const e = $(id); if (e) e.onchange = () => f(e.value); };
+    on('mpsMode', (v) => this.send({ t: 'settings', mode: v })); on('mpsMin', (v) => this.send({ t: 'settings', minutes: +v })); on('mpsFF', (v) => this.send({ t: 'settings', friendlyFire: v === 'true' }));
+    on('mpsResp', (v) => this.send({ t: 'settings', respawn: v === 'true' })); on('mpsRev', (v) => this.send({ t: 'settings', reviveSecs: +v }));
+    const b = $('mpStart'); b.disabled = !host || n < r.min; b.textContent = !host ? 'Waiting for the host...' : n < r.min ? `Need ${r.min - n} more player${r.min - n > 1 ? 's' : ''}` : 'Choose Map & Start';
+  },
+  _esc(s) { return String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); },
+  toast(text, kind) {
+    const box = this._el('mpToasts'); if (!box) return; const t = document.createElement('div'); t.className = 'mpToast'; t.textContent = text;
+    t.style.borderColor = { join: '#4cd964', leave: '#ffd24a', drop: '#ff6b6b', host: '#4aa3ff' }[kind] || '#000'; box.appendChild(t); setTimeout(() => t.remove(), 4300); while (box.children.length > 4) box.firstChild.remove();
+  },
+  _ui() { /* connection state is shown through the menu messages */ },
+
+  // ------------------------------------------------------------ starting a match: the host picks the map with the normal city flow, everyone loads it
+  pickMap() {
+    if (!this.host || !window.cityFlow) return; this.pending = true; this._flowErr = false;
+    this._el('mpLobby').classList.add('hidden'); this.setMsg(''); window.cityFlow.begin();
+  },
+  flowBack(flow) { if (!this.pending || this.active || !this.room) return false; this.pending = false; flow._hideAllScreens(); this.showLobby(); return true; },
+  flowBegin() { if (!this.pending && this.active) this.exitMatch(); },
+  _leaveFlow() { if (window.cityFlow) window.cityFlow._hideAllScreens(); },
+  interceptConfirm(flow) {   // host: instead of generating the map alone, send the choice to the server; the server tells EVERYONE to start
+    if (!this.pending || this.active || !this.room || !this.host) return false;
+    if (!flow.selectedLatLng) { this.toast('Multiplayer needs the 3D map: pick a spot on the map', 'drop'); return true; }
+    const c = flow.selectedCity || {};
+    this.send({ t: 'start', world: { city: flow.cityName, lat: flow.selectedLatLng.lat, lng: flow.selectedLatLng.lng, cityLat: c.lat, cityLng: c.lng, area: flow.selectedArea || 'custom', difficulty: CONFIG.activeDifficulty } });
+    const b = this._el('confirmSpawnBtn'); if (b) b.textContent = 'Starting...'; return true;
+  },
+  onStart(m) {   // every player (host included) loads the same world
+    this.world = m.world; this.order = m.order || []; this.slot = Math.max(0, this.order.indexOf(this.myId)); this.mode = m.mode; this.settings = m.settings;
+    this.active = true; this.pending = true;   // active = this is a multiplayer run: progression is not touched (see TEST_MODE.isActive), pause and shop are off
+    for (const o of document.querySelectorAll('.overlay')) o.classList.add('hidden');
+    if (window.cityFlow) window.cityFlow.mpStart(m.world);
+  },
+  onGameStart(game) {
+    this.game = game; this.pending = false; this._lastSent = null; this._sendT = 0; this.remotes.clear();
+    const ring = this.cfg.spawnRing, a = (this.slot / 4) * Math.PI * 2;   // everyone spawns around the same point, not on top of each other
+    game.player.x += Math.cos(a) * ring; game.player.y += Math.sin(a) * ring;
+    if (this.room) for (const p of this.room.players) if (p.id !== this.myId) this._remote(p.id, p.name);
+    this._hud(true); this.toast(`${this.cfg.modes[this.mode] || ''} - ${this.room ? this.room.players.length : 1} players`, 'join');
+  },
+  exitMatch() {
+    this.active = false; this.pending = false; this.remotes.clear(); const h = this._el('mpHud'); if (h) h.classList.add('hidden');
+    if (this.room) { this.send({ t: 'leave' }); this.room = null; this.code = null; }
+  },
+  onGameEnd() { /* the local player died: the normal game-over screen is shown; leaving the room happens when they go back to the menu */ },
+
+  // ------------------------------------------------------------ player sync
+  _remote(id, name) {
+    let r = this.remotes.get(id); if (r) { if (name) r.name = name; return r; }
+    const p = new Player(0, 0); p.weapons = [new Weapon(CONFIG.WEAPONS.pistol)]; p.weaponIndex = 0; p._wid = 'pistol';
+    const slot = this.room ? Math.max(0, this.room.players.findIndex((q) => q.id === id)) : this.remotes.size + 1;
+    r = { id, name: name || 'Player', p, buf: [], hp: 100, mhp: 100, fl: 0, color: this.cfg.colors[slot % 4], ready: false }; this.remotes.set(id, r); return r;
+  },
+  _removeRemote(id) { this.remotes.delete(id); },
+  _ingest(m) {
+    if (!this.active) return; const now = performance.now();
+    for (const row of m.p) {
+      const r = this.remotes.get(row[0]) || this._remote(row[0], this.room && (this.room.players.find((q) => q.id === row[0]) || {}).name); if (!r) continue;
+      const s = { t: now, x: row[1], y: row[2], vx: row[3], vy: row[4], a: row[5], f: row[6], mv: row[7], w: row[8], hp: row[9], mhp: row[10], fl: row[11] };
+      const last = r.buf[r.buf.length - 1]; if (last && Math.hypot(s.x - last.x, s.y - last.y) > this.cfg.snapDistance) r.buf.length = 0;   // a big jump (respawn / teleport) is not smoothed
+      r.buf.push(s); if (r.buf.length > 14) r.buf.shift();
+    }
+  },
+  _collectState() {
+    const p = this.game.player, w = p.currentWeapon, c = w && w.config; let fl = 0;
+    if (w && !c.melee && w.cooldownTimer > 0 && w.cooldownTimer > (1 / (c.fireRate || 4)) - 0.09) fl |= 1;   // just fired
+    if (w && w.isReloading) fl |= 2; if (p.isSprinting) fl |= 16; if (p.health <= 0) fl |= 8;
+    return { t: 'state', x: +p.x.toFixed(1), y: +p.y.toFixed(1), a: +p.aimAngle.toFixed(3), f: p.facing, mv: p.isMoving ? 1 : 0, w: c ? c.id : 'pistol', hp: Math.max(0, Math.round(p.health)), mhp: Math.round(p.maxHealth), fl };
+  },
+  update(dt, game) {   // called from Game._update every frame while a multiplayer run is active
+    this.game = game; const now = performance.now(); this._sendT -= dt;
+    if (this._sendT <= 0) {
+      this._sendT = 1 / this.cfg.sendHz; const s = this._collectState(), L = this._lastSent;
+      s.vx = L ? Math.round((s.x - L.x) * this.cfg.sendHz) : 0; s.vy = L ? Math.round((s.y - L.y) * this.cfg.sendHz) : 0;   // velocity from the last sent position (so a player who has just stopped sends 0 at once)
+      const same = L && L.x === s.x && L.y === s.y && L.a === s.a && L.f === s.f && L.mv === s.mv && L.w === s.w && L.hp === s.hp && L.fl === s.fl && L.vx === s.vx && L.vy === s.vy;
+      if (!same || now - (this._lastTx || 0) > 400) { this.send(s); this._lastSent = s; this._lastTx = now; }
+    }
+    const rt = now - this.cfg.interpDelayMs;
+    for (const r of this.remotes.values()) this._step(r, rt, dt, now);
+    this._hudT -= dt; if (this._hudT <= 0) { this._hudT = 0.25; this._hud(false); }
+  },
+  _step(r, rt, dt, now) {   // interpolate between the two snapshots around the render time; extrapolate a little with the last velocity when snapshots run late
+    const b = r.buf; if (!b.length) return; let a = null, c = null;
+    for (let i = b.length - 1; i >= 0; i--) if (b[i].t <= rt) { a = b[i]; c = b[i + 1] || null; break; }
+    let x, y, s;
+    if (!a) { s = b[0]; x = s.x; y = s.y; }
+    else if (c) { const k = (rt - a.t) / Math.max(1, c.t - a.t); x = a.x + (c.x - a.x) * k; y = a.y + (c.y - a.y) * k; s = k > 0.5 ? c : a; }
+    else { const ex = a.mv ? Math.min(this.cfg.extrapolateMs, rt - a.t) / 1000 : 0; x = a.x + a.vx * ex; y = a.y + a.vy * ex; s = a; }
+    const p = r.p; p.x = x; p.y = y; p.facing = s.f; let da = s.a - p.aimAngle; da = Math.atan2(Math.sin(da), Math.cos(da)); p.aimAngle += da * Math.min(1, dt * 20);
+    p.isMoving = !!s.mv; p.isSprinting = !!(s.fl & 16); p.health = s.hp; p.maxHealth = s.mhp; r.hp = s.hp; r.mhp = s.mhp;
+    if (s.w !== p._wid && CONFIG.WEAPONS[s.w]) { p.weapons = [new Weapon(CONFIG.WEAPONS[s.w])]; p.weaponIndex = 0; p._wid = s.w; }
+    if ((s.fl & 1) && !(r.fl & 1)) this._flash(r);   // rising edge of "shooting": a muzzle flash at their weapon
+    r.fl = s.fl; p.update(dt);
+  },
+  _flash(r) { try { const p = r.p, c = CONFIG.WEAPONS[p._wid]; if (c && !c.melee && this.game.fx) this.game.fx.muzzle(c, p, { x: p.x + Math.cos(p.aimAngle) * 14, y: p.y + Math.sin(p.aimAngle) * 14, angle: p.aimAngle }); } catch (e) { /* cosmetic */ } },
+  drawRemotes(ctx, cam, canvas) {
+    for (const r of this.remotes.values()) {
+      if (!r.buf.length) continue; r.p.draw(ctx, cam, canvas);
+      const pp = cam.worldToScreen(r.p.x, r.p.y, canvas), lift = cam.rig3d && GAME3D.feetAnchor ? BUILDING_OCCLUSION_CONFIG.playerFeetOffset * PLAYER_SCALE : 0, y = pp.y - lift - 42 * PLAYER_SCALE;
+      ctx.save(); cam.applyEntityScale(ctx, pp); ctx.font = "8px 'Press Start 2P', monospace"; ctx.textAlign = 'center';
+      ctx.fillStyle = '#000'; ctx.fillText(r.name, pp.x + 1, y + 1); ctx.fillStyle = r.color; ctx.fillText(r.name, pp.x, y);
+      const w = 26, k = Math.max(0, Math.min(1, r.hp / Math.max(1, r.mhp))); ctx.fillStyle = '#000'; ctx.fillRect(pp.x - w / 2 - 1, y + 4, w + 2, 5); ctx.fillStyle = k > 0.5 ? '#4cd964' : k > 0.25 ? '#ffd24a' : '#ff6b6b'; ctx.fillRect(pp.x - w / 2, y + 5, w * k, 3);
+      ctx.restore();
+    }
+  },
+
+  // ------------------------------------------------------------ HUD
+  _hud(force) {
+    const el = this._el('mpHud'); if (!el) return; if (!this.active || !this.room) { el.classList.add('hidden'); return; }
+    const r = this.room, rows = [], me = this.game && this.game.player;
+    r.players.forEach((p, i) => {
+      const you = p.id === this.myId, rem = this.remotes.get(p.id), hp = you ? (me ? me.health : 100) : rem ? rem.hp : 100, mhp = you ? (me ? me.maxHealth : 100) : rem ? rem.mhp : 100, k = Math.max(0, Math.min(1, hp / Math.max(1, mhp)));
+      rows.push(`<div class="mpP"><span class="dot" style="background:${this.cfg.colors[i % 4]}"></span><span class="mpN">${this._esc(p.name)}${you ? '*' : ''}${p.connected ? '' : ' (off)'}</span><span class="mpB"><i style="width:${Math.round(k * 100)}%;background:${k > 0.5 ? '#4cd964' : k > 0.25 ? '#ffd24a' : '#ff6b6b'}"></i></span></div>`);
+    });
+    el.classList.remove('hidden'); el.innerHTML = `<div class="mpTitle">${this.cfg.modes[r.mode] || ''} ${r.players.filter((p) => p.connected).length}/${r.max}</div>` + rows.join('');
+  },
+};
+
+// CitySelectFlow: how a multiplayer match loads the host's map for every player (same city, same spawn point, same difficulty).
+CitySelectFlow.prototype.mpStart = function (w) {
+  this.cityName = w.city; this.selectedCity = { name: w.city, country: '', lat: Number.isFinite(w.cityLat) ? w.cityLat : w.lat, lng: Number.isFinite(w.cityLng) ? w.cityLng : w.lng, bbox: null };
+  this.selectedLatLng = { lat: w.lat, lng: w.lng }; this.selectedArea = w.area || 'custom'; this.selectedPoint = null; CONFIG.activeDifficulty = w.difficulty;
+  this.coordinateConverter = new CoordinateConverter(this.selectedCity.lat, this.selectedCity.lng); this._hideAllScreens(); this._showGenerating();
+};
+window.MP = MP;
+(function bootMP() { const go = () => { MP.url = MP.resolveUrl(); MP.loadIdentity(); MP.initUI(); }; if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', go); else go(); })();
+</script>
   <script>
 /**
  * main.js — entry point. Constructs the Game and the CitySelectFlow that
