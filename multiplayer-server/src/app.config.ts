@@ -12,6 +12,8 @@ import {
  * Import your Room files
  */
 import { MyRoom } from "./rooms/MyRoom.js";
+import { CoopRoom } from "./rooms/CoopRoom.js";
+import { CompetitiveRoom } from "./rooms/CompetitiveRoom.js";
 
 const server = defineServer({
 
@@ -20,6 +22,8 @@ const server = defineServer({
    */
   rooms: {
     my_room: defineRoom(MyRoom).enableRealtimeListing(),
+    coop_room: defineRoom(CoopRoom).enableRealtimeListing(),
+    competitive_room: defineRoom(CompetitiveRoom).enableRealtimeListing(),
     lobby: defineRoom(LobbyRoom),
   },
 

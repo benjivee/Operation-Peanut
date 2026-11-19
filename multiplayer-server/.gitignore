@@ -1,4 +1,6 @@
 node_modules
 build
 .colyseus-cloud.json
-.devmode.json.env*
+.devmode.json
+.env*
+operation-peanut-stage1-files.zip
