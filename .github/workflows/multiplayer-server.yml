@@ -1,0 +1,33 @@
+name: Multiplayer server checks
+
+on:
+  push:
+    branches:
+      - multiplayer-stage-2a
+    paths:
+      - "multiplayer-server/**"
+      - ".github/workflows/multiplayer-server.yml"
+  pull_request:
+    paths:
+      - "multiplayer-server/**"
+      - ".github/workflows/multiplayer-server.yml"
+
+jobs:
+  server:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: multiplayer-server/package-lock.json
+      - name: Install dependencies
+        working-directory: multiplayer-server
+        run: npm ci
+      - name: Build server
+        working-directory: multiplayer-server
+        run: npm run build
+      - name: Run tests
+        working-directory: multiplayer-server
+        run: npm test
