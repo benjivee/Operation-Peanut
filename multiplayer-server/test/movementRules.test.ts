@@ -1,0 +1,11 @@
+import assert from "assert";
+import { MovementGate, limitMove, parseMoveMessage } from "../src/shared/movementRules.js";
+describe("movement validation", () => {
+ it("rejects malformed, non-finite and out-of-bounds coordinates", () => { for(const v of [null,[],{},{x:NaN,y:0},{x:Infinity,y:0},{x:0,y:-Infinity},{x:30001,y:0}]) assert.strictEqual(parseMoveMessage(v),null); });
+ it("normalizes angle and ignores unknown fields", () => assert.deepStrictEqual(parseMoveMessage({x:1,y:2,angle:Math.PI*3,admin:true}),{x:1,y:2,angle:Math.PI}));
+ it("clamps speed and caps elapsed time after pauses", () => { const cfg={coordLimit:30000,maxSpeed:520,minUpdateInterval:25,maxStepSeconds:.5,minPositionChange:.5,minAngleChange:.02}; assert.deepStrictEqual(limitMove({x:0,y:0},{x:1000,y:0},100,cfg),{kind:"apply",x:52,y:0}); assert.deepStrictEqual(limitMove({x:0,y:0},{x:10000,y:0},10000),{kind:"apply",x:260,y:0}); });
+ it("rejects invalid elapsed time", () => { assert.strictEqual(limitMove({x:0,y:0},{x:1,y:0},0).kind,"drop"); assert.strictEqual(limitMove({x:0,y:0},{x:1,y:0},-1).kind,"drop"); });
+ it("seeds first position then rate-limits and clamps movement", () => { const g=new MovementGate(); assert.deepStrictEqual(g.evaluate("a",{x:100,y:100,angle:.5},{x:0,y:0},1000),{kind:"apply",x:100,y:100,angle:.5}); assert.strictEqual(g.evaluate("a",{x:200,y:100},{x:100,y:100},1010).kind,"drop"); assert.deepStrictEqual(g.evaluate("a",{x:200,y:100},{x:100,y:100},1100),{kind:"apply",x:152,y:100}); });
+ it("tracks players independently and rejects a backwards clock", () => { const g=new MovementGate(); g.evaluate("a",{x:0,y:0},{x:0,y:0},100); assert.deepStrictEqual(g.evaluate("b",{x:50,y:50},{x:0,y:0},100),{kind:"apply",x:50,y:50}); assert.strictEqual(g.evaluate("a",{x:1,y:0},{x:0,y:0},90).kind,"drop"); });
+ it("forgets departed players and resets movement clocks", () => { const g=new MovementGate(); g.evaluate("a",{x:0,y:0},{x:0,y:0},100); g.forget("a"); assert.deepStrictEqual(g.evaluate("a",{x:200,y:0},{x:0,y:0},100),{kind:"apply",x:200,y:0}); g.resetAll(); assert.deepStrictEqual(g.evaluate("a",{x:300,y:0},{x:200,y:0},100),{kind:"apply",x:300,y:0}); });
+});
