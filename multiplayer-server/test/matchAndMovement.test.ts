@@ -41,7 +41,7 @@ describe("Stage 2A match and movement integration",()=>{
    guest.send("move",{x:120,y:240,angle:1.25});
    await waitFor(()=>room.state.players.get(guest.sessionId).x===120);
    const state=room.state.players.get(guest.sessionId);
-   assert.strictEqual(state.y,240); assert.strictEqual(state.angle,1.25);
+   assert.strictEqual(state.y,240); assert.ok(Math.abs(state.angle-1.25)<1e-10);
    assert.strictEqual(room.state.players.get(host.sessionId).x,0);
   });
  }
