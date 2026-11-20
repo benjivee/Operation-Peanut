@@ -1,41 +1,40 @@
-# Multiplayer rooms (Stage 1)
+# Multiplayer rooms — Stages 1 and 2A
 
-Two new room types sit next to the existing `my_room` (kept untouched as the working reference) and the built-in `lobby`:
+The co-op and competitive room types sit beside the original MyRoom and built-in lobby. The original room remains registered and unchanged.
 
-| Room name | Class | Mode |
-|---|---|---|
-| `coop_room` | `src/rooms/CoopRoom.ts` | Co-op Survival, 4 players max |
-| `competitive_room` | `src/rooms/CompetitiveRoom.ts` | Competitive Survival, 4 players max |
+| Room | Mode | Capacity |
+|---|---|---:|
+| coop_room | Co-op Survival | Up to 4 |
+| competitive_room | Competitive Survival | Up to 4 |
 
-Both extend `src/rooms/BaseGameRoom.ts` (cap, seats, host, ready, settings, leave, drop / reconnect). Their state classes are in `src/rooms/schema/GameRoomState.ts`; what a client may ask for is decided in `src/shared/roomRules.ts`.
+## Lobby and match start
 
-## What a room holds
-* **Per player:** `sessionId`, `name`, `slot` (seat 0-3), `x`, `y`, `health`, `maxHealth`, `alive`, `ready`, `connected` (false while a dropped player's seat is held). Competitive players also have `score`, `kills`, `deaths` (nothing updates them yet).
-* **Per room:** `mode`, `phase` ("lobby"), `hostId`, `maxPlayers` (2-4), `cityName`, `cityLat`, `cityLng`, `spawnArea`, plus `reviveSeconds` (co-op) or `matchMinutes` + `friendlyFire` (competitive).
-* **Listing metadata** (shown by the `lobby` room): `mode`, `maxPlayers`, `players`, `cityName`, `spawnArea`, `hostName`, `phase`.
+The host starts with the start message. The server checks that the requester is the current connected host, the room is in the lobby, at least two players are connected, every connected non-host player is ready, and a city name, valid latitude/longitude pair and safe spawn-area key have been selected.
 
-## Rules the server enforces
-* Hard cap of 4 clients (`maxClients`); the host may lower it to 2-4 but never raise it, and never below the players already inside. A seat held for a dropped player still counts, so nobody can take it.
-* The game mode is fixed by the room type; a `mode` option from a client is ignored.
-* Creation options and all messages are validated / clamped (text is cleaned and length-limited, numbers range-checked, unknown fields ignored).
-* Only the host can change settings, and only in the lobby. When the host leaves for good, the lowest connected seat becomes host.
-* Unexpected disconnect: the player keeps their entity and seat for 30 s (`connected=false`); `onReconnect` restores it, otherwise `onLeave` frees the seat.
+A successful start changes phase to playing, locks the room against late joins, and broadcasts match_started with the selected world information. Lobby settings and ready changes are ignored after start.
 
-Messages (client -> server): `ready` `{ ready?: boolean }`, `settings` `{ maxPlayers?, cityName?, cityLat?, cityLng?, spawnArea?, reviveSeconds? | matchMinutes?, friendlyFire? }` (host only), `name` `{ name }`. Errors come back as an `error` message `{ code, message }`.
+## Player movement
 
-Not built yet (later stages): starting a match, the real shared map, zombies, weapons, combat, revives, scoring.
+Clients may send move with { x, y, angle? } while the match is playing. The server uses the sending connection's session ID to select the player; a client cannot name another player to move. Invalid values and out-of-bounds coordinates are rejected. Subsequent movement is rate-limited and clamped to 520 world pixels per second, with elapsed time capped at 0.5 seconds. Aim angle is normalized to radians.
 
-## Test it locally
-```bash
-cd multiplayer-server
-npm install
-npm run build          # TypeScript compile (fix any error before going on)
-npm test               # unit tests for the rules + real-server tests for both rooms + the existing my_room test
-npm start              # server on http://localhost:2567
-```
-Manual check with the playground (http://localhost:2567):
-1. Pick `coop_room`, **Join/Create**; open a second browser tab, pick `coop_room`, and join the *same room* (use "Join by id" / the room list). Both players should appear in the state with seats 0 and 1, and the first is `hostId`.
-2. Join with two more tabs (4 players). A fifth must be refused.
-3. Repeat with `competitive_room`.
-4. Reconnection: with a player joined, open DevTools > Network, set **Offline** for ~5 s, then back **Online**. The player's `connected` should go false then true, with the same `sessionId` and seat. Staying offline over 30 s removes the player.
-5. Open http://localhost:2567/monitor to watch rooms and their metadata.
+Important limitation: this is an initial movement-validation layer, not full server authority. The server does not yet have MapTiler collision, wall, water, or spawn data. A player's first valid movement message seeds their initial position, so a malicious client could choose that first position. Server-assigned spawn positions and server-side collision/gameplay simulation are later work.
+
+## Reconnection
+
+Unexpected disconnects hold a player's seat for 30 seconds. Their entity remains in room state with connected=false; reconnecting restores it. Movement timestamps use a monotonic server clock.
+
+## State
+
+Player state includes sessionId, name, slot, x, y, angle, health, maxHealth, alive, ready, and connected. Competitive players also have score, kills, and deaths; these counters are not yet driven by gameplay.
+
+Room state includes phase, hostId, mode, maxPlayers, cityName, cityLat, cityLng, and spawnArea, plus mode-specific settings.
+
+## Run locally
+
+    cd multiplayer-server
+    npm install
+    npm run build
+    npm test
+    npm start
+
+The production frontend connection and full Operation Peanut gameplay integration are not part of Stage 2A.
